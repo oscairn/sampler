@@ -2,11 +2,12 @@
 //
 // Oscairn Sampler: plays a one-region SFZ patch over a preloaded mono or stereo WAV,
 // using the shared native sound contexts. The supported opcodes are the
-// `oscairn-sfz-baseline-0` profile in docs/rfcs/0008-sfz-native-samples-and-conversion.md;
+// `oscairn-sfz-baseline-0` profile in Oscairn's RFC 0008
+// (https://github.com/jbschooley/oscairn/blob/main/docs/rfcs/0008-sfz-native-samples-and-conversion.md);
 // anything else rejects the patch with its line number. Parsing, file access, decoding
 // and freeing happen on the main thread; contexts that use identical audio share one
 // immutable decoded copy. Playback reads it with linear interpolation. Samples are
-// dependencies of a saved Performance, not part of it (docs/rfcs/0009): each sound names a
+// dependencies of a saved Performance, not part of it (Oscairn's RFC 0009): each sound names a
 // library, its folder there and the sample's SHA-256, and the host's oscairn.assets
 // extension finds and verifies the file. The sampler never searches the file system itself.
 

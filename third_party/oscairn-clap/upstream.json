@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/jbschooley/oscairn",
+  "path": "core/clap-ext",
+  "commit": "acf8bb5d03a8763e557a63bed822e4e7f1382199",
+  "note": "The Oscairn plugin SDK (MIT): extension headers and the sound-contexts helper, unchanged. Used only when the Sampler builds on its own; inside Oscairn it uses Oscairn's copy."
+}
