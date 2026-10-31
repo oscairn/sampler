@@ -1,0 +1,39 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sampler
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsndfile1-dev
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja libsndfile
+      # The plugin on its own, with the vendored headers.
+      - name: Build standalone
+        run: cmake -S sampler -B standalone -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build standalone
+      # The Sampler's tests live in Oscairn and drive it through Oscairn's host: build Oscairn's
+      # main with this checkout in place of its pinned Sampler, and run them.
+      - name: Check out Oscairn
+        uses: actions/checkout@v4
+        with:
+          repository: jbschooley/oscairn
+          ref: main
+          path: oscairn
+      - name: Build Oscairn with this Sampler
+        run: >
+          cmake -S oscairn -B oscairn-build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DFETCHCONTENT_SOURCE_DIR_OSCAIRN_SAMPLER="${{ github.workspace }}/sampler"
+          && cmake --build oscairn-build
+      - name: Test
+        run: ctest --test-dir oscairn-build --output-on-failure -R "^sampler|worker-recovery"
