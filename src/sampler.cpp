@@ -285,7 +285,7 @@ namespace
                     const auto index = size_t(v.position);
                     if(index >= s.frames) { finishVoice(v); continue; } // no_loop: the sample end ends the voice
                     if(v.releasing) { if(v.releaseLeft-- <= 0) { finishVoice(v); continue; } v.level = v.level * v.releaseFactor + v.releaseDelta; }
-                    const double fraction = v.position - double(index), gain = v.gain * v.level;
+                    const double fraction = v.position - double(index), gain = v.gain * v.level * amplitude(v, i - from); // per-note volume and choke fade
                     auto at = [&](size_t frame, int channel) { return frame < s.frames ? double(s.data[frame * s.channels + channel]) : 0.0; };
                     const double l = at(index, 0) + (at(index + 1, 0) - at(index, 0)) * fraction;
                     const double r = s.channels == 2 ? at(index, 1) + (at(index + 1, 1) - at(index, 1)) * fraction : l;
@@ -437,7 +437,7 @@ namespace
             return true;
         };
         s->plugin.destroy = [](const clap_plugin_t* p) { delete &self(p); };
-        s->plugin.activate = [](const clap_plugin_t* p, double rate, uint32_t, uint32_t) { auto& s = self(p); s.sampleRate = rate; s.resetVoices(); return true; };
+        s->plugin.activate = [](const clap_plugin_t* p, double rate, uint32_t, uint32_t) { auto& s = self(p); s.sampleRate = rate; s.setSampleRate(rate); s.resetVoices(); return true; };
         s->plugin.deactivate = [](const clap_plugin_t*) {};
         s->plugin.start_processing = [](const clap_plugin_t*) { return true; };
         s->plugin.stop_processing = [](const clap_plugin_t*) {};
