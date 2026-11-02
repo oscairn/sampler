@@ -27,7 +27,7 @@ jobs:
       - name: Check out Oscairn
         uses: actions/checkout@v4
         with:
-          repository: jbschooley/oscairn
+          repository: oscairn/oscairn
           ref: main
           path: oscairn
       - name: Build Oscairn with this Sampler

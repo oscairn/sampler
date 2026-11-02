@@ -3,7 +3,7 @@
 // Oscairn Sampler: plays a one-region SFZ patch over a preloaded mono or stereo WAV,
 // using the shared native sound contexts. The supported opcodes are the
 // `oscairn-sfz-baseline-0` profile in Oscairn's RFC 0008
-// (https://github.com/jbschooley/oscairn/blob/main/docs/rfcs/0008-sfz-native-samples-and-conversion.md);
+// (https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0008-sfz-native-samples-and-conversion.md);
 // anything else rejects the patch with its line number. Parsing, file access, decoding
 // and freeing happen on the main thread; contexts that use identical audio share one
 // immutable decoded copy. Playback reads it with linear interpolation. Samples are
@@ -32,7 +32,7 @@ namespace
     const char* const features[] = { CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SAMPLER, CLAP_PLUGIN_FEATURE_STEREO, nullptr };
     const clap_plugin_descriptor_t descriptor = {
         CLAP_VERSION_INIT, "org.oscairn.sampler", "Oscairn Sampler", "Oscairn",
-        "https://github.com/jbschooley/oscairn", "", "", "0.1.0",
+        "https://github.com/oscairn/oscairn", "", "", "0.1.0",
         "Plays SFZ sample patches with shared, preloaded audio", features,
     };
 

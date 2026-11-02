@@ -1,9 +1,9 @@
 # Oscairn Sampler
 
-A CLAP instrument for [Oscairn](https://github.com/jbschooley/oscairn): it plays SFZ patches over
+A CLAP instrument for [Oscairn](https://github.com/oscairn/oscairn): it plays SFZ patches over
 WAV samples, as native sound contexts, so up to eight prepared sounds play in one instance, each
 MIDI channel choosing one. It is growing into an engine that can do everything a Yamaha AWM2
-Part can ([Oscairn RFC 0013](https://github.com/jbschooley/oscairn/blob/main/docs/rfcs/0013-awm2-class-sample-engine.md)),
+Part can ([Oscairn RFC 0013](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0013-awm2-class-sample-engine.md)),
 specified from Yamaha's documentation and black-box measurements, with no Yamaha code or audio.
 
 It moved here from the Oscairn repository on 2026-10-31, with its history.
@@ -11,7 +11,7 @@ It moved here from the Oscairn repository on 2026-10-31, with its history.
 ## What it plays
 
 Each prepared sound is an SFZ patch in the `oscairn-sfz-baseline-0` profile of
-[Oscairn RFC 0008](https://github.com/jbschooley/oscairn/blob/main/docs/rfcs/0008-sfz-native-samples-and-conversion.md#baseline-profile-oscairn-sfz-baseline-0)
+[Oscairn RFC 0008](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0008-sfz-native-samples-and-conversion.md#baseline-profile-oscairn-sfz-baseline-0)
 (one `<region>`; `sample`, key/velocity ranges, `pitch_keycenter`, `pitch_keytrack`,
 `transpose`, `tune`, `volume`, `ampeg_release`). Anything else is rejected with its line number.
 Samples are 16/24/32-bit PCM or 32-bit float WAV, mono or stereo, 8–192 kHz, at most 64 MiB
@@ -26,7 +26,7 @@ CC7/CC10 changes are not implemented yet. Mono samples play on both outputs. Pre
 per voice but not mapped to sound. The single stereo output is unsaturated.
 
 Samples are dependencies of a saved Performance, not part of it
-([Oscairn RFC 0009](https://github.com/jbschooley/oscairn/blob/main/docs/rfcs/0009-sound-assets-and-dependencies.md)):
+([Oscairn RFC 0009](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0009-sound-assets-and-dependencies.md)):
 the Sampler asks the host for every file through `oscairn.assets` and never searches the file
 system itself. Its `oscairn-sampler-2` snapshot stores, per sound, the library, the patch's
 folder there, a normalized SFZ and the sample's SHA-256, and `oscairn.asset-dependencies` lists

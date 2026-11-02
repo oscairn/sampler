@@ -2,7 +2,7 @@
 
 Research executables, not part of the plugin build. Both compile against a separate liquidsfz
 checkout. The findings are in Oscairn's
-[sample players and formats](https://github.com/jbschooley/oscairn/blob/main/docs/sample-players-and-formats.md).
+[sample players and formats](https://github.com/oscairn/oscairn/blob/main/docs/sample-players-and-formats.md).
 
 ```sh
 git clone https://github.com/swesterfeld/liquidsfz.git /tmp/oscairn-liquidsfz
