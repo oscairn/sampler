@@ -1,5 +1,6 @@
-# The Oscairn Sampler, a CLAP instrument. Builds on its own, or inside Oscairn, which fetches
-# this repository at a pinned commit (FetchContent) and provides its own CLAP and SDK headers.
+# The Oscairn Legacy Sampler, a CLAP instrument. Builds on its own, or inside Oscairn, which
+# fetches this repository at a pinned commit (FetchContent) and provides its own CLAP and SDK
+# headers.
 cmake_minimum_required(VERSION 3.21)
 project(oscairn_sampler VERSION 0.1.0 LANGUAGES CXX)
 
@@ -28,7 +29,7 @@ target_compile_options(oscairn_sampler PRIVATE -Wall -Wextra)
 set_target_properties(oscairn_sampler PROPERTIES
     PREFIX ""
     SUFFIX ".clap"
-    OUTPUT_NAME oscairn-sampler
+    OUTPUT_NAME oscairn-legacy-sampler
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 # lib/clap is where CLAP hosts look on Linux (/usr/lib/clap).

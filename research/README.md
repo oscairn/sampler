@@ -26,5 +26,5 @@ Sampler and compares them. After `cmake -B build && cmake --build build`:
 c++ -std=c++17 -O2 -pthread -I third_party/clap/include -I third_party/oscairn-clap/include \
   -I /tmp/oscairn-liquidsfz/lib $(pkg-config --cflags sndfile) research/liquidsfz_compare.cpp \
   /tmp/oscairn-liquidsfz/lib/*.cc $(pkg-config --libs sndfile) -o /tmp/oscairn-liquidsfz-compare
-/tmp/oscairn-liquidsfz-compare build/oscairn-sampler.clap /tmp/oscairn-liquidsfz-compare-out
+/tmp/oscairn-liquidsfz-compare build/oscairn-legacy-sampler.clap /tmp/oscairn-liquidsfz-compare-out
 ```

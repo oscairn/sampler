@@ -1,4 +1,10 @@
-# Oscairn Sampler
+# Oscairn Legacy Sampler
+
+**Deprecated.** Oscairn's sample engine is now the sfizz-based Oscairn Sampler
+(`org.oscairn.sampler`). This plugin was the Oscairn Sampler until 2026-11-06; it is kept as
+the Oscairn Legacy Sampler, CLAP id `org.oscairn.legacy-sampler`, bundle
+`oscairn-legacy-sampler.clap`, so the two can be installed together. Performances saved with
+the old id do not find it.
 
 A CLAP instrument for [Oscairn](https://github.com/oscairn/oscairn): it plays SFZ patches over
 WAV samples, as native sound contexts, so up to eight prepared sounds play in one instance, each
@@ -37,7 +43,7 @@ them.
 Needs CMake 3.21, a C++20 compiler and libsndfile (with pkg-config).
 
 ```sh
-cmake -B build && cmake --build build   # build/oscairn-sampler.clap
+cmake -B build && cmake --build build   # build/oscairn-legacy-sampler.clap
 ```
 
 The CLAP headers and the Oscairn plugin SDK (the extension headers and the sound-contexts helper,

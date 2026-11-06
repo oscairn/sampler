@@ -42,7 +42,7 @@ std::vector<float> oscairn(const char* module, const fs::path& dir, const std::s
     auto* factory = static_cast<const clap_plugin_factory_t*>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
     clap_host_t host{CLAP_VERSION_INIT, nullptr, "compare", "", "", "1", [](const clap_host_t*, const char*) -> const void* { return nullptr; },
         [](const clap_host_t*) {}, [](const clap_host_t*) {}, [](const clap_host_t*) {}};
-    const auto* plugin = factory->create_plugin(factory, &host, "org.oscairn.sampler"); check(plugin && plugin->init(plugin), "create sampler");
+    const auto* plugin = factory->create_plugin(factory, &host, "org.oscairn.legacy-sampler"); check(plugin && plugin->init(plugin), "create sampler");
     check(plugin->activate(plugin, rate, 1, block) && plugin->start_processing(plugin), "activate");
     auto* contexts = static_cast<const oscairn_plugin_sound_contexts_t*>(plugin->get_extension(plugin, OSCAIRN_EXT_SOUND_CONTEXTS));
     char message[256]{};
