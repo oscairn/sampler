@@ -14,7 +14,9 @@
 #include <oscairn-clap/sound-contexts-plugin.hpp>
 #include <oscairn-clap/assets.h>
 #include <clap/ext/log.h>
-#include <sndfile.h>
+#define DR_WAV_IMPLEMENTATION
+#define DR_WAV_NO_WCHAR
+#include <dr_wav.h>
 
 #include <algorithm>
 #include <cmath>
@@ -210,24 +212,25 @@ namespace
 
     std::shared_ptr<Sample> decode(const fs::path& path)
     {
-        SF_INFO info{};
-        SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
-        if(!file) fail(0, "cannot read WAV " + path.filename().string() + ": " + sf_strerror(nullptr));
-        struct Close { SNDFILE* f; ~Close() { sf_close(f); } } close{file};
-        const int major = info.format & SF_FORMAT_TYPEMASK, sub = info.format & SF_FORMAT_SUBMASK;
-        if(major != SF_FORMAT_WAV && major != SF_FORMAT_WAVEX) fail(0, "only WAV samples are supported");
-        if(sub != SF_FORMAT_PCM_16 && sub != SF_FORMAT_PCM_24 && sub != SF_FORMAT_PCM_32 && sub != SF_FORMAT_FLOAT)
+        drwav wav;
+        if(!drwav_init_file(&wav, path.c_str(), nullptr)) fail(0, "cannot read WAV " + path.filename().string());
+        struct Close { drwav* w; ~Close() { drwav_uninit(w); } } close{&wav};
+        // RIFF or RIFX WAV, including WAVE_FORMAT_EXTENSIBLE: what libsndfile's WAV/WAVEX accepted.
+        if(wav.container != drwav_container_riff && wav.container != drwav_container_rifx) fail(0, "only WAV samples are supported");
+        const auto bits = wav.bitsPerSample;
+        const bool pcm = wav.translatedFormatTag == DR_WAVE_FORMAT_PCM && (bits == 16 || bits == 24 || bits == 32);
+        if(!pcm && !(wav.translatedFormatTag == DR_WAVE_FORMAT_IEEE_FLOAT && bits == 32))
             fail(0, "unsupported WAV encoding (use 16/24/32-bit PCM or 32-bit float)");
-        if(info.channels < 1 || info.channels > 2) fail(0, "samples must be mono or stereo");
-        if(info.samplerate < minRate || info.samplerate > maxRate) fail(0, "unsupported sample rate");
-        if(info.frames < 1) fail(0, "sample is empty");
+        if(wav.channels < 1 || wav.channels > 2) fail(0, "samples must be mono or stereo");
+        if(int64_t(wav.sampleRate) < minRate || int64_t(wav.sampleRate) > maxRate) fail(0, "unsupported sample rate");
+        if(wav.totalPCMFrameCount < 1) fail(0, "sample is empty");
         // Check decoded size before allocating.
-        const uint64_t bytes = uint64_t(info.frames) * uint64_t(info.channels) * sizeof(float);
+        const uint64_t bytes = uint64_t(wav.totalPCMFrameCount) * uint64_t(wav.channels) * sizeof(float);
         if(bytes > maxAssetBytes) fail(0, "sample exceeds the 64 MiB decoded limit");
         auto s = std::make_shared<Sample>();
-        s->rate = info.samplerate; s->channels = info.channels; s->frames = size_t(info.frames);
+        s->rate = int(wav.sampleRate); s->channels = wav.channels; s->frames = size_t(wav.totalPCMFrameCount);
         s->data.resize(s->frames * size_t(s->channels));
-        if(sf_readf_float(file, s->data.data(), info.frames) != info.frames) fail(0, "sample is truncated");
+        if(drwav_read_pcm_frames_f32(&wav, wav.totalPCMFrameCount, s->data.data()) != wav.totalPCMFrameCount) fail(0, "sample is truncated");
         if(!std::all_of(s->data.begin(), s->data.end(), [](float v) { return std::isfinite(v); })) fail(0, "sample contains non-finite values");
         s->hash = contentHash(*s);
         return s;

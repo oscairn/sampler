@@ -17,14 +17,11 @@ if(NOT TARGET oscairn_clap_headers)
     target_include_directories(oscairn_clap_headers INTERFACE third_party/clap/include third_party/oscairn-clap/include)
 endif()
 
-# WAV decoding: libsndfile (LGPL-2.1-or-later).
-find_package(PkgConfig REQUIRED)
-if(NOT TARGET PkgConfig::SNDFILE)
-    pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
-endif()
-
 add_library(oscairn_sampler MODULE src/sampler.cpp)
-target_link_libraries(oscairn_sampler PRIVATE oscairn_clap_headers PkgConfig::SNDFILE)
+target_link_libraries(oscairn_sampler PRIVATE oscairn_clap_headers)
+# WAV decoding: dr_wav (public domain or MIT-0), vendored and compiled in, so the plugin links
+# nothing beyond the system libraries.
+target_include_directories(oscairn_sampler SYSTEM PRIVATE third_party/dr_wav)
 target_compile_options(oscairn_sampler PRIVATE -Wall -Wextra)
 set_target_properties(oscairn_sampler PROPERTIES
     PREFIX ""

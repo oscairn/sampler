@@ -15,10 +15,10 @@ jobs:
           path: sampler
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libsndfile1-dev
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install ninja libsndfile
+        run: brew install ninja
       # The plugin on its own, with the vendored headers.
       - name: Build standalone
         run: cmake -S sampler -B standalone -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build standalone

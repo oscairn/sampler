@@ -40,7 +40,8 @@ them.
 
 ## Building
 
-Needs CMake 3.21, a C++20 compiler and libsndfile (with pkg-config).
+Needs CMake 3.21 and a C++20 compiler. Nothing else: WAV decoding is dr_wav, vendored in
+`third_party/`, so the plugin links only the system libraries.
 
 ```sh
 cmake -B build && cmake --build build   # build/oscairn-legacy-sampler.clap
@@ -69,4 +70,5 @@ cmake --build build && ctest --test-dir build -R "sampler|worker-recovery"
 ## Licence
 
 AGPL-3.0-or-later ([LICENSE](LICENSE)). Oscairn loads it through CLAP, as a separate work. The
-vendored headers in `third_party/` are MIT. See [CREDITS](CREDITS.md).
+vendored CLAP and SDK headers in `third_party/` are MIT; the vendored dr_wav is public domain or
+MIT-0. See [CREDITS](CREDITS.md).
