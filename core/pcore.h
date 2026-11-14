@@ -107,6 +107,7 @@ struct Compiled {
     Element element[kMaxElements];
     float bendUp = 2, bendDown = -2;  // semitones at full bend
     int16_t velDepth = 64, velOffset = 64;  // the part's velocity sensitivity (raw)
+    bool splitOutputs = false;        // elements to their output buses (else all on bus 0)
     double noteCost = 0;              // estimated instructions a block of the costliest note (all its layers)
 };
 // Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
@@ -155,6 +156,10 @@ public:
     // block. Control steps (envelopes, filter coefficients) fall every kSub frames from the block's
     // start, whatever the segments, so a block split by events renders as the unsplit one.
     void render(float* left, float* right, uint32_t frames, uint32_t from);
+    // The same with three stereo output buses: 0 thru, 1 to insertion A, 2 to insertion B (an element
+    // whose sound splits its outputs plays on its connection's bus; the rest on bus 0). Buses given the
+    // same buffers as bus 0 sum into it, exactly as render(left, right, ...).
+    void render(float* const* left, float* const* right, uint32_t frames, uint32_t from);
     // Sheds n voices now: the quietest element voices fade out over one control step's frames.
     void shed(uint32_t n);
 

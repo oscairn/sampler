@@ -19,9 +19,11 @@ TEST(descriptor_and_ports) {
     Inst a(false);
     auto* ap = static_cast<const clap_plugin_audio_ports_t*>(a.p->get_extension(a.p, CLAP_EXT_AUDIO_PORTS));
     auto* np = static_cast<const clap_plugin_note_ports_t*>(a.p->get_extension(a.p, CLAP_EXT_NOTE_PORTS));
-    CHECK(ap && ap->count(a.p, false) == 1 && ap->count(a.p, true) == 0);
-    clap_audio_port_info_t ai{};
-    CHECK(ap && ap->get(a.p, 0, false, &ai) && ai.channel_count == 2);
+    CHECK(ap && ap->count(a.p, false) == 3 && ap->count(a.p, true) == 0);
+    for (uint32_t k = 0; k < 3; ++k) {  // main (thru), to insertion A, to insertion B: stable ids 0-2
+        clap_audio_port_info_t ai{};
+        CHECK(ap && ap->get(a.p, k, false, &ai) && ai.channel_count == 2 && ai.id == k && bool(ai.flags & CLAP_AUDIO_PORT_IS_MAIN) == (k == 0));
+    }
     clap_note_port_info_t ni{};
     CHECK(np && np->count(a.p, true) == 1 && np->get(a.p, 0, true, &ni));
     CHECK((ni.supported_dialects & CLAP_NOTE_DIALECT_CLAP) && (ni.supported_dialects & CLAP_NOTE_DIALECT_MIDI));
@@ -254,4 +256,36 @@ TEST(random_note_lifetime) {
     randomRun(1, nullptr, 6000);
     randomRun(2, "5", 6000);
     randomRun(3, "1", 3000);
+}
+
+// Output ports: a sound with split_outputs plays each element on its connection's port (0 thru, 1 to
+// insertion A, 2 to insertion B); without it, or with a host that gives the main port only, everything
+// is on the main port, the same samples.
+TEST(output_ports) {
+    const std::string routed = "oscairn-pcm-sound/0\npart split_outputs=1\nsample sine.wav\n"
+        "element ampeg_decay1=127 ampeg_decay2=127 element_connection=1\nelement ampeg_decay1=127 ampeg_decay2=127 element_connection=2\n"
+        "region key=0-127 root=57 element=0 sample=0 loop=0-44100\nregion key=0-127 root=69 element=1 sample=0 loop=0-44100\n";
+    auto energy = [](const std::vector<float>& x) { double e = 0; for (float v : x) e += double(v) * v; return e; };
+    std::vector<float> sum;
+    for (int mode = 0; mode < 3; ++mode) {  // 0: split, three ports; 1: split, main only; 2: not split, three ports
+        Inst a;
+        a.outputs = mode == 1 ? 1 : 3;
+        std::string snd = routed;
+        if (mode == 2) snd.replace(snd.find("split_outputs=1"), 15, "split_outputs=0");
+        CHECK(a.load(stateWith(snd)));
+        a.block(128, {on(0, 1, 0, 60, 0.8)});
+        a.run(4096);
+        if (mode == 0) {
+            CHECK(energy(a.L) < 1e-12);                       // nothing thru
+            CHECK(energy(a.PL[0]) > 1 && energy(a.PL[1]) > 1); // element 1 on A, element 2 on B
+            sum.resize(a.L.size());
+            for (size_t i = 0; i < sum.size(); ++i) sum[i] = a.PL[0][i] + a.PL[1][i];
+        } else {
+            CHECK(energy(a.L) > 1);
+            if (mode == 2) { CHECK(energy(a.PL[0]) < 1e-12 && energy(a.PL[1]) < 1e-12); }
+            double worst = 0;
+            for (size_t i = 0; i < sum.size() && i < a.L.size(); ++i) worst = std::max(worst, double(std::fabs(a.L[i] - sum[i])));
+            CHECK(worst < 1e-6);  // the main port alone carries what the split ports did
+        }
+    }
 }

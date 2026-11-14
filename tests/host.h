@@ -180,7 +180,9 @@ struct Inst {
     const oscairn_plugin_voice_budget_t* budget = nullptr;
     const oscairn_plugin_memory_t* memory = nullptr;
     std::vector<Rec> log;       // every event the plugin pushed
-    std::vector<float> L, R;    // every sample rendered
+    std::vector<float> L, R;    // every sample rendered (the main port)
+    uint32_t outputs = 1;       // audio output ports the test host gives (1 or 3)
+    std::vector<float> PL[2], PR[2];  // ports 1 and 2 when given
     long frame = 0;
     bool guard = false;         // count heap allocations inside process()
     long allocations = 0;
@@ -218,11 +220,14 @@ struct Inst {
         std::vector<float> l(frames, 0.f), r(frames, 0.f);
         for (auto& x : l) x = 123.f;  // the plugin must overwrite, not add
         for (auto& x : r) x = 123.f;
-        float* ch[2] = {l.data(), r.data()};
-        clap_audio_buffer_t buf{}; buf.data32 = ch; buf.channel_count = 2;
+        std::vector<float> pl[2], pr2[2];
+        float* ch[3][2] = {{l.data(), r.data()}};
+        for (int k = 0; k < 2; ++k) { pl[k].assign(frames, 123.f); pr2[k].assign(frames, 123.f); ch[k + 1][0] = pl[k].data(); ch[k + 1][1] = pr2[k].data(); }
+        clap_audio_buffer_t buf[3]{};
+        for (int k = 0; k < 3; ++k) { buf[k].data32 = ch[k]; buf[k].channel_count = 2; }
         clap_process_t pr{};
         pr.steady_time = frame; pr.frames_count = frames; pr.in_events = &in.api; pr.out_events = &out.api;
-        pr.audio_outputs = &buf; pr.audio_outputs_count = 1;
+        pr.audio_outputs = buf; pr.audio_outputs_count = outputs;
         if (guard) allocGuardEnable(true);
         const auto st = p->process(p, &pr);
         if (guard) { allocGuardEnable(false); allocations = allocGuardCount(); }
@@ -231,6 +236,7 @@ struct Inst {
         if (out.dropped) { std::printf("  test log overflowed\n"); ++g_failures; }
         log.insert(log.end(), out.buf.begin(), out.buf.begin() + out.n);
         L.insert(L.end(), l.begin(), l.end()); R.insert(R.end(), r.begin(), r.end());
+        if (outputs > 1) for (int k = 0; k < 2; ++k) { PL[k].insert(PL[k].end(), pl[k].begin(), pl[k].end()); PR[k].insert(PR[k].end(), pr2[k].begin(), pr2[k].end()); }
         frame += frames;
     }
     void run(long frames, uint32_t blockSize = 128) {

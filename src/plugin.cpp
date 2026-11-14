@@ -326,11 +326,17 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
                 core->choke(i, std::max<uint32_t>(1, voices[i].chokeLeft));
                 choking[i] = true;
             }
-        float* const* out = pr->audio_outputs[0].data32;
+        float* const* out = pr->audio_outputs_count ? pr->audio_outputs[0].data32 : nullptr;
         if (!out || !out[0] || !out[1]) return;
-        std::memset(out[0] + from, 0, (to - from) * sizeof(float));
-        std::memset(out[1] + from, 0, (to - from) * sizeof(float));
-        core->render(out[0] + from, out[1] + from, to - from, from);
+        // ports 1 and 2 (to insertion A and B) where the host gives them; else their sound joins the main port
+        float* left[3]; float* right[3];
+        for (uint32_t k = 0; k < 3; ++k) {
+            float* const* o = k < pr->audio_outputs_count ? pr->audio_outputs[k].data32 : nullptr;
+            const bool own = o && o[0] && o[1] && pr->audio_outputs[k].channel_count >= 2;
+            left[k] = (own ? o[0] : out[0]) + from; right[k] = (own ? o[1] : out[1]) + from;
+            if (own) { std::memset(o[0] + from, 0, (to - from) * sizeof(float)); std::memset(o[1] + from, 0, (to - from) * sizeof(float)); }
+        }
+        core->render(left, right, to - from, from);
         for (uint32_t i = 0; i < kVoices; ++i)  // a voice the core finished: its note ends here
             if (voices[i].active && !core->voice(i).sounding) {
                 const auto at = eventTime; eventTime = to ? to - 1 : 0;
@@ -594,13 +600,16 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static const void* getExtension(const clap_plugin_t*, const char* id);
 };
 
+// Three stereo outputs with stable ids: 0 main (thru, and everything a sound does not split off), 1 to
+// insertion A, 2 to insertion B (a sound's elements reach 1 and 2 only with its split_outputs set)
 const clap_plugin_audio_ports_t kAudioPorts = {
-    [](const clap_plugin_t*, bool isInput) -> uint32_t { return isInput ? 0 : 1; },
+    [](const clap_plugin_t*, bool isInput) -> uint32_t { return isInput ? 0 : 3; },
     [](const clap_plugin_t*, uint32_t i, bool isInput, clap_audio_port_info_t* info) {
-        if (isInput || i) return false;
+        if (isInput || i > 2) return false;
+        static const char* const names[3] = {"Main", "To Insert A", "To Insert B"};
         *info = {};
-        info->id = 0; std::snprintf(info->name, sizeof info->name, "Main");
-        info->flags = CLAP_AUDIO_PORT_IS_MAIN; info->channel_count = 2; info->port_type = CLAP_PORT_STEREO; info->in_place_pair = CLAP_INVALID_ID;
+        info->id = i; std::snprintf(info->name, sizeof info->name, "%s", names[i]);
+        info->flags = i == 0 ? CLAP_AUDIO_PORT_IS_MAIN : 0; info->channel_count = 2; info->port_type = CLAP_PORT_STEREO; info->in_place_pair = CLAP_INVALID_ID;
         return true;
     }};
 const clap_plugin_note_ports_t kNotePorts = {

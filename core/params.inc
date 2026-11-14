@@ -110,3 +110,5 @@ X(EqFreq1, "eq_freq1", 0, 511, 54)
 X(EqGain1, "eq_gain1", 32, 96, 64)  // -12..+12 dB in 0.375 dB steps
 X(EqFreq2, "eq_freq2", 0, 511, 231)
 X(EqGain2, "eq_gain2", 32, 96, 64)
+// the element's output: thru, to insertion A, to insertion B (a bus of its own when the part splits its outputs)
+X(ElementConnection, "element_connection", 0, 2, 0)

@@ -25,7 +25,8 @@ const P kParams[] = {
 
 std::string randomSound(Rng& r) {
     std::string s = "oscairn-pcm-sound/0\npart bend_up=" + std::to_string(r.in(0, 24)) + " bend_down=" + std::to_string(-r.in(0, 48))
-                  + " vel_depth=" + std::to_string(r.in(0, 127)) + " vel_offset=" + std::to_string(r.in(0, 127)) + "\nsample sine.wav\n";
+                  + " vel_depth=" + std::to_string(r.in(0, 127)) + " vel_offset=" + std::to_string(r.in(0, 127))
+                  + " split_outputs=" + std::to_string(r.in(0, 1)) + "\nsample sine.wav\n";
     const int elements = r.in(1, 3);
     for (int e = 0; e < elements; ++e) {
         s += "element";
@@ -52,6 +53,7 @@ TEST(fuzz_random_sounds_and_events) {
     bool finite = true;
     for (int round = 0; round < 24; ++round) {
         Inst a;
+        a.outputs = round % 2 ? 3 : 1;  // the host gives the three output ports, or the main one only
         char msg[256] = {};
         uint32_t ctx[3];
         for (int c = 0; c < 3; ++c) {
@@ -86,6 +88,9 @@ TEST(fuzz_random_sounds_and_events) {
         }
         for (float x : a.L) { if (!std::isfinite(x)) finite = false; worst = std::max(worst, std::fabs(x)); }
         for (float x : a.R) { if (!std::isfinite(x)) finite = false; worst = std::max(worst, std::fabs(x)); }
+        for (int k = 0; k < 2; ++k)
+            for (const auto* port : {&a.PL[k], &a.PR[k]})
+                for (float x : *port) { if (!std::isfinite(x)) finite = false; worst = std::max(worst, std::fabs(x)); }
     }
     std::printf("  %ld blocks, %ld notes, peak %.3g, allocations in process %ld%s\n", blocks, notesStarted, double(worst), worstAlloc,
                 allocGuardAvailable() ? "" : " (guard unavailable)");

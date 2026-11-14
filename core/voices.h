@@ -16,6 +16,7 @@ enum Field {
     HINV, HCI, HKI, HKF, HK, HKFG, HC1, HC2, HC1M, HC2M,  // types 4, 5: the fixed high-pass section's
     ST0,                   // filter states: [section][channel][low1, low2, band1, band2]
     DAMP = ST0 + 16,       // damping of the resonance (before the limit)
+    B1, B2,                // 1 on output bus 1 (to insertion A) / bus 2 (to insertion B), else 0
     NFIELDS
 };
 constexpr int st(int section, int channel, int k) { return ST0 + (section * 2 + channel) * 4 + k; }
@@ -51,7 +52,7 @@ struct CentsEnv {
 
 struct VoiceScalar {
     uint16_t id = 0;           // the slot's layer id
-    uint8_t slot = 0, sound = 0, channel = 0, key = 60;
+    uint8_t slot = 0, sound = 0, channel = 0, key = 60, bus = 0;
     bool releasing = false, fresh = true, filterMoves = false;
     bool steady = false, dirty = true;  // steady: control steps change nothing until an event makes it dirty
     // the sample and its loop (virtual, unwrapped positions; see feed())

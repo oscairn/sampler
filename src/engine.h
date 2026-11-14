@@ -100,7 +100,9 @@ public:
     virtual void setModWheel(int16_t channel, double value) = 0;    // 0..1
     // Adds the sound of every voice of every context into left/right; `from` is the frame of the
     // host's block the segment starts at (control steps keep to the block's grid).
-    virtual void render(float* left, float* right, uint32_t frames, uint32_t from) = 0;
+    // left[k], right[k]: output bus k (0 thru, 1 to insertion A, 2 to insertion B; the same buffers as
+    // bus 0 when that port is absent: everything sums there).
+    virtual void render(float* const* left, float* const* right, uint32_t frames, uint32_t from) = 0;
     virtual uint32_t voiceCount() const = 0;                        // voices sounding, fading ones included
     virtual VoiceInfo voice(uint32_t voice) const = 0;
     virtual SoundCost cost(uint32_t context) const = 0;              // any thread

@@ -41,7 +41,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Velocity Limit High | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Cross Fade | 0 – 127 | no (not in the sound format; the converter must report a non-zero value) | K55 | the probe piano and bass use 0 |
 | Key On Delay Time Length | 0 – 127 | no: `keyon_delay` (reported) | K52-K53 in the fork | - |
-| Element Connection Switch | Thru, InsA, InsB | no (every element on the sound's output) | K48 | - |
+| Element Connection Switch | Thru, InsA, InsB | no: `element_connection` (reported): with the part's `split_outputs` the element plays on output port 1 (to insertion A) or 2 (to insertion B), else on the main port; the level against thru is not yet measured | K48 | ABI test `output_ports` |
 | Key On Delay Note Length | 5 – 21 (16th, 8th/3, 16th., 8th, 4th/3, 8th., 4th, 2th/3, 4th., 2nd, Whole/3, 2nd., 4thX4, 4thX5, 4thX6, 4thX7, 4thX8) | no: `keyon_delay_note` (reported) | K52-K53 in the fork | - |
 | Element Level | 0 – 127 | yes: `amp_level` | K1 (0.375 dB grid) | law only (127 on the pads) |
 | Level Velocity Sensitivity | −64 – +63 | yes: `amp_velsens`, `amp_veloffset`, `amp_velcurve` | K1-K4 | pads (sensitivity 0); the probe piano (+24 to +30, acceptance g); core test `level_scaling_and_velocity` (curve 0) |
@@ -155,6 +155,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Velocity Sensitivity Depth / Offset | yes: `vel_depth`, `vel_offset`; the note's velocity on the 0-2047 scale, moved as measured, for everything (element velocity limits, level, filter and envelope velocity laws) | measured here (acceptance h) | 18 pairs at 11 velocities (rms 0.057 dB); velocity limits and cutoff velocity sensitivity follow it |
 | AEG / FEG offsets (Attack, Decay, Sustain, Release, FEG Depth), Filter Cutoff, Resonance | added to the element values by the converter (steps not measured there) | converter | - |
 | Part LFO (all), User LFO | no (K17) | - | - |
+| Output ports (where the elements' insertion routing goes) | yes: `split_outputs` (set by the converter): 1 puts each element on its connection's port (0 main / thru, 1 to insertion A, 2 to insertion B); 0, or a host that gives the main port only, sums everything on the main port | structural | ABI test `output_ports` (the main port alone carries the split ports' sum, sample for sample) |
 | Part EQ, insertion effects, sends, dry level, output select | the host's effects chain, outside this plugin | - | - |
 | Arpeggio, step sequencer, controller receive/transmit switches | the host's | - | - |
 

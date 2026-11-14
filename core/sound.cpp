@@ -391,6 +391,8 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
         const bool eqFlat = type == 18 || v[EqType] == 5 || (v[EqType] >= 2 && v[EqType] <= 4) || (v[EqType] == 0 && v[EqGain1] == 64 && v[EqGain2] == 64);
         if (!eqFlat) add(uint16_t(e), v[EqType] == 0 ? (v[EqGain1] != 64 ? EqGain1 : EqGain2) : EqType, "element EQ that changes the sound (2-band with gain, P.EQ) is not built");
         if (v[KeyOnDelay] || v[KeyOnDelayNote]) add(uint16_t(e), v[KeyOnDelay] ? KeyOnDelay : KeyOnDelayNote, "key-on delay is not built");
+        // shortcut: the routing is built (output ports 1 and 2); its level against the reference's thru is not yet measured
+        if (v[ElementConnection]) add(uint16_t(e), ElementConnection, "an element sent to an insertion: the output ports are built, the level not yet measured");
     }
     return n;
 }
