@@ -12,7 +12,7 @@ tests and hand-written sounds. Version 0 is the first; a reader refuses any othe
 | 4 | u16 version (0), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
-| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (6 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
+| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (135 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
 | 24 | part parameters, i16 each, in `core/partparams.inc` order |
 | | samples: u8 length, then the reference's bytes (a relative path, no NUL, no `..` segment, no leading `/`) |
 | | elements: u16 count, then count x (u16 parameter index in `core/params.inc` order, i16 value); indices increasing; only values that differ from the default |
@@ -70,4 +70,12 @@ To write this format instead of SFZ for element parts:
   `split_outputs` when the host should get the insertion ports;
 - the part's bend range (`bend_up`, `bend_down`), its velocity sensitivity depth and offset (`vel_depth`,
   `vel_offset`, raw 0-127, 64 neutral), and `mono` / `portamento` when set (reported as not covered);
+- each element's EQ raw as the reference stores it (`eq_type`, `eq_q`, `eq_freq1`, `eq_gain1`, `eq_freq2`, `eq_gain2`; the
+  frequencies 0-511 as they are: the engine reads their low 8 bits, as the reference, and keeps the high shelf within
+  131-241);
+- the part's controller boxes 1-16 in their order, raw: `boxN_src`, `boxN_dst` (the reference's destination number; 0 or
+  a box switched off: none), `boxN_ratio` (-128..+127 as displayed), `boxN_pol`, `boxN_bank`, `boxN_curve`, `boxN_p1`,
+  `boxN_p2`, and each element's switch for each box (`box_sw1`..`box_sw16`, on by default); the mod wheel's element LFO
+  pitch and amplitude boxes stay `elfo_pitch_ratio` / `elfo_amp_ratio` (not boxes); boxes on destinations or from
+  sources the engine does not move yet are kept and reported by `notCovered()`;
 - the samples as references relative to the base it gives the sound (the asset library's folder).

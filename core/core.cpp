@@ -83,9 +83,9 @@ Cost estimateCost(const PlanDesc& p) {
     // Measured with tools/cost/cg.sh (docs/cost.md): one element voice a 128-frame block, from 8 to 32
     // voices; the filtered plans while the filter envelope moves the cutoff (the costlier case).
     // [channels - 1][interp][filter]; the Hermite plans without the filter are derived, not measured.
-    static const double kVoice[2][2][kFilters] = {{{5739, 8970, 9134, 8256}, {8993, 12224, 12388, 11510}},
-                                                  {{6895, 11850, 12304, 10896}, {11441, 16396, 16850, 15442}}};
-    return {kVoice[p.channels == 2][p.interp == Interp::Sinc][int(p.filter)], 182};
+    static const double kVoice[2][2][kFilters] = {{{5905, 9268, 9422, 8629}, {8985, 12348, 12502, 11709}},
+                                                  {{7098, 12308, 12630, 11064}, {11600, 16810, 17132, 15566}}};
+    return {kVoice[p.channels == 2][p.interp == Interp::Sinc][int(p.filter)], 192};
 }
 
 // ==== compile =====================================================================================

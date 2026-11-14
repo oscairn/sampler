@@ -184,6 +184,7 @@ starting with "no" are reported at every value but the default (any other start:
 parameter at random over its full raw range, up to 6 random regions with random keys, velocities,
 roots, transposition ±48, tune ±12 semitones, level -40 to +6 dB, pan, loops or none), 200 blocks
 of 1-128 frames per round with random notes, note-offs, chokes, note volume, mod wheel, sustain pedal
-and pitch bend: 4,800 blocks, about 4,700 notes. Output finite and below 64, no allocation in
-process(). Run on this round's builds: NEON (arm64), SSE2 (x86_64 under Rosetta) and scalar
-(`PV_SCALAR`), each passing (peak 4.29 in all three).
+and pitch bend (0.3.0: also four random controller boxes per sound over every part parameter's range, breath, foot
+controller and channel pressure): 4,800 blocks, about 4,800 notes. Output finite and below 64, no allocation in
+process(). Run on 0.3.0's builds: NEON (arm64; peak 4.26), SSE2 (x86_64 under Rosetta) and scalar (`PV_SCALAR`), each
+passing; Linux arm64 release, ASan+UBSan and TSan passing.

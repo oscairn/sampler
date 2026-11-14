@@ -10,7 +10,7 @@ inline const char* const kFeatures[] = {CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLU
                                         CLAP_PLUGIN_FEATURE_STEREO, nullptr};
 inline const clap_plugin_descriptor_t kDescriptor = {
     CLAP_VERSION, "org.oscairn.pcm", "Oscairn Sampler", "Oscairn", "https://github.com/oscairn/sampler",
-    "", "", "0.2.0", "Sample-playback instrument", kFeatures};
+    "", "", "0.3.0", "Sample-playback instrument", kFeatures};
 
 // Device voice caps, read when an instance is created (see plugin.cpp).
 inline constexpr const char* kEnvMaxVoices = "OSCAIRN_PCM_MAX_VOICES";               // 1..64
