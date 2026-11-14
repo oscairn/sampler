@@ -187,6 +187,7 @@ private:
     void startLayer(uint32_t slot, const Compiled&, uint32_t region, int key, int velocity, int32_t velocity2048, int channel);
     void control(Pool&, uint32_t i, bool grid);
     void releaseLayer(Pool&, uint32_t i, int32_t releaseIndex);
+    int32_t noteOnSteps(const Compiled&, const int16_t* element, uint32_t sound, int channel, int dest) const;
     void startKeyOff(uint32_t slot);
     void reap_();
     double sr_ = 48000;
@@ -195,7 +196,7 @@ private:
     uint16_t nextId_ = 1;
     float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {}, pressure_[16] = {}, foot_[16] = {}, breath_[16] = {};
     float boxSourceOf(uint32_t sound, int channel, int src) const;
-    static constexpr int kControls = 18, kOffsets = 6;
+    static constexpr int kControls = 18, kOffsets = 7;
     float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
     bool offsetOn_[kMaxSounds] = {};

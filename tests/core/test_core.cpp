@@ -744,6 +744,16 @@ static void controllerBoxes() {
         const auto x = a->run(8192), y = b->run(8192);
         NEAR(20 * std::log10(rmsOf(x, 4096, 8192) / rmsOf(y, 4096, 8192)), 0.0, 1e-4);
     }
+    {   // the filter envelope's depth, read at note-on: 64 + trunc(4096 x 64 / 8192) = 96 (raw +32) at wheel 127, ratio +32; a
+        // wheel moved while the note holds changes nothing
+        const char* env = "fil_type=0 fil_cutoff=300 fil_keyfollow=64 fileg_hold_level=255 fileg_attack_level=255 fileg_decay1_level=255 fileg_decay2_level=255 ";
+        auto a = rig("box1_dst=79 box1_ratio=32", std::string(env) + "fileg_depth=0"), b = rig("", std::string(env) + "fileg_depth=32");
+        a->core->setModWheel(0, 1.0f);
+        for (auto* x : {a.get(), b.get()}) x->core->noteOn(0, 0, 0, 60, 1.0f);
+        CHECK(a->run(8192) == b->run(8192));
+        a->core->setModWheel(0, 0.0f);
+        CHECK(a->run(8192) == b->run(8192));
+    }
 }
 
 int main() {

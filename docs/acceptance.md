@@ -456,6 +456,17 @@ read in cents against the take with the source at 0), the source a knob's stored
 - The ribbon by CC 16 follows the controllers' map (8 v up to 64, then 512 / 63 a step) at all 17 values within 0.1 cent.
 - The switches by CC 86 / 87 also follow that map (63 plays 48 cents, 64 and 65 49): a continuous source; the switch
   itself sends 0 and 127, so the parameter is off (0) or on (1024).
+- The filter envelope's depth as a box destination (`a_fegd_*`: a saw through type 0 at cutoff 300, the envelope's levels
+  at the top, a note per wheel value through a ratio +32 box): the wheel at 64 and at 127 sound as the static depths
+  +16 and +32 within 0.01 dB in every octave band, so its span is 64 raw steps; a held note does not follow the wheel
+  (round 3, `v_fegd_*`): the depth is read when the note starts.
+- Per-box truncation, checked again on static knob values (`b_tr_*`): two, three or four boxes on the fine tune, each
+  a fraction of a cent (knob 512 or 1023, ratio +1 or +2). Three boxes of 0.781 cent play 0.00 cents (summed then
+  truncated: 2), three of 1.561 play 2.96 (4), two of 1.561 play 2.04 (3), three of 1.562 play 2.96 (4); single boxes
+  of 2.344 and 1.561 play 2.04 and 1.02. On this engine's fine tune each box is truncated toward zero before the sum
+  (as the round-4 takes `y_fine_sum`: 17 of 17 steps per box, the sum rule misses 6). The analog engine finds the sum
+  truncated once on its cutoff; whether the two reference engines differ or this is particular to the tunings is
+  checked on the element level next.
 - Engine: the knobs, ribbon and switches are CLAP parameters (`docs/parameters.md`); ABI test
   `knobs_ribbon_and_switches_drive_their_boxes`; a destination's modulation sounds as the linear box it stands for
   (`modulation_sounds_as_the_equivalent_linear_box`, sample for sample).

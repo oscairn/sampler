@@ -872,7 +872,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     a.last = clock_ - 1;
     ampEnter(a, AmpEnv::Attack, sr_);
     // the pitch envelope (37.5 cents a step) and the filter envelope (75)
-    auto cenv = [&](CentsEnv& c, int base, int depth, int velDepth, int curve, int segs, int vt, int kt, int ktc, float perStep, float& scale) {
+    auto cenv = [&](CentsEnv& c, int base, int depthValue, int velDepth, int curve, int segs, int vt, int kt, int ktc, float perStep, float& scale) {
         scale = laws::filterDepthVelocityFactor(e[velDepth], e[curve], vel);
         int32_t t[5] = {e[base], e[base + 1], e[base + 2], e[base + 3], e[base + 4]};
         if (e[vt] != 0 || e[kt] != 0) {
@@ -882,15 +882,16 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
         }
         for (int k = 0; k < 5; ++k) {
             c.time[k] = t[k];
-            c.level[k] = float(double(laws::pitchLevelCents(e[base + 5 + k], e[depth])) * (perStep / 37.5f) * scale);
+            c.level[k] = float(double(laws::pitchLevelCents(e[base + 5 + k], depthValue)) * (perStep / 37.5f) * scale);
         }
         c.last = clock_ - 1;
         centsStart(c, sr_);
     };
     float fs = 1, ps = 1;
     v.feg.filter = true;
-    cenv(v.feg, FilEgHold, FilEgDepth, FilEgVelDepth, FilEgVelDepthCurve, FilEgVelTimeSegments, FilEgVelTime, FilEgKeyTime, FilEgKeyTimeCenter, 75.0f, fs);
-    cenv(v.peg, PitchEgHold, PitchEgDepth, PitchEgVelDepth, PitchEgVelDepthCurve, PitchEgVelTimeSegments, PitchEgVelTime, PitchEgKeyTime, PitchEgKeyTimeCenter, 37.5f, ps);
+    const int fegDepth = std::max(-64, std::min(63, e[FilEgDepth] + noteOnSteps(s, e, sl.sound, channel, laws::BoxFegDepth)));
+    cenv(v.feg, FilEgHold, fegDepth, FilEgVelDepth, FilEgVelDepthCurve, FilEgVelTimeSegments, FilEgVelTime, FilEgKeyTime, FilEgKeyTimeCenter, 75.0f, fs);
+    cenv(v.peg, PitchEgHold, e[PitchEgDepth], PitchEgVelDepth, PitchEgVelDepthCurve, PitchEgVelTimeSegments, PitchEgVelTime, PitchEgKeyTime, PitchEgKeyTimeCenter, 37.5f, ps);
     v.pegScale = ps;
     // the filter: cutoff with key follow and velocity
     const float keyCents = float(e[FilKeyFollow] - 64) * 3.125f * float(key - 60) + laws::cutoffVelocityCents(e[FilCutoff], e[FilVelSens], vel);
@@ -919,6 +920,19 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
 
 // One element voice into its release at a release index (from where its envelope stands); the cents
 // envelopes enter theirs the first time.
+// A destination read when the note starts: its boxes (the element's switch for each) and the sound's offset, each
+// toward zero, the sum within +-span.
+int32_t Core::noteOnSteps(const Compiled& s, const int16_t* e, uint32_t sound, int ch, int dest) const {
+    int32_t step = offset_[sound][dest];
+    for (uint32_t b = 0; b < s.boxes; ++b) {
+        const Compiled::Box& x = s.box[b];
+        if (x.dest != dest || !e[BoxSw1 + x.number]) continue;
+        const float o = std::max(-8192.0f, std::min(8192.0f, (laws::boxCurveAt(x.curve, boxSourceOf(sound, ch, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f));
+        step += int32_t(o * float(laws::kBoxSpan[dest]) / 8192.0f);
+    }
+    return std::max<int32_t>(-laws::kBoxSpan[dest], std::min<int32_t>(laws::kBoxSpan[dest], step));
+}
+
 void Core::releaseLayer(Pool& p, uint32_t i, int32_t index) {
     VoiceScalar& v = p.v[i];
     ampAdvance(v.amp, clock_ - 1, sr_);
@@ -1177,18 +1191,18 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         const Compiled* snd = sound_[v.sound];
         // (a voice moved before its sound's offsets went back to zero is put back too)
         if (snd && (snd->boxes || offsetOn_[v.sound] || (v.moved[0] | v.moved[1] | v.moved[2] | v.moved[3] | v.moved[4] | v.moved[5]))) {
-            int32_t step[laws::kBoxDests];
-            for (int k = 0; k < laws::kBoxDests; ++k) step[k] = offset_[v.sound][k];
+            int32_t step[laws::kLiveDests];
+            for (int k = 0; k < laws::kLiveDests; ++k) step[k] = offset_[v.sound][k];
             const int16_t* e = v.element;
             for (uint32_t b = 0; b < snd->boxes; ++b) {
                 const Compiled::Box& x = snd->box[b];
-                if (!e[BoxSw1 + x.number]) continue;
+                if (x.dest >= laws::kLiveDests || !e[BoxSw1 + x.number]) continue;
                 float o = (laws::boxCurveAt(x.curve, boxSourceOf(v.sound, v.channel, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f;
                 o = std::max(-8192.0f, std::min(8192.0f, o));
                 step[x.dest] += int32_t(o * float(laws::kBoxSpan[x.dest]) / 8192.0f);  // each box toward zero
             }
             bool changed = false;
-            for (int k = 0; k < laws::kBoxDests; ++k) {
+            for (int k = 0; k < laws::kLiveDests; ++k) {
                 const int16_t m = int16_t(std::max<int32_t>(-laws::kBoxSpan[k], std::min<int32_t>(laws::kBoxSpan[k], step[k])));
                 changed |= m != v.moved[k]; v.moved[k] = m;
             }

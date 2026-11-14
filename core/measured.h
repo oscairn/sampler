@@ -63,8 +63,10 @@ float controlSource(int source, float x) noexcept;
 int boxCurve(int bank, int type, int p1, int p2) noexcept;
 float boxCurveAt(int curve, float c) noexcept;
 // The destinations the core moves: the reference's number, the span (raw steps of a full box) in the
-// destination's unit (index, or cents for the tunings).
-enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, kBoxDests };
+// destination's unit (index, or cents for the tunings). The first kLiveDests move a sounding voice at every control
+// step; the others are read when the note starts (the filter envelope's depth: measured so).
+enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, BoxFegDepth, kBoxDests };
+constexpr int kLiveDests = 6;
 int boxDest(int reference) noexcept;  // -1: not built
 extern const int16_t kBoxSpan[kBoxDests];
 

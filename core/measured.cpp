@@ -222,8 +222,10 @@ float boxCurveAt(int curve, float c) noexcept
 // Spans, measured with the mod wheel against static settings (docs/acceptance.md (l)): cutoff 1023 index steps
 // (box = static index within the analysis's 3 steps), resonance and element level 128 (level: 16 boxes at
 // four element levels, rms 0.32 dB), coarse 2400 cents and fine 100 cents (whole cents, within 0.1 cent),
-// the high-pass cutoff 1023 (one take within 2 steps; inferred from the cutoff's)
-const int16_t kBoxSpan[kBoxDests] = { 1023, 128, 128, 2400, 100, 1023 };
+// the high-pass cutoff 1023 (one take within 2 steps; inferred from the cutoff's); the filter envelope's depth 64 (raw
+// depth steps: the wheel at 64 and 127 through a ratio +32 box, a note each, sound as the static depths +16 and +32
+// within 0.01 dB in every octave band; a held note does not follow the box: read at note-on; round 5, batch A)
+const int16_t kBoxSpan[kBoxDests] = { 1023, 128, 128, 2400, 100, 1023, 64 };
 
 int boxDest(int ref) noexcept
 {
@@ -234,6 +236,7 @@ int boxDest(int ref) noexcept
     case 67: return BoxCoarse;
     case 68: return BoxFine;
     case 87: return BoxHpf;
+    case 79: return BoxFegDepth;
     default: return -1;
     }
 }

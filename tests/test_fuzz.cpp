@@ -30,10 +30,10 @@ std::string randomSound(Rng& r) {
                   + " split_outputs=" + std::to_string(r.in(0, 1));
     for (int k = 1; k <= 8; ++k) s += " knob" + std::to_string(k) + "=" + std::to_string(r.in(0, 1023));
     // controller boxes: four at random over every part parameter's range, built destinations and sources likelier
-    static const int dsts[6] = {85, 86, 60, 67, 68, 87}, srcs[16] = {0, 1, 3, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
+    static const int dsts[7] = {85, 86, 60, 67, 68, 87, 79}, srcs[16] = {0, 1, 3, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
     for (int k = 1; k <= 4; ++k) {
         const std::string b = " box" + std::to_string(k) + "_";
-        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 15)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 5)] : r.in(0, 413))
+        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 15)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 6)] : r.in(0, 413))
            + b + "ratio=" + std::to_string(r.in(-128, 127)) + b + "pol=" + std::to_string(r.in(0, 1)) + b + "bank=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 25))
            + b + "curve=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 31)) + b + "p1=" + std::to_string(r.in(0, 127)) + b + "p2=" + std::to_string(r.in(0, 127));
     }
@@ -90,10 +90,10 @@ TEST(fuzz_random_sounds_and_events) {
                           else ev.push_back(midi(t, uint8_t(0xd0 | ch), uint8_t(r.in(0, 127)), 0)); } break;
                 case 6: ev.push_back(midi(t, uint8_t(0xe0 | ch), uint8_t(r.in(0, 127)), uint8_t(r.in(0, 127)))); break;
                 case 7: ev.push_back(volume(t, -1, ch, key, 4 * r.unit())); break;
-                case 9: { clap_param_info_t info{}; const clap_id id = clap_id(r.in(3, 19));  // a shell value over its range, a little beyond
+                case 9: { clap_param_info_t info{}; const clap_id id = clap_id(r.in(3, int(a.params->count(a.p)) - 1));  // a shell value over its range, a little beyond
                           a.params->get_info(a.p, id, &info);
                           ev.push_back(param(t, id, info.min_value + (info.max_value - info.min_value) * (1.2 * r.unit() - 0.1), r.in(0, 2) ? ch : -1)); } break;
-                case 10: { clap_param_info_t info{}; const clap_id id = clap_id(r.in(14, 19));  // a destination's modulation, to twice its span
+                case 10: { clap_param_info_t info{}; const clap_id id = clap_id(r.in(14, int(a.params->count(a.p)) - 1));  // a destination's modulation, to twice its span
                            a.params->get_info(a.p, id, &info);
                            ev.push_back(mod(t, id, info.max_value * (4 * r.unit() - 2), r.in(0, 2) ? ch : -1)); } break;
                 default: ev.push_back(choke(t, -1, ch, key)); break;

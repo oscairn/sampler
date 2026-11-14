@@ -638,6 +638,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         case kDestResonance: h->role = OSCAIRN_ROLE_RESONANCE; h->priority = 3; break;
         case kDestLevel: h->role = OSCAIRN_ROLE_LEVEL_1; break;
         case kDestCoarse: case kDestFine: case kDestHpf: h->group = 3; break;
+        case kDestFegDepth: h->role = OSCAIRN_ROLE_FILTER_ENVELOPE; h->priority = 4; break;
         default: if (id >= kKnob1 && id <= kKnob8) h->group = 1; break;
         }
         return true;
