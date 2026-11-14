@@ -214,3 +214,21 @@ TEST(waveform_asset_dependencies) {
     for (auto& g : got) if (std::find(want.begin(), want.end(), g) == want.end()) std::printf("  unexpected %s\n", g.c_str());
     std::remove((g_assetDir + "/" + wf + ".owf").c_str());
 }
+
+// Sounds on the same waveform share what stays in memory: a second sound on it adds nothing to the asset bytes, a
+// sound on another sample adds its head.
+TEST(waveform_heads_shared_between_sounds) {
+    const std::string wf = writeWaveform({bank(0, 63, 1, 127, 60, 0), bank(64, 127, 1, 127, 60, 1)}, {"mono", "stereo"});
+    Inst a;
+    char msg[256];
+    auto bytes = [&] { oscairn_memory_t m{}; a.memory->current(a.p, &m); return m.asset_bytes; };
+    const uint64_t base = bytes();
+    auto prepare = [&](const std::string& snd) { CHECK(a.contexts->prepare(a.p, "s", nullptr, 0, snd.c_str(), testBase(), msg, sizeof msg) != CLAP_INVALID_ID); };
+    prepare("oscairn-pcm-sound/1\nwaveform " + wf + "\nelement waveform=1\n");
+    const uint64_t one = bytes();
+    prepare("oscairn-pcm-sound/1\nwaveform " + wf + "\nelement waveform=1 coarse=7 fil_cutoff=500\nelement waveform=1 key_hi=40\n");
+    CHECK(one > base && bytes() == one);
+    prepare("oscairn-pcm-sound/0\nsample " + sampleRef("stereo-trim") + "\nelement\nregion element=0 sample=0\n");
+    CHECK(bytes() > one);
+    std::remove((g_assetDir + "/" + wf + ".owf").c_str());
+}

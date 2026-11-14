@@ -25,10 +25,11 @@ constexpr uint32_t kHeadFrames = 4096, kMaxLoopBody = 16384;
 // holdStreams(): the I/O thread may still be finishing a unit of a voice that just ended.
 struct Samples {
     std::vector<Record> records;               // one a sample reference
-    std::vector<std::vector<int16_t>> pcm;     // what stays in memory: heads (with their guards) and loop bodies
+    // what stays in memory: heads (with their guards) and loop bodies, shared with every sound of the process that
+    // plays the same frames of the same record
+    std::vector<std::shared_ptr<const std::vector<int16_t>>> pcm;
     std::vector<pcm::SampleView> views;        // one a region
     std::vector<StreamSource> sources;         // one a region (used by those that stream)
-    uint64_t bytes = 0;                        // bytes of pcm
     Samples() = default;
     Samples(const Samples&) = delete;
     ~Samples();

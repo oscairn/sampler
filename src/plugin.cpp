@@ -166,12 +166,13 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!pcm::compile(play, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
         return s;
     }
-    // Decoded audio the prepared sounds hold.
+    // Decoded audio the prepared sounds hold, each buffer once (another instance sharing a buffer counts it too).
     uint64_t assetBytes() const {
-        std::set<const Samples*> seen;
+        std::set<const void*> seen;
         uint64_t n = 0;
         for (const auto& c : contexts)
-            if (c.prepared && c.patch.sound && c.patch.sound->samples && seen.insert(c.patch.sound->samples.get()).second) n += c.patch.sound->samples->bytes;
+            if (c.prepared && c.patch.sound && c.patch.sound->samples)
+                for (const auto& b : c.patch.sound->samples->pcm) if (seen.insert(b.get()).second) n += b->size() * sizeof(int16_t);
         return n;
     }
 

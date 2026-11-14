@@ -110,6 +110,10 @@ What stays in memory, per region (frames from the region's start):
 - regions whose record uses blocks other than 256, 512 or 1,024 frames are decoded whole
   (the host's packer writes 1,024).
 
+What stays in memory is shared by every sound of the process that plays the same frames of the same
+record (a waveform used by many sounds keeps one copy of each head and loop body); `oscairn.memory`
+counts each buffer once per instance.
+
 The rest streams. One I/O thread per process (`osc-sampler-io`, normal scheduling, never
 real-time, no memory locking calls), started with the first instance and stopped with the last,
 fills every streaming voice's ring of the instances attached to it. A ring is one `pcm::Stream` of

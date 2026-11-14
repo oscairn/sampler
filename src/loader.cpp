@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <tuple>
 
 namespace pcmshell {
@@ -31,6 +32,23 @@ void hintFrames(const Record& r, uint32_t from, uint32_t count) {
     auto at = [&](size_t i) { const uint8_t* t = table + 4 * std::min(i, entries - 1); return uint32_t(t[0]) | uint32_t(t[1]) << 8 | uint32_t(t[2]) << 16 | uint32_t(t[3]) << 24; };
     const size_t b0 = from / r.info.block_size, b1 = (size_t(from) + count + r.info.block_size - 1) / r.info.block_size;
     willNeed(*r.pack, uint64_t(frames - r.pack->data) + at(b0), at(b1) - at(b0));
+}
+
+// The process's buffers in memory, by record (pack path and offset: packs are never rewritten) and frames: a waveform
+// many sounds use keeps one copy of each head and loop body. Entries of buffers no sound holds any more expire.
+using BufferKey = std::tuple<std::string, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t>;  // path, offset, from, count, pre, post
+std::mutex cacheLock;
+std::map<BufferKey, std::weak_ptr<const std::vector<int16_t>>> cache;
+
+std::shared_ptr<const std::vector<int16_t>> cached(const BufferKey& k) {
+    std::lock_guard<std::mutex> l(cacheLock);
+    auto it = cache.find(k);
+    return it == cache.end() ? nullptr : it->second.lock();
+}
+void remember(const std::vector<BufferKey>& keys, const std::vector<std::shared_ptr<const std::vector<int16_t>>>& buffers) {
+    std::lock_guard<std::mutex> l(cacheLock);
+    for (auto it = cache.begin(); it != cache.end();) it = it->second.expired() ? cache.erase(it) : std::next(it);
+    for (size_t i = 0; i < keys.size(); ++i) cache[keys[i]] = buffers[i];
 }
 
 std::string hex(const uint8_t* id) {
@@ -95,18 +113,25 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
     for (uint32_t i : order)
         if (!checkRecord(s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
 
-    // each region: what stays in memory (buffers shared between regions that need the same frames) and what streams
+    // each region: what stays in memory (buffers shared between regions, and with other sounds of the process, that
+    // need the same frames of the same record) and what streams
     struct Job { uint32_t sample, from, count, offset; size_t buffer; };  // frames of a record into a buffer at `offset` frames
     std::vector<Job> jobs;
-    std::map<std::array<uint32_t, 5>, size_t> made;
+    std::vector<BufferKey> keys;  // of s->pcm, for the process's cache
+    std::map<BufferKey, size_t> made;
     auto buffer = [&](uint32_t sample, uint32_t from, uint32_t count, uint32_t pre, uint32_t post) {
-        const auto key = std::array<uint32_t, 5>{sample, from, count, pre, post};
-        if (auto it = made.find(key); it != made.end()) return s->pcm[it->second].data() + size_t(pre) * s->records[sample].info.channels;
-        const uint32_t c = s->records[sample].info.channels;
-        s->pcm.emplace_back((size_t(pre) + count + post) * c, int16_t(0));
-        made[key] = s->pcm.size() - 1;
-        jobs.push_back({sample, from, count, pre, s->pcm.size() - 1});
-        return s->pcm.back().data() + size_t(pre) * c;
+        const Record& rec = s->records[sample];
+        const BufferKey key{rec.pack->path, rec.entry.offset, from, count, pre, post};
+        const uint32_t c = rec.info.channels;
+        auto it = made.find(key);
+        if (it == made.end()) {
+            auto old = cached(key);
+            s->pcm.push_back(old ? old : std::make_shared<std::vector<int16_t>>((size_t(pre) + count + post) * c, int16_t(0)));
+            keys.push_back(key);
+            it = made.emplace(key, s->pcm.size() - 1).first;
+            if (!old) jobs.push_back({sample, from, count, pre, it->second});
+        }
+        return s->pcm[it->second]->data() + size_t(pre) * c;
     };
     s->views.resize(d.regions);
     s->sources.resize(d.regions);
@@ -152,10 +177,10 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
         if (j.from + j.count > s->records[j.sample].info.window_frames) hintFrames(s->records[j.sample], j.from, j.count);
     auto dec = std::make_unique<Decoder>();
     for (const Job& j : jobs) {
-        auto& b = s->pcm[j.buffer];
+        auto& b = const_cast<std::vector<int16_t>&>(*s->pcm[j.buffer]);  // ours alone until it is cached below
         readFrames(s->records[j.sample], j.from, j.count, b.data() + size_t(j.offset) * s->records[j.sample].info.channels, *dec);
-        s->bytes += b.size() * sizeof(int16_t);
     }
+    remember(keys, s->pcm);
     return s;
 }
 
