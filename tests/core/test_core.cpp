@@ -331,7 +331,7 @@ static void kernelByTransposition() {
     NEAR(worst, 0.0, 1e-7);
 }
 
-// Key-off elements (element trigger mode 2) start at the key's release, at the note's key and velocity, and
+// Key-off elements (element trigger mode 2) start when the note ends, at the note's key and velocity, and
 // release 2.0 s after they start (the fork's K42).
 static void keyOffElements() {
     Rig r("oscairn-pcm-sound/0\nsample s\n"
@@ -349,6 +349,18 @@ static void keyOffElements() {
     auto b = r.run(44100);
     CHECK(b[2 * 2000] < 0.5 * 16384 * kUnit);  // released 2.0 s after its start (release 40 is fast)
     CHECK(r.core->voiceCount() == 0);
+    // under the sustain pedal the key's release starts nothing: the key-off element sounds when the
+    // pedal releases the note (measured: docs/acceptance.md (g))
+    r.core->setSustain(0, 1.0f);
+    r.core->noteOn(0, 0, 0, 60, 1.0f);
+    r.run(4410);
+    r.core->keyUp(0);
+    r.run(4410);
+    CHECK(r.core->elementVoices() == 1);
+    r.core->setSustain(0, 0.0f);
+    r.core->noteOff(0);
+    r.run(128);
+    CHECK(r.core->elementVoices() == 1 && r.core->voice(0).sounding);  // the first element released (fast), the key-off one sounds
 }
 
 // Half damper: under the sustain pedal a released half damper element releases at its half damper

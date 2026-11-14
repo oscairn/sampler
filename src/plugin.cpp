@@ -180,8 +180,8 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         Base::noteOff(n, choke, midi);
         pedalHeld();
     }
-    // A key that went up while the sustain pedal holds its note: the core starts its key-off elements
-    // and the half damper releases (the SDK keeps the note itself until the pedal goes up)
+    // A key that went up while the sustain pedal holds its note: the core starts the half damper
+    // releases (the SDK keeps the note itself until the pedal goes up; its key-off elements start then)
     void pedalHeld() {
         for (uint32_t i = 0; i < kVoices; ++i) {
             const Voice& v = voices[i];

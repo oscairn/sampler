@@ -871,8 +871,9 @@ static int32_t pedalIndex(const VoiceScalar& v, float pedal) {
     return int32_t(std::lround(v.releaseBase + (v.halfDamperTime - v.releaseBase) * pedal / 127.0f));
 }
 
-// Key-off elements: the note's regions in element trigger mode "key off" start at the key's release, at the
-// note's key and velocity, and release 2.0 s after they start (the fork's K42, measured there).
+// Key-off elements: the note's regions in element trigger mode "key off" start when the note ends (the
+// key's release, or the sustain pedal's when it holds the note: measured, docs/acceptance.md (g)), at
+// the note's key and velocity, and release 2.0 s after they start (the fork's K42, measured there).
 void Core::startKeyOff(uint32_t voice) {
     Slot& sl = slot_[voice];
     if (!sl.keyOff) return;
@@ -896,7 +897,6 @@ void Core::keyUp(uint32_t voice) {
     Slot& sl = slot_[voice];
     sl.keyUp = true;
     const uint8_t layers = sl.layers;
-    startKeyOff(voice);
     for (int k = 0; k < layers; ++k) {
         Pool& p = pool_[sl.pool[k]];
         for (uint32_t i = 0; i < p.n; ++i) {
@@ -915,7 +915,7 @@ void Core::noteOff(uint32_t voice) {
     if (voice >= kMaxVoices || !slot_[voice].on) return;
     Slot& sl = slot_[voice];
     const uint8_t layers = sl.layers;
-    if (!sl.keyUp) startKeyOff(voice);
+    startKeyOff(voice);  // key-off elements sound when the note ends, under the pedal at its release (measured)
     sl.keyUp = true;
     for (int k = 0; k < layers; ++k) {
         Pool& p = pool_[sl.pool[k]];

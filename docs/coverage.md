@@ -30,7 +30,7 @@ need no engine support.
 | Random Pan Depth | 0 – 127 | no | - | - |
 | Alternate Pan Depth | L64 – C – R63 | no | - | - |
 | Scaling Pan Depth | −64 – +63 | no | - | - |
-| Element trigger mode | normal, legato, key-off, cycle, random, switch off, switch 1 on, switch 2 on | Normal and Key Off (`xa_control=2`: from the key's release, released 2.0 s after its start); others reported | K42 (the fork's, BSD) | core test; the probe piano's key-off element in its tails (acceptance g) |
+| Element trigger mode | normal, legato, key-off, cycle, random, switch off, switch 1 on, switch 2 on | Normal and Key Off (`xa_control=2`: from the note's end, the key's release or under the sustain pedal the pedal's (measured, acceptance g), released 2.0 s after its start); others reported | K42 (the fork's, BSD) | core test; the probe piano's key-off element in its tails (acceptance g) |
 | Note Limit Low | C-2 – G8 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Note Limit High | C-2 – G8 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Limit Low | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |

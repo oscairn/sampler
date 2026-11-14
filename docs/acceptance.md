@@ -267,7 +267,7 @@ Measured on the way (recordings `f_*`, `h_*`, `i_*`, `j_*`, `k_*`, `l_*`):
 | piano 60 | -0.15 / -0.22 / -0.26 | 0.10 / 0.13 / 0.09 | 1.07, 1.14 / 0.89, 0.93 / 0.72, 0.76 | 2.19, 2.32 / 1.95, 2.07 / 1.71, 1.81 | 0.19, 0.21 / 0.31, 0.33 / 0.31, 0.30 |
 | piano 72 | -0.20 / -0.27 / -0.30 | 0.11 / 0.14 / 0.34 | 0.10, 0.09 / 0.28, 0.29 / 0.24, 0.25 | 0.87, 0.90 / 1.06, 1.11 / 0.94, 0.99 | 0.16, 0.21 / 0.18, 0.17 / 0.24, 0.22 |
 | piano 96 | -0.30 / -0.40 / -0.43 | 0.10 / 0.20 / 0.20 | 0.08, 0.08 / 0.09, 0.09 / 0.09, 0.09 | 0.18 (all) | 1.69, 1.66 / 2.03, 2.00 / 1.37, 1.38 |
-| piano 60 v80, pedal down before the key-up, up at 4.7 s | -0.22 | 0.13 | 0.89, 0.93 | 1.95, 2.07 | after the pedal: 0.42, 0.20 |
+| piano 60 v80, pedal down before the key-up, up at 4.7 s | -0.22 | 0.13 | 0.89, 0.93 | 1.95, 2.07 | after the pedal: 0.42, 0.43 (0.20 before the key-off element moved to the pedal's release) |
 | bass 35 | +0.30 | 0.98 (2.4 at 125 Hz in the first 0.5 s) | 2.38, 2.28 | 2.70, 2.64 | 1.41, 1.29 |
 | bass 37 | +0.15 | 1.85 (4.1 at 125 Hz in the first 0.5 s) | 2.29, 2.26 | 2.98, 2.49 | 1.48, 1.42 |
 | bass 40 | -0.59 | 3.64 (62.5 Hz, +3.9 over 0.5-1.9 s) | 2.43, 2.36 | 2.95, 2.92 | 1.75, 1.31 |
@@ -277,12 +277,14 @@ Measured on the way (recordings `f_*`, `h_*`, `i_*`, `j_*`, `k_*`, `l_*`):
 | level | ±1 dB | pass: piano -0.12 to -0.43, bass -0.59 to +0.30 |
 | octave bands within 40 dB of the loudest | ±2 dB | piano pass (largest 0.52); bass FAIL at 62.5-125 Hz (up to 4.1 dB) |
 | times to -10 and -20 dB | ±10 % | piano pass (largest 6 %); bass 37 FAIL at -20 dB (2.49 against 2.98: in the release) |
-| release to -30 dB | ±0.1 s or ±10 % | piano pass (largest 0.05 s); bass 40 FAIL (1.31 against 1.75); after the pedal FAIL (0.20 against 0.42) |
+| release to -30 dB | ±0.1 s or ±10 % | piano pass (largest 0.05 s); bass 40 FAIL (1.31 against 1.75); after the pedal pass (0.43 against 0.42) |
 
 The bass's two elements play the same stereo pad samples an octave apart (its samples beat, a
 chorus); the differences sit where element 2's fundamental meets element 1's and move with time, so
 they look like the two layers' relative phase or tuning, not a level law: not resolved (D11). The
-release after the pedal goes up is slower on the reference (D12).
+release after the pedal goes up was faster in the engine (D12): under the pedal the reference starts a
+key-off element not at the key's release but at the pedal's (no burst at the key-up; +6.5 to +9 dB in
+the 50 ms after the pedal goes up, against the held note's level). The engine now does the same.
 
 ## Known differences (this engine's register)
 
@@ -298,7 +300,7 @@ release after the pedal goes up is slower on the reference (D12).
 | D8 | Voice end | - | resolved: -96.45 dB, measured (e) |
 | D10 | Part Velocity Sensitivity Depth / Offset | the probe piano's offset: +1.51 dB at velocity 80 on the reference | not built here, not carried by the converter |
 | D11 | Probe sound C, the bass (two layers an octave apart): bands at 62.5-125 Hz up to 4.1 dB, release up to 0.44 s faster | (g) | open |
-| D12 | The release after the sustain pedal goes up | -30 dB in 0.20 s, the reference 0.42 s (piano 60, v80) | open |
+| D12 | The release after the sustain pedal goes up | - | resolved: key-off elements start at the pedal's release (g) |
 | D13 | A half damper element under the pedal releases only from its sustain | inferred from two cases (g) | unverified beyond them |
 | D14 | Key-off elements release 2.0 s after their start whatever their settings | the fork's K42, measured once | as the fork |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |
