@@ -125,6 +125,15 @@ one-shots and half looped with an 8,000-frame body near the end, by those rules:
 | the same decoded whole (854 x 388,224, with the guards) | 331,543,296 (316.2 MiB) |
 | the stream pool (128 rings of 4,096 stereo frames, 16,464 bytes each), per instance | 2,107,392 |
 
+Packs are read at their offsets, never mapped (0.6.1): a process whose mappings are all locked holds what it read, not
+the pack. `tools/mlock/footprint.sh` (Linux, `docker run --ulimit memlock=-1`) locks everything with
+`mlockall(MCL_CURRENT | MCL_FUTURE)`, opens a 463,347,712-byte pack of 40 records (60 s of stereo noise each), checks its
+first record and decodes 64 blocks of it: VmLck 5,764 kB locked before, 5,984 kB after (0.6.0, mapping the pack: 458,244
+kB once the pack was open). The I/O thread reads each block's compressed bytes into its one 48 KiB buffer: in
+callgrind (user space, aarch64, -O3) decoding every block of a 10 s test tone takes 16,677,813 instructions mono at
+44.1 kHz and 38,368,055 stereo at 48 kHz, against 16,832,508 and 38,541,082 from the mapping (the copy itself is the
+kernel's, not counted; the record header is no longer checked again on every block).
+
 The stream pool is part of the core (`sizeof(pcm::Core)` 3,638,336 bytes on macOS arm64) and so of
 `oscairn.memory`'s shared bytes; each instance has its own. The parsed and expanded sound tables
 (`pcm::SoundData`, 314,364 bytes each, two for a sound with waveforms) are main-thread memory freed
