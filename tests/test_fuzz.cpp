@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include "host.h"
 
@@ -116,4 +117,62 @@ TEST(fuzz_random_sounds_and_events) {
     CHECK(finite);
     CHECK(worst < 64.0f);  // 64 voices of 8 layers at the largest gains stay far below
     CHECK(worstAlloc == 0);
+}
+
+// Every note ends: random sounds (their releases at most index 90, no time shifts, no half damper, so the longest release
+// falls to the voice end within about 7.2 s), random notes, controllers and chokes; then every key up, the pedal up and
+// 12 s: no voice remains and each note-on got exactly one NOTE_END (refused ones included).
+TEST(fuzz_every_note_ends) {
+    Rng r{777};
+    auto bounded = [](std::string s) {
+        for (const char* id : {" ampeg_release=", " ampeg_veltime=", " ampeg_keytime=", " half_damper="}) {
+            for (size_t at = s.find(id); at != std::string::npos; at = s.find(id, at + 1)) {
+                const size_t v = at + std::strlen(id), e = s.find_first_of(" \n", v);
+                const int x = std::atoi(s.substr(v, e - v).c_str());
+                const int y = id[7] == 'r' ? std::min(x, 90) : 0;
+                s.replace(v, e - v, std::to_string(y));
+            }
+        }
+        return s;
+    };
+    int total = 0; uint32_t sounding = 0, left = 0;
+    for (int round = 0; round < 8; ++round) {
+        Inst a;
+        char msg[256] = {};
+        uint32_t ctx[2];
+        for (int c = 0; c < 2; ++c) {
+            ctx[c] = a.contexts->prepare(a.p, ("s" + std::to_string(c)).c_str(), nullptr, 0, patchWith("level=1", bounded(randomSound(r)).c_str()).c_str(), testBase(), msg, sizeof msg);
+            CHECK(ctx[c] != 0);
+            a.contexts->select(a.p, ctx[c], c);
+        }
+        int32_t id = 1;
+        uint32_t most = 0;
+        for (int b = 0; b < 150; ++b) {
+            const uint32_t frames = uint32_t(r.in(1, 128));
+            std::vector<Bytes> ev;
+            for (int k = r.in(0, 4); k > 0; --k) {
+                const uint32_t t = uint32_t(r.in(0, int(frames) - 1));
+                const int16_t ch = int16_t(r.in(0, 1)), key = int16_t(r.in(0, 127));
+                switch (r.in(0, 5)) {
+                case 0: case 1: ev.push_back(on(t, id++, ch, key, r.unit())); break;
+                case 2: case 3: ev.push_back(off(t, -1, ch, key)); break;
+                case 4: { static const uint8_t ccs[4] = {1, 64, 2, 11}; ev.push_back(midi(t, uint8_t(0xb0 | ch), ccs[r.in(0, 3)], uint8_t(r.in(0, 127)))); } break;
+                default: ev.push_back(choke(t, -1, ch, key)); break;
+                }
+            }
+            std::stable_sort(ev.begin(), ev.end(), [](const Bytes& x, const Bytes& y) {
+                return reinterpret_cast<const clap_event_header_t*>(x.data())->time < reinterpret_cast<const clap_event_header_t*>(y.data())->time; });
+            a.block(frames, ev);
+            most = std::max(most, a.voices());
+        }
+        const uint32_t held = a.voices();
+        std::vector<Bytes> up = {midi(0, 0xb0, 64, 0), midi(0, 0xb1, 64, 0)};
+        for (int16_t ch = 0; ch < 2; ++ch) for (int16_t k = 0; k < 128; ++k) up.push_back(off(0, -1, ch, k));
+        a.block(128, up);
+        a.run(48000 * 12);
+        const int notes = id - 1;
+        if (!(a.voices() == 0 && a.endsTotal() == notes)) { ++g_failures; std::printf("  round %d: %u voices left, %d NOTE_ENDs for %d notes\n", round, a.voices(), a.endsTotal(), notes); }
+        total += notes; sounding = std::max(sounding, most); left += held;
+    }
+    std::printf("  %d notes, up to %u voices at once, %u sounding at the keys-up, all ended\n", total, sounding, left);
 }

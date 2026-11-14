@@ -325,3 +325,35 @@ TEST(box_sources_drive_their_boxes) {
     a.run(4800);
     CHECK(whole > 0.01f && peak(a.L, a.L.size() - 1000) < 1e-4f * whole);
 }
+
+// One-shot regions (no loop) whose sample ends before the note and before the release would: the voice ends at the
+// sample's end, active_voices returns to 0 and each note gets one NOTE_END, as a normal element and as a key-off
+// element, in any block size; also 26 such notes and a minute of silence.
+TEST(one_shot_regions_end_their_voices) {
+    const char* snd = "oscairn-pcm-sound/0\nsample sine.wav\n"
+                      "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127\n"
+                      "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127 xa_control=2\n"
+                      "region key=0-127 root=57 element=0 sample=0\nregion key=0-127 root=57 element=1 sample=0\n";
+    for (uint32_t block : {128u, 96u, 64u, 32u}) {
+        Inst a;
+        CHECK(a.load(stateWith(snd)));
+        a.block(block, {on(0, 1, 0, 57, 1.0)});
+        a.run(72000, block);  // 1.5 s: past the 1 s sample
+        a.block(block, {off(0, 1, 0, 57)});
+        a.run(48000 * 4, block);  // the key-off element's 1 s and more
+        if (!(a.voices() == 0 && a.ends(1) == 1)) { ++g_failures; std::printf("  block %u: %u voices, %d ends\n", block, a.voices(), a.ends(1)); }
+        CHECK(silent(a, a.L.size() - 48000));
+    }
+    Inst a;
+    CHECK(a.load(stateWith(snd)));
+    for (int n = 0; n < 26; ++n) {
+        a.block(128, {on(0, n + 1, 0, int16_t(40 + n), 1.0)});
+        a.run(4800);
+        a.block(128, {off(0, n + 1, 0, int16_t(40 + n))});
+    }
+    a.run(48000 * 60);
+    CHECK_EQ(a.voices(), 0u);
+    int ok = 0;
+    for (int n = 0; n < 26; ++n) ok += a.ends(n + 1) == 1;
+    CHECK_EQ(ok, 26);
+}

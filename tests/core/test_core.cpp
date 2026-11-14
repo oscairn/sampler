@@ -769,6 +769,20 @@ static void controllerBoxes() {
     }
 }
 
+// A one-shot region (no loop) whose sample (2000 frames) ends before the note and before its release: the voice ends at
+// the sample's end, as a normal element and as a key-off element, in blocks of 128, 96, 64 and 32 frames.
+static void oneShotEnds() {
+    for (int block : {128, 96, 64, 32})
+        for (const char* el : {"ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127", "ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127 xa_control=2"}) {
+            Rig r(el, sine(2000, 441, 44100, 16384), 1, 44100.f, nullptr, 44100);
+            r.core->noteOn(0, 0, 0, 60, 1.0f);
+            r.run(4410, block);
+            r.core->noteOff(0);
+            r.run(44100, block);
+            if (r.core->voiceCount() != 0 || r.core->elementVoices() != 0) { ++failures; std::printf("  %s, blocks of %d: %u voices\n", el, block, r.core->voiceCount()); }
+        }
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -776,7 +790,7 @@ int main() {
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
-        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes},
+        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds},
     };
     for (auto& t : tests) {
         const int before = failures;
