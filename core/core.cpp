@@ -737,7 +737,7 @@ Core::Core() {
         p.plan = {uint8_t(k / kFilters + 1), Interp::Sinc, Filter(k % kFilters)};
         std::memset(p.f, 0, sizeof p.f);
         for (uint32_t i = 0; i < kPoolVoices; ++i) { p.f[C0][i] = p.f[CENTS][i] = 0; p.f[DAMP][i] = 2; p.f[EB0][i] = 1; p.pos[i] = p.step[i] = p.dstep[i] = 0; }
-        for (auto& k : p.kernel) k = 0;
+        for (auto& x : p.kernel) x = 0;
     }
     prepare(48000);
 }
