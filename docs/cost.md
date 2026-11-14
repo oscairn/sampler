@@ -19,9 +19,10 @@ script run in the aarch64 container
 (`docker run --rm -v "$PWD":/src:ro --tmpfs /out:exec IMAGE sh /src/tools/cost/cg.sh /src /out check`),
 not a CTest test. The streamed plans (`mono-stream`, `stereo-stream`: a 4,096-frame head in memory, the rest and
 the loop from the core's stream rings, filled between blocks outside the measured window) are held to the same
-per-voice gates: they measure what reading streamed audio costs the audio thread. Last run (0.6.0, 9fcec60): every
-gate passes (mono 10,734, stereo 15,222, streamed mono 10,778, streamed stereo 15,261, rest 193, shedding 1,907 and
-1,704 a voice for 16 and 32 voices). (0.5.0: 10,595, 15,065, 193, 1,904 and 1,688; 0.4.0: 10,557, 15,027, 192,
+per-voice gates: they measure what reading streamed audio costs the audio thread. Last run (0.7.0 code before its
+kernel sharing for type 10): every gate passes (mono 10,746, stereo 15,220, streamed mono 10,791, streamed stereo 15,259,
+rest 160, shedding 1,989 and 1,747 a voice for 16 and 32 voices). (0.6.0, 9fcec60: mono 10,734, stereo 15,222, streamed
+mono 10,778, streamed stereo 15,261, rest 193, shedding 1,907 and 1,704.) (0.5.0: 10,595, 15,065, 193, 1,904 and 1,688; 0.4.0: 10,557, 15,027, 192,
 1,868 and 1,667.)
 
 ## Instructions per block (aarch64, NEON)
@@ -75,6 +76,26 @@ instructions a voice-block more); `sizeof(pcm::Core)` 1,524,224 against 1,518,91
 the selection's cycle positions and draws, the LFOs' start clocks); a compiled sound 69,104 bytes against 68,392; the
 plugin's code 441,312 bytes of text on macOS arm64 against 423,816 at 0.4.0. New tables: the LFO's pitch depth knots (66
 bytes) and pan knots (8), the key-on delay knots (348).
+
+0.7.0: filter types 1, 2, 3, 6, 7 and 10 (`mono-tN`, `stereo-tN` in `cg.sh`'s full run), a voice from 8 to 32, 20-tap,
+held and just released (the cutoff redesigned every control step); type 2 runs type 3's plan and was not run separately:
+
+| plan | mono held | mono released | stereo held | stereo released |
+|---|---|---|---|---|
+| type 0 (the gate's) | 10,746 | 12,409 | 15,220 | 16,907 |
+| type 1 | 10,808 | 12,783 | 15,320 | 17,295 |
+| types 2, 3 | 10,312 | 12,241 | 14,340 | 16,269 |
+| type 6 | 10,744 | 12,427 | 15,156 | 16,839 |
+| type 7 | 10,014 | 11,697 | 13,602 | 15,285 |
+| type 10 | 10,872 | 12,591 | 15,450 | 17,169 |
+
+Every new plan's held voice is within the mono and stereo gates. A type-0 voice pays 10 to 12 instructions a block more
+held than at 0.6.0 and 64 more released (12,409 against 12,345 measured on e1775b6 in the same run: the pools' wider
+layout and the design's dispatch); the silent test counts the voices instead of visiting the pools (rest 160 against
+193; visiting nine pools of each width it cost 296). Memory: nine filter plans instead of four, so ten more pools,
+`sizeof(pcm::Core)` 4,651,328 bytes against 3,638,336 (each pool 100,480 bytes: two more per-voice fields, the first
+section's offset and type 3's top); the core's code 371,641 bytes of text against 259,409 (macOS arm64, -O3, the core's
+objects; each plan adds its kernels for both widths, interpolators and routings; type 10 runs type 4's). No new table.
 
 ## Shedding
 

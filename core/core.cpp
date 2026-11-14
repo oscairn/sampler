@@ -97,8 +97,9 @@ Cost estimateCost(const PlanDesc& p) {
     // Measured with tools/cost/cg.sh (docs/cost.md): one element voice a 128-frame block, from 8 to 32
     // voices; the filtered plans while the filter envelope moves the cutoff (the costlier case).
     // [channels - 1][interp][filter]; the Hermite plans without the filter are derived, not measured.
-    static const double kVoice[2][2][kFilters] = {{{5785, 9080, 9241, 8364, 9080, 9080, 9080, 9080, 9241}, {8865, 12160, 12321, 11444, 12160, 12160, 12160, 12160, 12321}},
-                                                  {{6811, 12128, 12284, 10882, 12128, 12128, 12128, 12128, 12284}, {11313, 16630, 16786, 15384, 16630, 16630, 16630, 16630, 16786}}};
+    // (0.7.0: the plans of types 1, 2-3, 6, 7 and 10 measured with the 20-tap kernel, their Hermite figures by type 0's difference)
+    static const double kVoice[2][2][kFilters] = {{{5785, 9080, 9241, 8364, 9703, 9161, 9347, 8617, 9511}, {8865, 12160, 12321, 11444, 12783, 12241, 12427, 11697, 12591}},
+                                                  {{6811, 12128, 12284, 10882, 12793, 11767, 12337, 10783, 12667}, {11313, 16630, 16786, 15384, 17295, 16269, 16839, 15285, 17169}}};
     return {kVoice[p.channels == 2][p.interp == Interp::Sinc][int(p.filter)], 192};
 }
 
@@ -548,14 +549,12 @@ template <int B = CINV> PV_INLINE void designPole(const Lane& l, const FilterRat
     else { l.set(B + 8, one); l.set(B + 9, splat(0.f)); }
 }
 
-// A lane's sections for its plan (the cutoff moved)
-PV_INLINE void designLane(Filter f, const Lane& l, const FilterRate& fr) {
+// A lane's two designed sections for the plans that design both (the cutoff moved; the others design the first)
+PV_NOINLINE void designBoth(Filter f, const Lane& l, const FilterRate& fr) {
     switch (f) {
-    case Filter::PoleHigh: designPole(l, fr); break;
     case Filter::LowLow: design(l, fr); design<HINV, 0, true>(l, fr); break;
     case Filter::LowPole: design<CINV, 1, false, true>(l, fr); designPole<HINV>(l, fr); break;
-    case Filter::Band: design<CINV, 1, true>(l, fr); design<HINV, -1, true>(l, fr); break;
-    default: design(l, fr); break;  // LowPass2, LowHigh (its high-pass fixed), HighHigh, High
+    default: design<CINV, 1, true>(l, fr); design<HINV, -1, true>(l, fr); break;  // Band
     }
 }
 
@@ -668,10 +667,10 @@ struct Kernel {
     }
     // the two sections in series, each channel's states in locals, then into the mix with its gain
     // ramp (a mono voice's one channel to both sides)
-    // K: the filter (int(Filter): 1 type 0, 2 types 4 and 10 (8), 3 type 5, 4 type 1, 5 types 2 and 3, 6 type 6, 7 type 7)
+    // K: the filter (int(Filter): 1 type 0, 2 types 4 and 10 (Band runs it), 3 type 5, 4 type 1, 5 types 2 and 3, 6 type 6, 7 type 7)
     template <int K> static PV_INLINE vf chain(const Coefs& q, const Coefs& h, vf x, vf& a1, vf& a2, vf& a3, vf& a4, vf& b1, vf& b2, vf& b3, vf& b4) {
         if constexpr (K == 1) return section(q, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
-        else if constexpr (K == 2 || K == 8) return highSection(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
+        else if constexpr (K == 2) return highSection(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);  // also Band (8)
         else if constexpr (K == 3) return highSection(h, pole(q, x, a1, a2), b1, b2, b3, b4);
         else if constexpr (K == 4) return section(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
         else if constexpr (K == 5) return pole(h, section(q, x, a1, a2, a3, a4), b1, b2);
@@ -688,7 +687,7 @@ struct Kernel {
     }
     template <int C, int K, bool R, bool E> static PCM_STAGE void filterLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
         const Lane l{&p, o};
-        const Coefs q(l), h(l, K == 1 || (K >= 6 && K != 8) ? CINV : HINV);
+        const Coefs q(l), h(l, K == 1 || K >= 6 ? CINV : HINV);
         const Buses bs = busesOf<R>(l);
         Eq eq{};
         if constexpr (E) eq = {l(EB0), l(EB1), l(EB2), l(EA1), l(EA2)};
@@ -825,7 +824,7 @@ using RunFn = void (*)(Pool&, const Tables&, Scratch&, int, vf*, vf*);
 template <int C, class I, int K, bool R> void runOf(Pool& p, const Tables& t, Scratch& s, int n, vf* l, vf* r) { Kernel::run<C, I, K, R>(p, t, s, n, l, r); }
 // [routed][channels - 1][interp][filter]
 #define PCM_FILTERS(C, I, R) {runOf<C, I, 0, R>, runOf<C, I, 1, R>, runOf<C, I, 2, R>, runOf<C, I, 3, R>, runOf<C, I, 4, R>, runOf<C, I, 5, R>, \
-                             runOf<C, I, 6, R>, runOf<C, I, 7, R>, runOf<C, I, 8, R>}
+                             runOf<C, I, 6, R>, runOf<C, I, 7, R>, runOf<C, I, 2, R>}  /* Band runs type 4's chain */
 #define PCM_KERNELS(R) {{PCM_FILTERS(1, Herm, R), PCM_FILTERS(1, Sinc, R)}, {PCM_FILTERS(2, Herm, R), PCM_FILTERS(2, Sinc, R)}}
 const RunFn kKernels[2][2][2][kFilters] = {PCM_KERNELS(false), PCM_KERNELS(true)};
 #undef PCM_KERNELS
@@ -946,6 +945,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     if (sv.stream && !(stream = takeStream())) { streamSheds_.fetch_add(1, std::memory_order_relaxed); return; }  // every stream taken
     const int16_t* e = s.element[r.element].v;
     const uint32_t i = p.n++;
+    ++live_;
     VoiceScalar& v = p.v[i];
     v = VoiceScalar{};
     Slot& sl = slot_[voice];
@@ -1289,6 +1289,7 @@ void Core::choke(uint32_t voice, uint32_t frames) {
 void Core::free_(Pool& p, uint32_t i) {
     dropStream(p.v[i]);
     const uint32_t last = --p.n;
+    --live_;
     if (i != last) {
         for (int k = 0; k < NFIELDS; ++k) p.f[k][i] = p.f[k][last];
         p.pos[i] = p.pos[last]; p.step[i] = p.step[last]; p.dstep[i] = p.dstep[last]; p.kernel[i] = p.kernel[last];
@@ -1368,6 +1369,7 @@ void Core::setModWheel(int ch, float x) {
 
 void Core::reset() {
     for (auto& p : pool_) { for (uint32_t i = 0; i < p.n; ++i) dropStream(p.v[i]); p.n = 0; }
+    live_ = 0;
     for (auto& s : slot_) s = Slot{};
     pendingSlots_ = 0;
     rand_ = 0x9e3779b9u;  // the random pitches start over
@@ -1570,9 +1572,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
 }
 
 void Core::render(float* L, float* R, uint32_t frames, uint32_t from) {
-    bool any = pendingSlots_ > 0;
-    for (auto& p : pool_) any |= p.n > 0;
-    if (!any) { clock_ += frames; return; }  // the rest cost: nothing more than this when silent
+    if (!pendingSlots_ && !live_) { clock_ += frames; return; }  // the rest cost: nothing more than this when silent
     float* const l3[3] = {L, L, L};
     float* const r3[3] = {R, R, R};
     render(l3, r3, frames, from);
@@ -1580,9 +1580,7 @@ void Core::render(float* L, float* R, uint32_t frames, uint32_t from) {
 
 void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t from) {
     uint32_t done = 0;
-    bool any = pendingSlots_ > 0;
-    for (auto& p : pool_) any |= p.n > 0;
-    if (!any) { clock_ += frames; return; }
+    if (!pendingSlots_ && !live_) { clock_ += frames; return; }
     // routed: the outputs differ, and a pool has voices on bus 1 or 2 (voices start only between calls)
     const bool split = L[1] != L[0] || L[2] != L[0] || R[1] != R[0] || R[2] != R[0];
     bool routed[2 * kFilters] = {}, anyRouted = false;
@@ -1616,7 +1614,11 @@ void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t fr
                 for (uint32_t o = 0; o < p.n; o += W) {
                     bool moved = false;
                     for (uint32_t j = o; j < o + W && j < p.n; ++j) { moved |= p.v[j].filterMoves; p.v[j].filterMoves = false; }
-                    if (moved) designLane(p.plan.filter, Lane{&p, int(o)}, rate_);
+                    if (!moved) continue;
+                    const Filter f = p.plan.filter;
+                    if (f == Filter::PoleHigh) designPole(Lane{&p, int(o)}, rate_);
+                    else if (f == Filter::LowLow || f == Filter::LowPole || f == Filter::Band) designBoth(f, Lane{&p, int(o)}, rate_);
+                    else design(Lane{&p, int(o)}, rate_);
                 }
             const int c = p.plan.channels == 2 ? 1 : 0;
             kKernels[routed[&p - pool_]][c][interp_ == Interp::Sinc ? 1 : 0][int(p.plan.filter)](p, tables_, scratch_, int(n), accL, accR);

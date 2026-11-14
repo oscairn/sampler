@@ -30,6 +30,7 @@ else
   for p in mono-thru stereo-thru; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
   for p in mono stereo; do for v in 8 32; do run "$p-release-$v" release $v $p sinc 0.3 0.3; done; done
   for p in mono-t4 stereo-t4 mono-t5 stereo-t5; do for v in 8 32; do run "$p-release-$v" release $v $p sinc 0.3 0.3; done; done
+  for t in 1 2 3 6 7 10; do for p in mono-t$t stereo-t$t; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; run "$p-release-$v" release $v $p sinc 0.3 0.3; done; done; done
   for p in mono-eq stereo-eq mono-stream stereo-stream; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
 fi
 for v in 16 32; do run "shed$v" shed $v mono sinc 0.3 0.05; done

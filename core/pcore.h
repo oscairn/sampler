@@ -296,6 +296,7 @@ private:
     uint8_t cycle_[kMaxSounds][8] = {};      // each element group's next cycle position (an element index)
     uint32_t draw_[kMaxSounds] = {};         // the random elements' generator
     uint32_t pendingSlots_ = 0;
+    uint32_t live_ = 0;  // element voices in all pools (the silent test: the pools are many)
     uint32_t rand_ = 0x9e3779b9u;            // random pitch draws              // slots with layers held back by a key-on delay
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};

@@ -16,11 +16,12 @@
 //                         "not covered: element E ID=VALUE: why", "not covered: part ID=VALUE: why" (exit 1 if any)
 // CASE: rest | held N | shed N (N held voices shed in one block) | release N (N held voices released,
 // their filter envelopes moving the cutoff every control step); PLAN: mono | stereo (the pads'
-// element: filter type 0, the pads' envelopes) | mono-thru | stereo-thru | mono-t4 | stereo-t4 | mono-t5 |
-// stereo-t5 (types 4 and 5 with the pads' envelopes); any of them with -eq (the element EQ's peak) or -stream (a
+// element: filter type 0, the pads' envelopes) | mono-thru | stereo-thru | mono-tN | stereo-tN (filter type N
+// with the pads' envelopes); any of them with -eq (the element EQ's peak) or -stream (a
 // 4,096-frame head in memory, the rest and the loop read from stream rings filled between blocks); 48 kHz;
 // built-in samples.
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -284,8 +285,8 @@ static bool caseSound(Host& h, const std::string& plan, const Builtin& s) {
     const bool stereo = plan.rfind("stereo", 0) == 0, thru = plan.find("thru") != std::string::npos;
     std::string el = kPadElement;
     if (thru) el += " fil_type=18";
-    if (plan.find("t4") != std::string::npos) el += " fil_type=4";  // the probe piano's and bass's types
-    if (plan.find("t5") != std::string::npos) el += " fil_type=5";
+    const size_t t = plan.find("-t");  // -tN: filter type N (4 and 5 the probe piano's and bass's types)
+    if (t != std::string::npos && std::isdigit(static_cast<unsigned char>(plan[t + 2]))) el += " fil_type=" + std::to_string(std::atoi(plan.c_str() + t + 2));
     if (plan.find("eq") != std::string::npos) el += " eq_type=1 eq_freq1=157 eq_gain1=88 eq_q=8";  // the element EQ (a peak)
     const std::string text = "oscairn-pcm-sound/0\nsample builtin\n" + el + "\nregion key=0-127 root=60 element=0 sample=0 loop=1000-59000\n";
     if (!parseSound(text, *h.data)) return false;
