@@ -79,6 +79,10 @@ constexpr int kDampingKnots = 13;
 extern const float kDampingKnotCents[kDampingKnots];
 extern const float kDampingKnotLimit[kDampingKnots];
 
+// ---- element selection (Elements) ----
+// An element's key-on delay in seconds at a time length 0-127: 28 knots measured on the reference, linear between (K52)
+double keyOnDelaySeconds(int32_t timeLength) noexcept;
+
 // ---- element LFO, reference mode (ElementLfo) ----
 constexpr double kLfoHz = 4.848;
 

@@ -399,5 +399,23 @@ float filterGain(int32_t gain) noexcept
 
 // ---- element LFO ----
 
+// ---- element selection (Elements) ----
+
+double keyOnDelaySeconds(int32_t timeLength) noexcept
+{
+    // the onset of a delayed sine element after an undelayed one (the fork's batches xa1, xa1b); hold-outs at 10, 36, 60,
+    // 100, 108 within 0.2, 0.4, 9.8, 1.2 and 5.9 ms (K52)
+    static constexpr int kKnots = 29;
+    static constexpr int index[kKnots] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 116, 120, 124, 127 };
+    static constexpr double seconds[kKnots] = { 0.0, 0.0096, 0.0199, 0.0301, 0.0488, 0.0589, 0.0792, 0.1010, 0.1304, 0.2388, 0.3651, 0.5089, 0.6670,
+                                                0.8382, 1.0226, 1.4259, 1.8773, 2.3709, 2.8961, 3.4594, 4.0444, 4.6681, 5.3127, 5.9875, 6.7014, 7.0541,
+                                                7.4254, 7.7998, 8.0847 };
+    const int i = std::min(127, std::max(0, int(timeLength)));
+    int k = 1;
+    while (index[k] < i) ++k;
+    const double f = double(i - index[k - 1]) / double(index[k] - index[k - 1]);
+    return seconds[k - 1] + f * (seconds[k] - seconds[k - 1]);
+}
+
 }  // namespace laws
 }  // namespace pcm

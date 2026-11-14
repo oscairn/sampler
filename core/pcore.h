@@ -192,7 +192,8 @@ public:
 
 private:
     struct Slot { bool on = false, keyUp = false, keyOff = false; uint8_t sound = 0; uint8_t layers = 0; uint8_t pool[kMaxLayers]; uint16_t id[kMaxLayers]; uint64_t age = 0; float volume = 1;
-                  uint8_t key = 0, vel = 0, channel = 0; int16_t vel2048 = 0; };
+                  uint8_t key = 0, vel = 0, channel = 0; int16_t vel2048 = 0;
+                  uint8_t pending = 0; uint16_t pendRegion[kMaxLayers]; int64_t pendAt[kMaxLayers]; };  // layers a key-on delay holds back
     Pool& poolOf(const PlanDesc&);
     void free_(Pool&, uint32_t pos);
     void startLayer(uint32_t slot, const Compiled&, uint32_t region, int key, int velocity, int32_t velocity2048, int channel);
@@ -202,6 +203,8 @@ private:
     int32_t noteOnSteps(const Compiled&, const int16_t* element, uint32_t sound, int channel, int dest) const;
     uint32_t selectElements(const Compiled&, uint32_t sound, int key, int velocity);
     void startKeyOff(uint32_t slot);
+    void dropPending(Slot&);
+    int64_t startPending_();  // starts the held-back layers due now; the clock the next one is due at
     void reap_();
     double sr_ = 48000;
     int64_t clock_ = 0;  // frames rendered since construction
@@ -216,6 +219,7 @@ private:
     int64_t lfoStart_[kMaxSounds] = {};      // the engine clock the sound's part LFO last started (reset) at
     uint8_t cycle_[kMaxSounds][8] = {};      // each element group's next cycle position (an element index)
     uint32_t draw_[kMaxSounds] = {};         // the random elements' generator
+    uint32_t pendingSlots_ = 0;              // slots with layers held back by a key-on delay
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];

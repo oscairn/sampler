@@ -574,6 +574,13 @@ instrument and runs on across loads; here each sound slot has its own, started a
 modes follow the part's switches 1 and 2 at note-on (on from half way, the fork's 64 of 127). Legato elements play only in
 a mono part, which this engine does not build (reported).
 
+Key-on delay: the fork's 28 knots (K52: hold-outs at 10, 36, 60, 100, 108 within 0.2, 0.4, 9.8, 1.2 and 5.9 ms). Measured
+here (run pcm-round6-2026-11-14, `l_kod_*`): time length 40 on a sine, the note held to 2.1 s starts the element 1.40-1.45
+s after the note (50 ms analysis bins; the knot is 1.426 s); the note released at 0.5 s, before the delay, starts nothing
+(silent over 2.7 s). The engine starts a held-back layer on its own frame and drops it when the note ends first (core test
+`key_on_delay`: the onset frame in 128- and 37-frame blocks, a note-off and a choke before the delay leave no voice). A
+note length at the tempo (`keyon_delay_note`) is reported.
+
 - Engine: `xa_control` 3-7 and 1 in a poly part, `element_group`; core test `element_selection` (three cycle elements
   in turn beside a normal one in another group, the switch modes, 400 notes of two random elements: one a note, each
   more than 160).

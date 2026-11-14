@@ -20,7 +20,7 @@ starting with "no" are reported at every value but the default (any other start:
 | parameter | values | implemented | law (source) | verified |
 |---|---|---|---|---|
 | Element Switch | Off, On | yes (the converter drops elements that are off) | - | - |
-| Key On Delay Tempo Sync Switch | Off, On | no (reported) | K52-K53 in the fork | - |
+| Key On Delay Tempo Sync Switch | Off, On | no (on: the converter writes the note length, `keyon_delay_note`, which is reported) | K53 in the fork | - |
 | Half Damper Switch | Off, On | yes: `half_damper` (the sustain pedal: `Core::setSustain`, `keyUp`) | measured here (acceptance g) | sine probes; the probe piano under the pedal (acceptance g) |
 | LFO Speed Range | Normal, Extended | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode (`elfo_mode=1`) is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | Key Controller Set 1 Switch | Off, On | no | - | - |
@@ -40,7 +40,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Velocity Limit Low | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Limit High | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Cross Fade | 0 – 127 | no (not in the sound format; the converter must report a non-zero value) | K55 | the probe piano and bass use 0 |
-| Key On Delay Time Length | 0 – 127 | no: `keyon_delay` (reported) | K52-K53 in the fork | - |
+| Key On Delay Time Length | 0 – 127 | yes: `keyon_delay`: the element starts that long after the note, on its own frame (28 knots, linear between); a note that ends first never starts it | K52 (the fork's knots, measured there; acceptance q) | core test `key_on_delay` |
 | Element number (its place in the part, 1-8) | - | yes: `element_number`, written by the converter: elements 2-8 with the filter thru play 5.625 dB below element 1 | measured here (acceptance i) | sines at elements 1, 2 (with and without element 1), 8, filter gains 128-255 |
 | Element Connection Switch | Thru, InsA, InsB | yes: `element_connection`: with the part's `split_outputs` the element plays on output port 1 (to insertion A) or 2 (to insertion B), else on the main port, at the thru level | measured here: sent to either insertion (both off) the element plays at the thru level (within 0.005 dB; acceptance i) | ABI test `output_ports` |
 | Key On Delay Note Length | 5 – 21 (16th, 8th/3, 16th., 8th, 4th/3, 8th., 4th, 2th/3, 4th., 2nd, Whole/3, 2nd., 4thX4, 4thX5, 4thX6, 4thX7, 4thX8) | no: `keyon_delay_note` (reported) | K52-K53 in the fork | - |

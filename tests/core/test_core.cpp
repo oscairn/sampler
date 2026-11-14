@@ -939,6 +939,35 @@ static void elementSelection() {
     }
 }
 
+// Key-on delay (the fork's K52 knots): the element starts that many frames after note-on, on its own frame whatever the
+// blocks; a note that ends before the delay leaves no voice and ends its slot.
+static void keyOnDelay() {
+    const int64_t want = std::llround(laws::keyOnDelaySeconds(40) * 44100);  // 1.4259 s
+    NEAR(laws::keyOnDelaySeconds(40), 1.4259, 1e-9);
+    NEAR(laws::keyOnDelaySeconds(36), (1.0226 + 1.4259) / 2, 1e-9);
+    for (int block : {128, 37}) {
+        Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 keyon_delay=40", constant(4410, 16384), 1, 44100.f, "0-4410", 44100);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        CHECK(r.core->voiceCount() == 1 && r.core->elementVoices() == 0);
+        const auto o = r.run(70000, block);
+        int64_t first = -1;
+        for (size_t i = 0; i < o.size() / 2; ++i) if (o[2 * i] != 0) { first = int64_t(i); break; }
+        CHECK(first == want);
+    }
+    Rig c("ampeg_attack=0 keyon_delay=40", constant(4410, 16384), 1, 44100.f, "0-4410", 44100);
+    c.core->noteOn(0, 0, 0, 60, 1.0f);
+    c.run(22050);
+    c.core->noteOff(0);  // before the delay: nothing starts, the slot ends
+    CHECK(c.core->voiceCount() == 0);
+    const auto o = c.run(88200);
+    double peak = 0;
+    for (float x : o) peak = std::max(peak, double(std::fabs(x)));
+    CHECK(peak == 0 && c.core->elementVoices() == 0);
+    c.core->noteOn(1, 0, 0, 60, 1.0f);
+    c.core->choke(1, 64);  // a choke drops the held-back layer too
+    CHECK(c.core->voiceCount() == 0);
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -948,7 +977,7 @@ int main() {
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
-        {"element_selection", elementSelection},
+        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay},
     };
     for (auto& t : tests) {
         const int before = failures;

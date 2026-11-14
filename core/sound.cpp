@@ -423,7 +423,7 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
         if (v[ElfoMode] == 1) add(uint16_t(e), ElfoMode, "the element LFO's own settings (settings mode) are not built");
         if (v[ElfoMode] == 0 && v[ElfoAmpRatio] < 0) add(uint16_t(e), ElfoAmpRatio, "a negative element LFO amplitude ratio is not measured");
         if (v[TriggerMode] == 1 && d.part[PartMono]) add(uint16_t(e), TriggerMode, "legato elements in a mono part are not built");
-        if (v[KeyOnDelay] || v[KeyOnDelayNote]) add(uint16_t(e), v[KeyOnDelay] ? KeyOnDelay : KeyOnDelayNote, "key-on delay is not built");
+        if (v[KeyOnDelayNote]) add(uint16_t(e), KeyOnDelayNote, "a key-on delay of a note length at the tempo is not built");
     }
     return n;
 }

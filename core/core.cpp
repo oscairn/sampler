@@ -826,10 +826,18 @@ void Core::noteOn(uint32_t voice, uint32_t sound, int channel, int key, float ve
     for (uint32_t i = 0; i < s->regions && sl.layers < kMaxLayers; ++i) {
         const Region& r = s->region[i];
         if (key < r.loKey || key > r.hiKey || vel < r.loVel || vel > r.hiVel || !(plays >> r.element & 1)) continue;
-        if (s->element[r.element].v[TriggerMode] == 2) { sl.keyOff = true; continue; }  // sounds from the key's release
+        const int16_t* ev = s->element[r.element].v;
+        if (ev[TriggerMode] == 2) { sl.keyOff = true; continue; }  // sounds from the key's release
+        // a key-on delay holds the layer back (time lengths only: a note length at the tempo is reported)
+        const int64_t delay = ev[KeyOnDelay] && !ev[KeyOnDelayNote] ? std::llround(laws::keyOnDelaySeconds(ev[KeyOnDelay]) * sr_) : 0;
+        if (delay > 0) {
+            if (sl.layers + sl.pending < kMaxLayers) { sl.pendRegion[sl.pending] = uint16_t(i); sl.pendAt[sl.pending] = clock_ + delay; ++sl.pending; }
+            continue;
+        }
         startLayer(voice, *s, i, key, vel, vel2048, channel);
     }
-    sl.on = sl.layers > 0 || sl.keyOff;
+    if (sl.pending) ++pendingSlots_;
+    sl.on = sl.layers > 0 || sl.keyOff || sl.pending;
 }
 
 void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, int vel, int32_t vel2048, int channel) {
@@ -1073,6 +1081,30 @@ void Core::startKeyOff(uint32_t voice) {
     }
 }
 
+// A note's held-back layers no longer start (the note ended before its key-on delay); the slot ends if nothing sounds.
+void Core::dropPending(Slot& sl) {
+    if (!sl.pending) return;
+    sl.pending = 0;
+    --pendingSlots_;
+    if (!sl.layers && !sl.keyOff) sl.on = false;
+}
+
+int64_t Core::startPending_() {
+    int64_t next = INT64_MAX;
+    for (uint32_t v = 0; v < kMaxVoices; ++v) {
+        Slot& sl = slot_[v];
+        if (!sl.pending) continue;
+        const Compiled* s = sound_[sl.sound];
+        for (int k = 0; k < sl.pending;) {
+            if (sl.pendAt[k] > clock_) { next = std::min(next, sl.pendAt[k]); ++k; continue; }
+            if (s) startLayer(v, *s, sl.pendRegion[k], sl.key, sl.vel, sl.vel2048, sl.channel);
+            --sl.pending; sl.pendRegion[k] = sl.pendRegion[sl.pending]; sl.pendAt[k] = sl.pendAt[sl.pending];
+        }
+        if (!sl.pending) { --pendingSlots_; if (!sl.layers && !sl.keyOff) sl.on = false; }
+    }
+    return next;
+}
+
 void Core::keyUp(uint32_t voice) {
     if (voice >= kMaxVoices || !slot_[voice].on || slot_[voice].keyUp) return;
     Slot& sl = slot_[voice];
@@ -1098,6 +1130,7 @@ void Core::noteOff(uint32_t voice) {
     const uint8_t layers = sl.layers;
     startKeyOff(voice);  // key-off elements sound when the note ends, under the pedal at its release (measured)
     sl.keyUp = true;
+    dropPending(sl);
     for (int k = 0; k < layers; ++k) {
         Pool& p = pool_[sl.pool[k]];
         for (uint32_t i = 0; i < p.n; ++i) {
@@ -1124,6 +1157,7 @@ void Core::setSustain(int ch, float x) {
 void Core::choke(uint32_t voice, uint32_t frames) {
     if (voice >= kMaxVoices || !slot_[voice].on) return;
     Slot& sl = slot_[voice];
+    dropPending(sl);
     for (int k = 0; k < sl.layers; ++k) {
         Pool& p = pool_[sl.pool[k]];
         for (uint32_t i = 0; i < p.n; ++i) {
@@ -1160,6 +1194,7 @@ void Core::free_(Pool& p, uint32_t i) {
 void Core::kill(uint32_t voice) {
     if (voice >= kMaxVoices) return;
     Slot& sl = slot_[voice];
+    if (sl.pending) --pendingSlots_;
     if (!sl.on) { sl = Slot{}; return; }
     for (int k = 0; k < sl.layers; ++k) {
         Pool& p = pool_[sl.pool[k]];
@@ -1224,6 +1259,7 @@ void Core::setModWheel(int ch, float x) {
 void Core::reset() {
     for (auto& p : pool_) p.n = 0;
     for (auto& s : slot_) s = Slot{};
+    pendingSlots_ = 0;
     for (auto& b : bend_) b = 0;
     for (auto& w : wheel_) w = 0;
     for (auto& d : pedal_) d = 0;
@@ -1388,7 +1424,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
 }
 
 void Core::render(float* L, float* R, uint32_t frames, uint32_t from) {
-    bool any = false;
+    bool any = pendingSlots_ > 0;
     for (auto& p : pool_) any |= p.n > 0;
     if (!any) { clock_ += frames; return; }  // the rest cost: nothing more than this when silent
     float* const l3[3] = {L, L, L};
@@ -1398,7 +1434,7 @@ void Core::render(float* L, float* R, uint32_t frames, uint32_t from) {
 
 void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t from) {
     uint32_t done = 0;
-    bool any = false;
+    bool any = pendingSlots_ > 0;
     for (auto& p : pool_) any |= p.n > 0;
     if (!any) { clock_ += frames; return; }
     // routed: the outputs differ, and a pool has voices on bus 1 or 2 (voices start only between calls)
@@ -1411,7 +1447,14 @@ void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t fr
     while (done < frames) {
         const uint32_t phase = (from + done) % kSub;
         const bool grid = phase == 0;
-        const uint32_t n = std::min<uint32_t>(kSub - phase, frames - done);
+        uint32_t n = std::min<uint32_t>(kSub - phase, frames - done);
+        if (pendingSlots_) {  // a held-back layer starts on its own frame: the piece ends there
+            const int64_t next = startPending_();
+            if (next - clock_ < int64_t(n)) n = uint32_t(next - clock_);
+            if (split)  // a layer started here may play on output bus 1 or 2
+                for (int k = 0; k < 2 * kFilters; ++k)
+                    for (uint32_t i = 0; i < pool_[k].n && !routed[k]; ++i) if (pool_[k].v[i].bus) routed[k] = anyRouted = true;
+        }
         vf accL[3 * kSub], accR[3 * kSub];
         for (int b = 0; b < (anyRouted ? 3 : 1); ++b)
             for (uint32_t s = 0; s < n; ++s) accL[b * kSub + s] = accR[b * kSub + s] = splat(0.f);
@@ -1458,7 +1501,7 @@ void Core::reap_() {
                     sl.pool[q] = sl.pool[sl.layers - 1]; sl.id[q] = sl.id[sl.layers - 1]; --sl.layers;
                     break;
                 }
-            if (!sl.layers) sl.on = false;
+            if (!sl.layers && !sl.pending) sl.on = false;
             free_(p, i);
         }
     }
