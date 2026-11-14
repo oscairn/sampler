@@ -807,6 +807,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     level *= std::pow(10.0f, (float(r.level) / 100.0f) * 0.05f);
     level *= float(std::pow(10.0, kStagingDb / 20.0));
     level *= 1.0f / 32768.0f;  // 16-bit sample values to full scale
+    if (s.plan[ri].filter == Filter::Thru && e[ElementNumber] >= 2) level *= float(std::pow(10.0, laws::kThruElementDb / 20.0));
     if (s.plan[ri].filter != Filter::Thru) {
         level *= laws::filterGain(e[FilGain]);
         // element EQ Boost6/12/18: a flat +6.02/+12.04/+18.06 dB; bypassed with the filter Thru (measured)

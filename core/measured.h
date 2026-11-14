@@ -15,6 +15,11 @@ constexpr double kReleaseEndDb = -96.45;
 // decay table's time per 60 dB): measured, periodic in the index's place within its octave of 8.
 float filterReleaseFactor(int32_t index) noexcept;
 
+// Elements 2-8 play 15 steps of 0.375 dB below element 1 when their filter is thru (measured on
+// sines: element 2, 2 with element 1 off, and 8 all -5.63 dB, whatever the filter gain; with a filter
+// elements 1 and 2 are alike; docs/acceptance.md (i))
+constexpr double kThruElementDb = -5.625;
+
 // ---- the part's velocity ----
 // The part's velocity sensitivity depth and offset (raw 0-127, 64 neutral) move a note's velocity, on the
 // 0-2047 scale of scale2048(): scale2048(v) x scale2048(depth) / 1024 + 2 (scale2048(offset) - 1024),

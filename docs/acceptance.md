@@ -314,13 +314,33 @@ Each note's level is inverted through the element law to the velocity it played.
 
 Found on the way: the cutoff velocity sensitivity law (the fork's) leaves the saw at +63 23-26 dB too
 quiet at velocities 20-40 (D15), and an element after the first plays 5.6 dB below the first with the
-filter thru (D16).
+filter thru (D16, resolved in (i)).
 
 | check | tolerance | result |
 |---|---|---|
 | level against the reference, 18 depth / offset pairs x 11 velocities | ±0.25 dB | pass (largest 0.12 dB) |
 | element velocity limits under depth / offset | equal | pass (44 of 44 notes) |
 | probe sound B, offset 69 against 64 | ±0.25 dB | pass (+1.50 against +1.51) |
+
+## (i) Elements after the first, with the filter thru
+
+Recordings `m_ph*`, `o_*`, `p_*` (run pcm-round3-2026-11-14): sines, saws and white noise on one to four
+identical elements, element 2 alone (element 1 off or at level 0), element 8 alone, filter gains 128-255,
+the filter thru and type 0 wide open. Two identical elements sum to 1.52 times one, every note alike: the
+second is a scaled copy of the first (0.5227, no delay; residual -110 dB).
+
+- With the filter thru, elements 2-8 play 5.63 dB below element 1, whatever the filter gain (which a thru
+  filter ignores for every element); with a filter, elements 1 and 2 are alike. The engine takes 15 steps of
+  the 0.375 dB grid, -5.625 dB, for elements 2-8 with the filter thru, by the element's number in the part
+  (`element_number`, which the converter writes: a converter drops elements that are off, so the order
+  of the sound's elements is not the number).
+- Engine against reference: every take within 0.03 dB (19 takes), and the split takes of (h) within 0.10 dB.
+- Found on the way: with type 0 wide open at the default filter gain (230) the engine is 0.21 dB above the
+  reference (the fork's gain law there; D17).
+
+| check | tolerance | result |
+|---|---|---|
+| level, one to four elements, element 2 and 8 alone, thru and type 0 | ±0.25 dB | pass (largest 0.03 dB with the filter thru; 0.21 dB with type 0) |
 
 ## Known differences (this engine's register)
 
@@ -340,7 +360,8 @@ filter thru (D16).
 | D13 | A half damper element under the pedal releases only from its sustain | inferred from two cases (g) | unverified beyond them |
 | D14 | Key-off elements release 2.0 s after their start whatever their settings | the fork's K42, measured once | as the fork |
 | D15 | Cutoff velocity sensitivity (the fork's law) at low velocities | a saw at +63, cutoff 400: 23-26 dB too quiet at velocities 20-40 (h) | open |
-| D16 | Elements after the first play 5.6 dB below the first with the filter thru (identical elements; not seen with filters) | 5.63 dB (h) | open: being measured |
+| D16 | Elements 2-8 with the filter thru | - | resolved: 5.625 dB below element 1 by `element_number` (i); the converter must write the number |
+| D17 | Filter gain 230 with type 0 wide open | the engine 0.21 dB above the reference (i) | open (the fork's law) |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,

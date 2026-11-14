@@ -644,9 +644,25 @@ static void partVelocity() {
     CHECK(keySounds(*r.sound, 60, 1));
 }
 
+// Elements 2-8 with the filter thru play 5.625 dB below element 1 (measured: docs/acceptance.md (i));
+// with a filter, the element's number changes nothing.
+static void elementNumber() {
+    for (int type : {18, 0}) {
+        double lv[2];
+        for (int number : {1, 2}) {
+            const std::string el = "fil_type=" + std::to_string(type) + " fil_cutoff=1023 fil_keyfollow=64 fileg_depth=0 element_number=" + std::to_string(number);
+            Rig r(el, constant(48000, 16384), 1, 48000.f, "100-40000");
+            r.core->noteOn(0, 0, 0, 60, 1.0f);
+            const auto o = r.run(9600);
+            lv[number - 1] = o[2 * 9000];
+        }
+        NEAR(20 * std::log10(lv[1] / lv[0]), type == 18 ? -5.625 : 0.0, 1e-4);
+    }
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
-        {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"law_values", lawValues}, {"attack_shape", attackShape},
+        {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
         {"release_shape", releaseShape}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
