@@ -145,9 +145,14 @@ constexpr int64_t kStreamMargin = 1152;
 // ---- the plan ----------------------------------------------------------------------------------
 enum class Interp : uint8_t { Hermite, Sinc };  // Sinc: 20 taps (docs/design.md)
 // LowPass2: type 0, two low-pass sections; LowHigh: type 4, a low-pass section and a fixed high-pass
-// section (damping 1, at the HPF cutoff); PoleHigh: type 5, a one-pole low-pass and that high-pass
-enum class Filter : uint8_t { Thru, LowPass2, LowHigh, PoleHigh };
-constexpr int kFilters = 4;
+// section (damping 1, at the HPF cutoff); PoleHigh: type 5, a one-pole low-pass and that high-pass;
+// LowLow: type 1, a low-pass section and one with damping 1; LowPole: types 2 and 3, a low-pass section
+// and a one-pole low-pass at the cutoff (type 3: the section higher, laws::filterOffsetCents); HighHigh:
+// type 6, two high-pass sections; High: type 7, one; Band: type 10, a low-pass and a high-pass section
+// with damping 1, spread about the cutoff by the width
+enum class Filter : uint8_t { Thru, LowPass2, LowHigh, PoleHigh, LowLow, LowPole, HighHigh, High, Band };
+constexpr int kFilters = 9;
+Filter filterOf(int type) noexcept;  // the plan of a filter type (Thru for the types not built)
 struct PlanDesc { uint8_t channels; Interp interp; Filter filter; };
 // Estimated instructions (aarch64, -O3, measured; docs/cost.md): one element voice for one 128-frame
 // block, and a block with no voice sounding.

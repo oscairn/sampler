@@ -12,8 +12,11 @@ enum Field {
     G, M, A, LO, HI,       // the amplitude envelope, per sample: g = min(max(g m + a, lo), hi)
     GL, DGL, GR, DGR,      // output gains (level, pan, volume, LFO, filter gain) and their ramps
     C0, CENTS,             // the filter cutoff: cents from 440 Hz without the envelope (key follow, velocity in), the envelope's
-    CINV, CCI, CKI, CKF, CK, CKFG, CC1, CC2, CC1M, CC2M,  // the (first) section's coefficients (type 0: both alike)
-    HINV, HCI, HKI, HKF, HK, HKFG, HC1, HC2, HC1M, HC2M,  // types 4, 5: the fixed high-pass section's
+    OFS,                   // cents the first section sits above the cutoff (type 3: its section; type 10: its low-pass, the high-pass as far below), else 0
+    TOPC,                  // the cents (from 440 Hz) the first section rises to at most (type 3: above kTopHz) (laws::sectionTopCents)
+    CINV, CCI, CKI, CKF, CK, CKFG, CC1, CC2, CC1M, CC2M,  // the (first) section's coefficients (types 0, 6: both alike)
+    HINV, HCI, HKI, HKF, HK, HKFG, HC1, HC2, HC1M, HC2M,  // the second section's (types 4, 5: the fixed high-pass; 1, 10: designed
+                                                          // with the first; 2, 3: the one-pole)
     ST0,                   // filter states: [section][channel][low1, low2, band1, band2]
     DAMP = ST0 + 16,       // damping of the resonance (before the limit)
     B1, B2,                // 1 on output bus 1 (to insertion A) / bus 2 (to insertion B), else 0

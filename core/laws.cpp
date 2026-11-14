@@ -380,6 +380,30 @@ float filterDamping(int32_t resonance) noexcept
     return 2.0f * std::exp2(-static_cast<float>(r) / 16.0f);
 }
 
+float filterOffsetCents(int type, float index, int32_t resonance) noexcept
+{
+    if (type == 10)  // measured (the fork's K23): each section 38.2 cents a width step above 7.5 from the cutoff
+        return 38.2f * std::max(0.0f, static_cast<float>(resonance) - 7.5f);
+    if (type != 3)
+        return 0.0f;
+    // type 3: the section kTypeThreeSteps cutoff indices above the cutoff; past the table's top (index 912) the
+    // section goes on rising at the table's last slope (kept as cents above kTopHz, where the design damps it)
+    const float j = std::max(0.0f, std::min(1023.0f, index)) + kTypeThreeSteps;
+    const float top = static_cast<float>(1200.0 * std::log2(kTopHz / 440.0));
+    const float at = j < 912.0f ? cutoffCents(j) : top + kTypeThreeSlope * (j - 912.0f);
+    return at - cutoffCents(index);
+}
+
+float sectionTopCents(int type, int32_t resonance) noexcept
+{
+    if (type != 3)
+        return static_cast<float>(1200.0 * std::log2(kTopHz / 440.0));
+    const double d = std::min(1.0f, filterDamping(resonance)) / 0.9;
+    const double f = std::sqrt(d * d + 4.0) - d;  // f^2 + 2 f d = 4
+    const double hz = std::min(22000.0, kReferenceRate / 3.14159265358979 * std::asin(f / 2.0));
+    return static_cast<float>(1200.0 * std::log2(std::max(hz, kTopHz) / 440.0));
+}
+
 float filterGain(int32_t gain) noexcept
 {
     // Passband level measured at these values (dB), linear in dB between them; about

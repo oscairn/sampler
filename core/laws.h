@@ -71,6 +71,16 @@ float cutoffCents(float index) noexcept;  // cents from 440 Hz of a cutoff index
 float filterCutoffHz(int32_t index, float cents) noexcept;
 float cutoffVelocityCents(int32_t cutoff, int32_t sensitivity, int velocity) noexcept;
 float filterDamping(int32_t resonance) noexcept;
+// Cents the first section of a filter type sits above the cutoff at a cutoff index and resonance (width):
+// type 3 its section (above kTopHz the design holds it there and damps it, measured), type 10 its low-pass
+// section (the high-pass as far below); 0 for the other types
+float filterOffsetCents(int type, float index, int32_t resonance) noexcept;
+constexpr float kTypeThreeSteps = 340.0f;  // type 3's section above the cutoff, cutoff indices (measured)
+constexpr float kTypeThreeSlope = 9.0f;    // and its cents an index past the table's top (measured)
+// Type 3's section past kTopHz rises only while its damping (the resonance's, at most 1) stays within 0.9 of the
+// section's stability bound (f^2 + 2 f d < 4): the cents from 440 Hz it stops at (measured: docs/acceptance.md (t));
+// the other types' sections stop at kTopHz
+float sectionTopCents(int type, int32_t resonance) noexcept;
 float filterGain(int32_t gain) noexcept;
 float dampingLimit(double hz) noexcept;
 // The damping limit as a function of cents from 440 Hz: 2 below kDampingKnotCents[0], then

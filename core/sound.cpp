@@ -526,8 +526,8 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
     for (uint32_t e = 0; e < d.elements; ++e) {
         const int16_t* v = d.element[e].v;
         const int type = v[FilType];
-        if (type != 0 && type != 4 && type != 5 && type != 18)
-            add(uint16_t(e), FilType, "filter types other than 0 (two low-pass sections), 4 (low-pass and high-pass sections), 5 (one-pole and high-pass section) and 18 (thru)");
+        if (type != 18 && filterOf(type) == Filter::Thru)
+            add(uint16_t(e), FilType, "filter types other than 0-7, 10 and 18 (thru)");
         if (v[ElfoMode] == 1) add(uint16_t(e), ElfoMode, "the element LFO's own settings (settings mode) are not built");
         if (v[ElfoMode] == 0 && v[ElfoAmpRatio] < 0) add(uint16_t(e), ElfoAmpRatio, "a negative element LFO amplitude ratio is not measured");
         if (v[TriggerMode] == 1 && d.part[PartMono]) add(uint16_t(e), TriggerMode, "legato elements in a mono part are not built");

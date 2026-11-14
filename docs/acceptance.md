@@ -655,6 +655,47 @@ step from its own generator (the reference's sequence is not reproduced; started
 - Engine: `fil_res_velsens`; core test `resonance_velocity` (the law's values; a step through resonance 100 at the
   softest velocity rings as resonance 36).
 
+## (t) Filter types 1, 2, 3, 6, 7 and 10 against the reference
+
+Recordings `p_*`, `q_*`, `r_*`, `s_*`, `u_*` (run pcm-round7-2026-11-14) and the fork's runs `fl1`-`fl3`: white noise at
+key 60, one element, against a thru take of the same recorder session (each session's first take: a thru take after a
+filtered one replays the filtered performance, so later thru takes were not used), 1/6-octave bands from 31 Hz to 15 kHz,
+bands within 50 dB of the thru level, an engine render of the same sound against the engine's thru. Resonance takes at
+element level 40, a take at resonance 80 or more alone at the end of its recorder session (later takes in a session play at
+wrong levels after one). "Fit": the takes the law was fitted on (the fork's runs; for type 3 also the resonance-64 takes
+`u_*` and `s_t3_560_r64`); "held out": this round's other takes (cutoffs 32-1023 between the fitted ones, resonance 16-120,
+widths 0-127).
+
+| type | law | fit: rms / max dB (points) | held out: rms / max dB (points, takes) |
+|---|---|---|---|
+| 1 | a low-pass section at the resonance, then one at the same cutoff with damping 1 | 0.44 / 3.53 (625) | 0.43 / 3.23 (480, 14); resonance 88-120: 0.39 / 1.21 (119) |
+| 2 | a low-pass section, then the one-pole low-pass at the cutoff | 0.42 / 3.57 (675) | 0.39 / 2.19 (658, 17) |
+| 3 | the one-pole low-pass at the cutoff, then a low-pass section 340 cutoff indices higher (below the table's top); past it the section rises 9 cents an index while its damping stays within 0.9 of the section's stability bound | 1.01 / 17.68 (858); this round's 0.62 / 2.72 (336) | below the top 0.63 / 6.49 (454, 11); above, resonance 0: 0.43 / 1.89 (371, 7); resonant (24-127): 1.66 / 21.9 (742, 14), of them 24-32: 0.40 / 1.87 (159, 3) |
+| 6 | two high-pass sections at the resonance | below resonance 88: 0.28 / 1.12 (626) | 0.30 / 1.31 (541, 14) |
+| 7 | one high-pass section at the resonance | 0.33 / 3.85 (852) | 0.29 / 1.13 (774, 17) |
+| 10 | a low-pass section 38.2 cents a width step above 7.5 over the cutoff, a high-pass section as far below, both damping 1 | 0.63 / 2.99 (594) | 0.62 / 2.65 (625, 14) |
+
+- Type 3's section, fitted per take (frequency and damping free) on 13 resonant takes below the top: 340.0 cutoff indices
+  above the cutoff (standard deviation 4.2 indices, 64 to 560), its damping the resonance's (within 8 %); the held-out
+  takes at resonance 96 (288, 416) and 16-112 (384) sit 1.3, 5.3 and -1 indices from it. In cents the same takes scatter as
+  much (3,966 +- 56). Past the top (cutoff above 572) the reference's section goes on rising (about 8.6 kHz at 592, 15 kHz at
+  704) where a 44.1 kHz section with that damping would be unstable; at resonance 0 it leaves the one-pole's response.
+  The engine holds the section where its damping stays within 0.9 of the stability bound (`laws::sectionTopCents`), which
+  keeps it stable at every setting; the misfit left is resonance 56-127 at cutoffs 592-688 (the peak placed below the
+  reference's, up to 22 dB off in the bands beside it) and the fork's takes at cutoff 512, resonance 64-127 (the reference
+  332.6 indices above the cutoff there, the law 340: up to 17.7 dB beside a sharp peak).
+- Key follow (+48 at keys 36 and 84), cutoff velocity sensitivity (+48 at velocities 40 and 127) and a static filter
+  envelope offset (+24) on types 3 and 6: the engine's shared cutoff laws, each take against the key-60 thru at velocity 127
+  (to 4 kHz at key 36, 10 kHz at key 84): rms 0.16-0.78 dB, at most 2.1, 10 takes.
+- Filter gain 255 and 192 on types 0, 1, 3, 6, 7 and 10, each against the session's thru: the engine's medians within
+  0.17 dB of the reference's except type 10 (+0.54 dB, its own passband offset; also +0.5 to +1.2 in two held-out takes at width 64).
+- Two high-pass sections at resonance 88 and above (type 6; as type 0, the fork's K24): the reference saturates (peaks
+  43-55 dB over the passband with harmonics, the stopband filled) where the engine stays linear (peaks to 62 dB at 120):
+  rms 23-37 dB over those takes (register D19).
+- Engine: `fil_type` 1, 2, 3, 6, 7, 10 (`filterOf`, `laws::filterOffsetCents`, `laws::sectionTopCents`); core test
+  `filter_types` (each type's level at 12 tones against the sections' response computed in the test; every built type at
+  cutoffs 0-1023 and resonance 0 and 127 stays finite and within the sections' peak gain).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |
@@ -677,6 +718,9 @@ step from its own generator (the reference's sequence is not reproduced; started
 | D17 | Filter gain 230 with type 0 wide open | the engine 0.21 dB above the reference (i) | open (the fork's law) |
 | D18 | An amplitude envelope release box whose source moves during the release | the reference changes the release's rate; the engine keeps the rate taken at the note-off | open |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |
+| D19 | Two high-pass sections (type 6) at resonance 88 and above: the reference saturates | its peaks 43-55 dB with harmonics; the engine linear, to 62 dB (t) | open (as type 0, the fork's K24) |
+| D20 | Type 3's section where it passes the top of the table with resonance 56 and above, and at cutoff 512 | up to 22 dB beside the peak at cutoffs 592-688, 17.7 dB at 512 (t) | open: the reference's section above 7290 Hz is not a stable 44.1 kHz section |
+| D21 | Type 10's passband | the engine 0.5-1.2 dB louder at width 64 in three takes (t) | open (the fork's law) |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,
 `refcmp.py`); not in this repository.

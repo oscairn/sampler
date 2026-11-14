@@ -179,7 +179,7 @@ static void coverage() {
     CHECK(readText(kPad, *d, err, sizeof err));
     Gap g[16];
     CHECK(notCovered(*d, g, 16) == 0);  // the pads use only what the core covers
-    d->element[0].v[FilType] = 6;  // two high-pass sections: not covered
+    d->element[0].v[FilType] = 12;  // two notch sections: not covered
     d->element[0].v[ElfoMode] = 1;
     d->region[1].loop = 0; d->region[1].loopStart = d->region[1].loopEnd = 0;  // a one-shot region: covered
     d->element[0].v[TriggerMode] = 2;   // key off: covered
@@ -555,6 +555,63 @@ static void filterTypes45() {
 // The element EQ against the reference's response (white noise through type 0 wide open, each take fitted
 // within 0.04 dB rms; the targets are those fits at the given frequencies): a sine through the EQ against
 // the same with the EQ thru, at 44.1 kHz.
+// Types 1, 2, 3, 6, 7 and 10 (docs/acceptance.md (t)): a sine's level through each against the sections' own response at
+// 44.1 kHz (the unit-delay state-variable section and one-pole of the fork's design), computed here independently
+static double sectionDb(double f, double h, double d, int kind) {  // kind 0 low-pass, 1 high-pass, 2 one-pole low-pass
+    h = std::min(h, laws::kTopHz);
+    const double w = 2 * 3.14159265358979 * f / 44100, cr = std::cos(w), ci = -std::sin(w), c2r = std::cos(2 * w), c2i = -std::sin(2 * w);
+    auto mag = [](double ar, double ai) { return std::sqrt(ar * ar + ai * ai); };
+    if (kind == 2) {
+        const double F = std::min(1.0, 2 * std::sin(3.14159265358979 * h / 44100));
+        return 20 * std::log10(F / mag(1 - (1 - F) * cr, -(1 - F) * ci));
+    }
+    const double F = 2 * std::sin(3.14159265358979 * h / 44100);
+    d = std::min(d, double(laws::dampingLimit(h)));
+    const double a1 = 2 - F * F - F * d, a2 = 1 - F * d;
+    const double den = mag(1 - a1 * cr + a2 * c2r, -a1 * ci + a2 * c2i);
+    const double num = kind == 0 ? F * F : mag(1 - 2 * cr + c2r, -2 * ci + c2i);
+    return 20 * std::log10(num / den);
+}
+static void filterTypes() {
+    struct Point { int type, cutoff, res, hz; };
+    const Point points[] = {{1, 384, 64, 201}, {1, 384, 64, 1000}, {2, 512, 32, 446}, {2, 512, 32, 2000}, {3, 384, 48, 1976}, {3, 384, 48, 300},
+                            {6, 512, 16, 110}, {6, 512, 16, 1000}, {7, 512, 0, 110}, {10, 512, 64, 446}, {10, 512, 64, 110}, {10, 512, 64, 4000}};
+    for (const Point& q : points) {
+        const double h = laws::filterCutoffHz(q.cutoff, 0), d = laws::filterDamping(q.res);
+        double want = 0;
+        switch (q.type) {
+        case 1: want = sectionDb(q.hz, h, d, 0) + sectionDb(q.hz, h, 1, 0); break;
+        case 2: want = sectionDb(q.hz, h, d, 0) + sectionDb(q.hz, h, 0, 2); break;
+        case 3: want = sectionDb(q.hz, laws::filterCutoffHz(q.cutoff + 340, 0), d, 0) + sectionDb(q.hz, h, 0, 2); break;  // 340 indices higher
+        case 6: want = 2 * sectionDb(q.hz, h, d, 1); break;
+        case 7: want = sectionDb(q.hz, h, d, 1); break;
+        case 10: { const double s = std::exp2(38.2 * (q.res - 7.5) / 1200); want = sectionDb(q.hz, h * s, 1, 0) + sectionDb(q.hz, h / s, 1, 1); } break;
+        }
+        const std::string el = "ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fileg_depth=0 fil_type=" + std::to_string(q.type) + " fil_cutoff="
+                             + std::to_string(q.cutoff) + " fil_resonance=" + std::to_string(q.res);
+        Rig tone(el, sine(44100, q.hz, 44100, 16384), 1, 44100.f, "0-44100", 44100);
+        tone.core->setInterp(Interp::Hermite);
+        tone.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto x = tone.run(44100);
+        const double got = 20 * std::log10(rmsOf(x, 22050, 44100) / (16384 * kUnit * laws::filterGain(230) / std::sqrt(2.0)));
+        if (std::fabs(got - want) > 0.3) { ++failures; std::printf("  type %d cutoff %d resonance %d at %d Hz: %.2f dB, want %.2f\n", q.type, q.cutoff, q.res, q.hz, got, want); }
+    }
+    // every built type at the extremes of cutoff and resonance (width) stays finite and within the sections' own peak gain
+    for (int type : {0, 1, 2, 3, 4, 5, 6, 7, 10})
+        for (int cutoff : {0, 300, 512, 900, 1023})
+            for (int res : {0, 127}) {
+                const std::string el = "ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fileg_depth=0 fil_type=" + std::to_string(type) + " fil_cutoff="
+                                     + std::to_string(cutoff) + " fil_resonance=" + std::to_string(res) + " fil_hpf_cutoff=" + std::to_string(cutoff / 2);
+                Rig r(el, sine(44100, 7000, 44100, 16384), 1, 44100.f, "0-44100", 44100);
+                for (int k = 0; k < 6; ++k) r.core->noteOn(uint32_t(k), 0, 0, 12 + 20 * k, 1.0f);  // the tone at six pitches
+                const auto x = r.run(44100);
+                float peak = 0;
+                bool finite = true;
+                for (float v : x) { finite &= std::isfinite(v); peak = std::max(peak, std::fabs(v)); }
+                if (!finite || peak > 6 * 16384 * kUnit * 2.0e4f) { ++failures; std::printf("  type %d cutoff %d resonance %d: peak %g\n", type, cutoff, res, double(peak)); }
+            }
+}
+
 static void elementEq() {
     struct Case { const char* eq; double hz, db; } cases[] = {
         {"eq_type=1 eq_freq1=157 eq_gain1=96 eq_q=8", 1000, 11.96}, {"eq_type=1 eq_freq1=157 eq_gain1=96 eq_q=8", 250, 1.74},
@@ -1218,7 +1275,7 @@ int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
         {"release_shape", releaseShape}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
-        {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"element_eq", elementEq},
+        {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"filter_types", filterTypes}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},

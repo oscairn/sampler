@@ -79,12 +79,26 @@ PV_INLINE vf sinv(vf x) {  // |x| <= 1.6, error < 1e-7
 
 // ==== the plan ====================================================================================
 
+Filter filterOf(int type) noexcept {
+    switch (type) {
+    case 0: return Filter::LowPass2;
+    case 1: return Filter::LowLow;
+    case 2: case 3: return Filter::LowPole;
+    case 4: return Filter::LowHigh;
+    case 5: return Filter::PoleHigh;
+    case 6: return Filter::HighHigh;
+    case 7: return Filter::High;
+    case 10: return Filter::Band;
+    default: return Filter::Thru;
+    }
+}
+
 Cost estimateCost(const PlanDesc& p) {
     // Measured with tools/cost/cg.sh (docs/cost.md): one element voice a 128-frame block, from 8 to 32
     // voices; the filtered plans while the filter envelope moves the cutoff (the costlier case).
     // [channels - 1][interp][filter]; the Hermite plans without the filter are derived, not measured.
-    static const double kVoice[2][2][kFilters] = {{{5785, 9080, 9241, 8364}, {8865, 12160, 12321, 11444}},
-                                                  {{6811, 12128, 12284, 10882}, {11313, 16630, 16786, 15384}}};
+    static const double kVoice[2][2][kFilters] = {{{5785, 9080, 9241, 8364, 9080, 9080, 9080, 9080, 9241}, {8865, 12160, 12321, 11444, 12160, 12160, 12160, 12160, 12321}},
+                                                  {{6811, 12128, 12284, 10882, 12128, 12128, 12128, 12128, 12284}, {11313, 16630, 16786, 15384, 16630, 16630, 16630, 16630, 16786}}};
     return {kVoice[p.channels == 2][p.interp == Interp::Sinc][int(p.filter)], 192};
 }
 
@@ -155,7 +169,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
         out.region[i] = r;
         out.sample[i] = v;
         const int type = d.element[r.element].v[FilType];
-        out.plan[i] = {v.channels, Interp::Sinc, type == 0 ? Filter::LowPass2 : type == 4 ? Filter::LowHigh : type == 5 ? Filter::PoleHigh : Filter::Thru};
+        out.plan[i] = {v.channels, Interp::Sinc, filterOf(type)};
     }
     // the costliest note: every region it starts
     for (int key = 0; key < 128; ++key)
@@ -422,13 +436,18 @@ struct Lane {
     PV_INLINE void set(int k, vf x) const { store(&p->f[k][o], x); }
 };
 
-// Designs the sections for the lane's cutoffs at this rate: the fork's ElementFilter::design with
-// its pin(), the coefficients of its runDirect loop. The cutoff is C0 + CENTS cents from 440 Hz, at
-// most the sections' 7290 Hz.
+// Designs a section for the lane's cutoffs at this rate into the fields from B (CINV: the first, HINV: the
+// second): the fork's ElementFilter::design with its pin(), the coefficients of its runDirect loop. The cutoff
+// is C0 + CENTS (O: + or - OFS) cents from 440 Hz, at most the sections' 7290 Hz (T, type 3's section: TOPC);
+// the damping the voice's (U: 1).
+template <int B = CINV, int O = 0, bool U = false, bool T = false>
 PV_INLINE void design(const Lane& l, const FilterRate& fr) {
     const vf one = splat(1.f);
     static const float topCents = float(1200.0 * std::log2(laws::kTopHz / 440.0));
-    const vf cents = vmin(l(C0) + l(CENTS), splat(topCents));
+    vf raw = l(C0) + l(CENTS);
+    if constexpr (O > 0) raw = raw + l(OFS);
+    if constexpr (O < 0) raw = raw - l(OFS);
+    const vf cents = vmin(raw, T ? l(TOPC) : splat(topCents));
     const vf h = exp2v(cents * splat(1.f / 1200.f)) * splat(440.f);
     vf th = h * splat(float(2 * kPi / laws::kReferenceRate));
     vf a0 = sinv(th * splat(0.5f));
@@ -444,7 +463,7 @@ PV_INLINE void design(const Lane& l, const FilterRate& fr) {
         }
         lim = vmax(one, splat(2.f) - steps * splat(8 * 0.0104f));
     }
-    vf d = vmin(l(DAMP), lim);
+    vf d = U ? one : vmin(l(DAMP), lim);
     vf g, c1, c2;
     if (fr.allpass) {
         vf ph = th * splat(float(1.0 / fr.ratio));
@@ -459,10 +478,10 @@ PV_INLINE void design(const Lane& l, const FilterRate& fr) {
     vf k = one / (one - g);
     vf cs = fma(k, f, fma(k * k * f, g, fma(d * g, k, d)));
     vf inv = one / fma(k * k * f * f, g, fma(d * g * k, f, one));
-    l.set(CINV, inv); l.set(CCI, cs * inv); l.set(CKI, k * inv); l.set(CKF, k * f); l.set(CK, k); l.set(CKFG, k * f * g);
-    l.set(CC1, c1); l.set(CC2, c2);
-    if (fr.allpass) { l.set(CC1M, c1 * (one - c2)); l.set(CC2M, one - c2 * c2); }
-    else { l.set(CC1M, one); l.set(CC2M, splat(0.f)); }
+    l.set(B, inv); l.set(B + 1, cs * inv); l.set(B + 2, k * inv); l.set(B + 3, k * f); l.set(B + 4, k); l.set(B + 5, k * f * g);
+    l.set(B + 6, c1); l.set(B + 7, c2);
+    if (fr.allpass) { l.set(B + 8, c1 * (one - c2)); l.set(B + 9, one - c2 * c2); }
+    else { l.set(B + 8, one); l.set(B + 9, splat(0.f)); }
 }
 
 // The sections' coefficients (both alike for type 0), and one section's step: the fork's directRun
@@ -502,8 +521,8 @@ PV_INLINE vf pole(const Coefs& q, vf x, vf& low1, vf& low2) {
     return low;
 }
 
-// The one-pole's coefficients for the lane's cutoffs (the fork's designOnePole)
-PV_INLINE void designPole(const Lane& l, const FilterRate& fr) {
+// The one-pole's coefficients for the lane's cutoffs into the fields from B (the fork's designOnePole)
+template <int B = CINV> PV_INLINE void designPole(const Lane& l, const FilterRate& fr) {
     const vf one = splat(1.f);
     static const float topCents = float(1200.0 * std::log2(laws::kTopHz / 440.0));
     const vf cents = vmin(l(C0) + l(CENTS), splat(topCents));
@@ -523,10 +542,21 @@ PV_INLINE void designPole(const Lane& l, const FilterRate& fr) {
         g = c1 = c2 = splat(0.f);
     }
     vf inv = one / (one - (one - f) * g);
-    l.set(CK, (one - f) * inv); l.set(CKF, f * inv);
-    l.set(CC1, c1); l.set(CC2, c2);
-    if (fr.allpass) { l.set(CC1M, c1 * (one - c2)); l.set(CC2M, one - c2 * c2); }
-    else { l.set(CC1M, one); l.set(CC2M, splat(0.f)); }
+    l.set(B + 4, (one - f) * inv); l.set(B + 3, f * inv);
+    l.set(B + 6, c1); l.set(B + 7, c2);
+    if (fr.allpass) { l.set(B + 8, c1 * (one - c2)); l.set(B + 9, one - c2 * c2); }
+    else { l.set(B + 8, one); l.set(B + 9, splat(0.f)); }
+}
+
+// A lane's sections for its plan (the cutoff moved)
+PV_INLINE void designLane(Filter f, const Lane& l, const FilterRate& fr) {
+    switch (f) {
+    case Filter::PoleHigh: designPole(l, fr); break;
+    case Filter::LowLow: design(l, fr); design<HINV, 0, true>(l, fr); break;
+    case Filter::LowPole: design<CINV, 1, false, true>(l, fr); designPole<HINV>(l, fr); break;
+    case Filter::Band: design<CINV, 1, true>(l, fr); design<HINV, -1, true>(l, fr); break;
+    default: design(l, fr); break;  // LowPass2, LowHigh (its high-pass fixed), HighHigh, High
+    }
 }
 
 // The fixed high-pass section of types 4 and 5 for one voice (the fork's design at damping 1, in the
@@ -638,11 +668,15 @@ struct Kernel {
     }
     // the two sections in series, each channel's states in locals, then into the mix with its gain
     // ramp (a mono voice's one channel to both sides)
-    // K: the filter (1 type 0, 2 type 4, 3 type 5)
+    // K: the filter (int(Filter): 1 type 0, 2 types 4 and 10 (8), 3 type 5, 4 type 1, 5 types 2 and 3, 6 type 6, 7 type 7)
     template <int K> static PV_INLINE vf chain(const Coefs& q, const Coefs& h, vf x, vf& a1, vf& a2, vf& a3, vf& a4, vf& b1, vf& b2, vf& b3, vf& b4) {
         if constexpr (K == 1) return section(q, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
-        else if constexpr (K == 2) return highSection(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
-        else return highSection(h, pole(q, x, a1, a2), b1, b2, b3, b4);
+        else if constexpr (K == 2 || K == 8) return highSection(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
+        else if constexpr (K == 3) return highSection(h, pole(q, x, a1, a2), b1, b2, b3, b4);
+        else if constexpr (K == 4) return section(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
+        else if constexpr (K == 5) return pole(h, section(q, x, a1, a2, a3, a4), b1, b2);
+        else if constexpr (K == 6) return highSection(q, highSection(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
+        else return highSection(q, x, a1, a2, a3, a4);
     }
     // the element EQ's biquad (transposed direct form II): y = b0 x + s1; s1 = b1 x - a1 y + s2; s2 = b2 x - a2 y
     struct Eq { vf b0, b1, b2, a1, a2; };
@@ -654,7 +688,7 @@ struct Kernel {
     }
     template <int C, int K, bool R, bool E> static PCM_STAGE void filterLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
         const Lane l{&p, o};
-        const Coefs q(l), h(l, K == 1 ? CINV : HINV);
+        const Coefs q(l), h(l, K == 1 || (K >= 6 && K != 8) ? CINV : HINV);
         const Buses bs = busesOf<R>(l);
         Eq eq{};
         if constexpr (E) eq = {l(EB0), l(EB1), l(EB2), l(EA1), l(EA2)};
@@ -790,11 +824,12 @@ namespace {
 using RunFn = void (*)(Pool&, const Tables&, Scratch&, int, vf*, vf*);
 template <int C, class I, int K, bool R> void runOf(Pool& p, const Tables& t, Scratch& s, int n, vf* l, vf* r) { Kernel::run<C, I, K, R>(p, t, s, n, l, r); }
 // [routed][channels - 1][interp][filter]
-#define PCM_KERNELS(R) \
-    {{{runOf<1, Herm, 0, R>, runOf<1, Herm, 1, R>, runOf<1, Herm, 2, R>, runOf<1, Herm, 3, R>}, {runOf<1, Sinc, 0, R>, runOf<1, Sinc, 1, R>, runOf<1, Sinc, 2, R>, runOf<1, Sinc, 3, R>}}, \
-     {{runOf<2, Herm, 0, R>, runOf<2, Herm, 1, R>, runOf<2, Herm, 2, R>, runOf<2, Herm, 3, R>}, {runOf<2, Sinc, 0, R>, runOf<2, Sinc, 1, R>, runOf<2, Sinc, 2, R>, runOf<2, Sinc, 3, R>}}}
+#define PCM_FILTERS(C, I, R) {runOf<C, I, 0, R>, runOf<C, I, 1, R>, runOf<C, I, 2, R>, runOf<C, I, 3, R>, runOf<C, I, 4, R>, runOf<C, I, 5, R>, \
+                             runOf<C, I, 6, R>, runOf<C, I, 7, R>, runOf<C, I, 8, R>}
+#define PCM_KERNELS(R) {{PCM_FILTERS(1, Herm, R), PCM_FILTERS(1, Sinc, R)}, {PCM_FILTERS(2, Herm, R), PCM_FILTERS(2, Sinc, R)}}
 const RunFn kKernels[2][2][2][kFilters] = {PCM_KERNELS(false), PCM_KERNELS(true)};
 #undef PCM_KERNELS
+#undef PCM_FILTERS
 }  // namespace
 
 Core::Core() {
@@ -1022,6 +1057,8 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     const int16_t bases[6] = {e[FilCutoff], resonance, e[AmpLevel], 0, 0, e[FilHpfCutoff]};
     for (int k = 0; k < 6; ++k) { v.base[k] = bases[k]; v.moved[k] = 0; }
     p.f[DAMP][i] = laws::filterDamping(resonance);
+    p.f[OFS][i] = laws::filterOffsetCents(e[FilType], scaled, resonance);
+    p.f[TOPC][i] = laws::sectionTopCents(e[FilType], resonance);
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][i] = 0;
     v.hpfCents = laws::hpfKeyCents(e[FilHpfKeyFollow], key);
     if (s.plan[ri].filter == Filter::LowHigh || s.plan[ri].filter == Filter::PoleHigh)
@@ -1400,6 +1437,10 @@ PV_NOINLINE float Core::partLfo(Pool& p, uint32_t i) {
     if (p.plan.filter != Filter::Thru && (v.plfo & (1 << laws::LfoCutoff | 1 << laws::LfoResonance))) {
         p.f[C0][i] = laws::cutoffCents(at(laws::BoxCutoff, x[laws::LfoCutoff], 1023)) + v.keyCents;
         p.f[DAMP][i] = laws::filterDamping(int32_t(at(laws::BoxResonance, x[laws::LfoResonance], 127)));
+        if (p.plan.filter == Filter::LowPole || p.plan.filter == Filter::Band) {
+            p.f[OFS][i] = laws::filterOffsetCents(v.element[FilType], at(laws::BoxCutoff, x[laws::LfoCutoff], 1023), int32_t(at(laws::BoxResonance, x[laws::LfoResonance], 127)));
+            p.f[TOPC][i] = laws::sectionTopCents(v.element[FilType], int32_t(at(laws::BoxResonance, x[laws::LfoResonance], 127)));
+        }
         v.filterMoves = true;
     }
     if (v.plfo & 1 << laws::LfoLevel) v.level = v.levelRest * laws::levelGain(int32_t(at(laws::BoxLevel, x[laws::LfoLevel], 127)));
@@ -1480,6 +1521,10 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
                 if (p.plan.filter != Filter::Thru) {
                     p.f[C0][i] = laws::cutoffCents(float(at(laws::BoxCutoff, 1023))) + v.keyCents;
                     p.f[DAMP][i] = laws::filterDamping(at(laws::BoxResonance, 127));
+                    if (p.plan.filter == Filter::LowPole || p.plan.filter == Filter::Band) {
+                        p.f[OFS][i] = laws::filterOffsetCents(v.element[FilType], float(at(laws::BoxCutoff, 1023)), at(laws::BoxResonance, 127));
+                        p.f[TOPC][i] = laws::sectionTopCents(v.element[FilType], at(laws::BoxResonance, 127));
+                    }
                     v.filterMoves = true;
                     if (p.plan.filter == Filter::LowHigh || p.plan.filter == Filter::PoleHigh)
                         designHigh(p, i, laws::filterCutoffHz(at(laws::BoxHpf, 1023), v.hpfCents), rate_);
@@ -1571,7 +1616,7 @@ void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t fr
                 for (uint32_t o = 0; o < p.n; o += W) {
                     bool moved = false;
                     for (uint32_t j = o; j < o + W && j < p.n; ++j) { moved |= p.v[j].filterMoves; p.v[j].filterMoves = false; }
-                    if (moved) { if (p.plan.filter == Filter::PoleHigh) designPole(Lane{&p, int(o)}, rate_); else design(Lane{&p, int(o)}, rate_); }
+                    if (moved) designLane(p.plan.filter, Lane{&p, int(o)}, rate_);
                 }
             const int c = p.plan.channels == 2 ? 1 : 0;
             kKernels[routed[&p - pool_]][c][interp_ == Interp::Sinc ? 1 : 0][int(p.plan.filter)](p, tables_, scratch_, int(n), accL, accR);
