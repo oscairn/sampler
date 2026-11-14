@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Sound format v0: the binary blob, its text form, validation and the coverage report.
+// Sound format v1 (v0 reads unchanged): the binary blob, its text form, validation, the expansion of
+// waveforms into regions and the coverage report (docs/sound-format.md is the normative text).
 //
 // Blob (little-endian):
-//   0  "OPCM"   4  u16 version (0)   6  u16 flags (0)   8  u32 size of the whole blob
+//   0  "OPCM"   4  u16 version (0, or 1 with waveforms)   6  u16 flags (0)   8  u32 size of the whole blob
 //   12 u32 CRC-32 (IEEE) of bytes 16..size
 //   16 u16 samples, u16 elements, u16 regions, u16 part parameters (kPartParamCount)
 //   24 part parameters: i16 each, in partparams.inc order
@@ -12,12 +13,14 @@
 //      regions, 32 bytes each: u8 lokey hikey lovel hivel root, i8 transpose, u8 loop, u8 0,
 //                u16 element, u16 sample, i32 tune (1/100 cent), i32 level (1/100 dB),
 //                i16 pan (1/100), u16 0, u32 loop start, u32 loop end (exclusive)
+//      version 1: u16 W (0-32), then W waveform ids of 32 bytes
 // Parameter indices are stable: params.inc and partparams.inc only ever grow at their ends.
 //
 // Text form (tests and hand-written sounds), one item per line, "name=value" tokens:
-//   oscairn-pcm-sound/0
+//   oscairn-pcm-sound/0                               (or /1)
 //   part bend_up=12                                   (values that differ from the default)
 //   sample <reference>                                (numbered in order from 0)
+//   waveform <64 hex digits>                          (version 1; numbered in order from 0)
 //   element ampeg_attack=30 fil_type=0 ...            (numbered in order from 0)
 //   region key=0-33 vel=1-127 root=30 tune=9.38 level=-7.12 pan=-100 element=0 sample=0 loop=544-93904
 #include "pcore.h"
@@ -51,8 +54,19 @@ uint32_t crc32(const uint8_t* p, size_t n) {
     return ~c;
 }
 void err(char* e, size_t cap, const char* fmt, long a = 0, long b = 0) { if (e && cap) std::snprintf(e, cap, fmt, a, b); }
-// A sample reference: a relative path of printable characters, no "..", no leading '/'.
-bool goodRef(const char* s, size_t n) {
+// 64 lowercase hex digits: the 32 bytes of an id into out (when not null).
+bool hexId(const char* s, uint8_t* out) {
+    for (int k = 0; k < 64; ++k) {
+        const char c = s[k];
+        const int x = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+        if (x < 0) return false;
+        if (out) out[k / 2] = uint8_t(k % 2 ? out[k / 2] | x : x << 4);
+    }
+    return true;
+}
+// A sample reference: a relative path of printable characters, no "..", no leading '/'; in version 1 "sample:<id>".
+bool goodRef(const char* s, size_t n, bool v1 = false) {
+    if (v1) return n == 71 && !std::memcmp(s, "sample:", 7) && hexId(s + 7, nullptr);
     if (!n || n > kMaxRefBytes || s[0] == '/') return false;
     for (size_t i = 0; i < n; ++i) if ((unsigned char)s[i] < 0x20 || s[i] == 0x7f || s[i] == '\\') return false;
     for (size_t i = 0; i + 1 < n; ++i) if (s[i] == '.' && s[i + 1] == '.' && (i == 0 || s[i - 1] == '/') && (i + 2 == n || s[i + 2] == '/')) return false;
@@ -71,6 +85,21 @@ const char* checkRegion(const Region& r, uint32_t elements, uint32_t samples) {
     if (r.loop && r.loopStart >= r.loopEnd) return "loop";
     if (!r.loop && (r.loopStart || r.loopEnd)) return "loop points without a loop";
     return nullptr;
+}
+// What both readers refuse beyond each value's range: an element naming a waveform the sound lacks, or naming one and
+// having regions too, or with inverted limits; a sound with nothing to play.
+const char* checkSound(const SoundData& d) {
+    if (!d.elements) return "a sound needs an element";
+    bool plays = d.regions > 0;
+    for (uint32_t e = 0; e < d.elements; ++e) {
+        const int16_t* v = d.element[e].v;
+        if (!v[Waveform]) continue;
+        if (uint32_t(v[Waveform]) > d.waveforms) return "an element names a waveform the sound does not list";
+        for (uint32_t i = 0; i < d.regions; ++i) if (d.region[i].element == e) return "an element has a waveform and regions";
+        if (v[KeyLo] > v[KeyHi] || v[VelLo] > v[VelHi]) return "an element with a waveform has inverted key or velocity limits";
+        plays = true;
+    }
+    return plays ? nullptr : "a sound needs a region or an element with a waveform";
 }
 // little-endian writer that only counts past the end
 struct W8 {
@@ -95,10 +124,12 @@ SoundData::SoundData() {
     for (int i = 0; i < kPartParamCount; ++i) part[i] = kPartParamDefs[i].def;
     std::memset(refLength, 0, sizeof refLength);
     std::memset(ref, 0, sizeof ref);
+    std::memset(waveform, 0, sizeof waveform);
 }
 
 bool operator==(const SoundData& a, const SoundData& b) {
-    if (a.samples != b.samples || a.elements != b.elements || a.regions != b.regions) return false;
+    if (a.samples != b.samples || a.elements != b.elements || a.regions != b.regions || a.waveforms != b.waveforms) return false;
+    if (std::memcmp(a.waveform, b.waveform, sizeof a.waveform[0] * a.waveforms)) return false;
     if (std::memcmp(a.part, b.part, sizeof a.part)) return false;
     for (uint32_t i = 0; i < a.samples; ++i) if (a.refLength[i] != b.refLength[i] || std::memcmp(a.ref[i], b.ref[i], a.refLength[i])) return false;
     for (uint32_t i = 0; i < a.elements; ++i) if (std::memcmp(a.element[i].v, b.element[i].v, sizeof a.element[i].v)) return false;
@@ -106,7 +137,7 @@ bool operator==(const SoundData& a, const SoundData& b) {
         const Region &x = a.region[i], &y = b.region[i];
         if (x.loKey != y.loKey || x.hiKey != y.hiKey || x.loVel != y.loVel || x.hiVel != y.hiVel || x.root != y.root || x.transpose != y.transpose
             || x.element != y.element || x.sample != y.sample || x.tune != y.tune || x.level != y.level || x.pan != y.pan || x.loop != y.loop
-            || x.loopStart != y.loopStart || x.loopEnd != y.loopEnd) return false;
+            || x.loopStart != y.loopStart || x.loopEnd != y.loopEnd || x.start != y.start || x.end != y.end) return false;
     }
     return true;
 }
@@ -116,7 +147,7 @@ bool operator==(const SoundData& a, const SoundData& b) {
 size_t writeBlob(const SoundData& d, uint8_t* out, size_t cap) {
     W8 w{out, cap};
     w.u8('O'); w.u8('P'); w.u8('C'); w.u8('M');
-    w.u16(kFormatVersion); w.u16(0); w.u32(0); w.u32(0);
+    w.u16(d.waveforms ? 1 : 0); w.u16(0); w.u32(0); w.u32(0);  // version 0 when it has no waveform: v0 sounds keep their bytes
     w.u16(d.samples); w.u16(d.elements); w.u16(d.regions); w.u16(kPartParamCount);
     for (int i = 0; i < kPartParamCount; ++i) w.u16(uint16_t(d.part[i]));
     for (uint32_t i = 0; i < d.samples; ++i) { w.u8(d.refLength[i]); for (int k = 0; k < d.refLength[i]; ++k) w.u8(uint8_t(d.ref[i][k])); }
@@ -132,6 +163,7 @@ size_t writeBlob(const SoundData& d, uint8_t* out, size_t cap) {
         w.u16(r.element); w.u16(r.sample); w.u32(uint32_t(r.tune)); w.u32(uint32_t(r.level)); w.u16(uint16_t(r.pan)); w.u16(0);
         w.u32(r.loopStart); w.u32(r.loopEnd);
     }
+    if (d.waveforms) { w.u16(d.waveforms); for (uint32_t i = 0; i < d.waveforms; ++i) for (int k = 0; k < 32; ++k) w.u8(d.waveform[i][k]); }
     const size_t n = w.n;
     if (n <= cap) {
         W8 h{out + 8, 8}; h.u32(uint32_t(n)); h.u32(crc32(out + 16, n - 16));
@@ -144,14 +176,14 @@ bool readBlob(const uint8_t* blob, size_t size, SoundData& d, char* e, size_t ca
     if (!blob || size < 24 || std::memcmp(blob, "OPCM", 4)) return err(e, cap, "not a sound blob"), false;
     R8 r{blob, size, 4};
     const uint32_t version = r.u16(), flags = r.u16(), total = r.u32(), crc = r.u32();
-    if (version != kFormatVersion) return err(e, cap, "sound format version %ld, this engine reads %ld", long(version), long(kFormatVersion)), false;
+    if (version > kFormatVersion) return err(e, cap, "sound format version %ld, this engine reads %ld", long(version), long(kFormatVersion)), false;
     if (flags) return err(e, cap, "unknown flags %ld", long(flags)), false;
     if (total != size) return err(e, cap, "blob size %ld, header says %ld", long(size), long(total)), false;
     if (crc32(blob + 16, size - 16) != crc) return err(e, cap, "checksum mismatch"), false;
     d.samples = r.u16(); d.elements = r.u16(); d.regions = r.u16();
     const uint32_t parts = r.u16();
     if (d.samples > kMaxSamples || d.elements > kMaxElements || d.regions > kMaxRegions) return err(e, cap, "too many samples, elements or regions"), false;
-    if (!d.elements || !d.regions || !d.samples) return err(e, cap, "a sound needs a sample, an element and a region"), false;
+    if (version == 0 && (!d.elements || !d.regions || !d.samples)) return err(e, cap, "a sound needs a sample, an element and a region"), false;
     // a blob written before later part parameters were added has fewer: those keep their defaults
     if (parts > kPartParamCount) return err(e, cap, "%ld part parameters, this engine knows %ld", long(parts), long(kPartParamCount)), false;
     for (int i = 0; i < kPartParamCount; ++i) {
@@ -164,7 +196,7 @@ bool readBlob(const uint8_t* blob, size_t size, SoundData& d, char* e, size_t ca
         const uint32_t n = r.u8();
         for (uint32_t k = 0; k < n; ++k) d.ref[i][k] = char(r.u8());
         d.ref[i][n] = 0; d.refLength[i] = uint8_t(n);
-        if (r.bad || !goodRef(d.ref[i], n)) return err(e, cap, "sample %ld: bad reference", long(i)), false;
+        if (r.bad || !goodRef(d.ref[i], n, version == 1)) return err(e, cap, "sample %ld: bad reference", long(i)), false;
     }
     for (uint32_t el = 0; el < d.elements; ++el) {
         const uint32_t n = r.u16();
@@ -189,7 +221,14 @@ bool readBlob(const uint8_t* blob, size_t size, SoundData& d, char* e, size_t ca
         if (z1 || z2) why = "reserved bytes";
         if (why) { if (e && cap) std::snprintf(e, cap, "region %u: bad %s", i, why); return false; }
     }
+    if (version == 1) {
+        d.waveforms = r.u16();
+        if (d.waveforms > kMaxWaveforms) return err(e, cap, "too many waveforms"), false;
+        for (uint32_t i = 0; i < d.waveforms; ++i) for (int k = 0; k < 32; ++k) d.waveform[i][k] = uint8_t(r.u8());
+        if (r.bad) return err(e, cap, "truncated"), false;
+    }
     if (r.at != size) return err(e, cap, "%ld trailing bytes", long(size - r.at)), false;
+    if (const char* why = checkSound(d)) { if (e && cap) std::snprintf(e, cap, "%s", why); return false; }
     return true;
 }
 
@@ -249,7 +288,7 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
     if (!text) return err(e, cap, "line 1: no sound"), false;
     const char* p = text;
     int line = 0;
-    bool header = false;
+    bool header = false, v1 = false;
     constexpr int kMaxTokens = 2 * kParamCount + 8;
     Tok tok[kMaxTokens];
     while (*p) {
@@ -274,15 +313,23 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
         auto bad = [&](const char* what, Tok t) { if (e && cap) std::snprintf(e, cap, "line %d: %s '%.*s'", line, what, int(std::min<size_t>(t.n, 200)), t.p); return false; };
         const Tok kind = tok[0];
         if (!header) {
-            if (!kind.is("oscairn-pcm-sound/0") || nt != 1) return bad("expected 'oscairn-pcm-sound/0', not", kind);
+            if (!(kind.is("oscairn-pcm-sound/0") || kind.is("oscairn-pcm-sound/1")) || nt != 1) return bad("expected 'oscairn-pcm-sound/0' or '/1', not", kind);
             header = true;
+            v1 = kind.is("oscairn-pcm-sound/1");
+            continue;
+        }
+        if (kind.is("waveform") && v1) {
+            if (d.waveforms == kMaxWaveforms) return bad("too many waveforms at", kind);
+            if (nt != 2 || tok[1].n != 64) return bad("expected 64 hex digits after", kind);
+            if (!hexId(tok[1].p, d.waveform[d.waveforms])) return bad("bad waveform id", tok[1]);
+            ++d.waveforms;
             continue;
         }
         if (kind.is("sample")) {
             if (d.samples == kMaxSamples) return bad("too many samples at", kind);
             if (nt < 2) return bad("no reference after", kind);
             const Tok ref{tok[1].p, size_t(end - tok[1].p)};  // the rest of the line (a path may hold spaces)
-            if (!goodRef(ref.p, ref.n)) return bad("bad sample reference", ref);
+            if (!goodRef(ref.p, ref.n, v1)) return bad("bad sample reference", ref);
             std::memcpy(d.ref[d.samples], ref.p, ref.n); d.ref[d.samples][ref.n] = 0;
             d.refLength[d.samples++] = uint8_t(ref.n);
             (void)lineStart;
@@ -335,7 +382,8 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
         return bad("unknown line", kind);
     }
     if (!header) return err(e, cap, "line 1: expected 'oscairn-pcm-sound/0'"), false;
-    if (!d.samples || !d.elements || !d.regions) return err(e, cap, "line %ld: a sound needs a sample, an element and a region", line), false;
+    if (!v1 && (!d.samples || !d.elements || !d.regions)) return err(e, cap, "line %ld: a sound needs a sample, an element and a region", line), false;
+    if (const char* why = checkSound(d)) { if (e && cap) std::snprintf(e, cap, "line %d: %s", line, why); return false; }
     for (uint32_t i = 0; i < d.regions; ++i)
         if (const char* why = checkRegion(d.region[i], d.elements, d.samples)) {
             if (e && cap) std::snprintf(e, cap, "line %d: region %u: bad %s", line, i, why);
@@ -346,12 +394,17 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
 
 size_t writeText(const SoundData& d, char* out, size_t cap) {
     Out o{out, cap};
-    o.put("oscairn-pcm-sound/0\n");
+    o.put(d.waveforms ? "oscairn-pcm-sound/1\n" : "oscairn-pcm-sound/0\n");
     bool part = false;
     for (int i = 0; i < kPartParamCount; ++i)
         if (d.part[i] != kPartParamDefs[i].def) { o.put(part ? " " : "part "); o.put(kPartParamDefs[i].id); o.put("="); o.num(d.part[i]); part = true; }
     if (part) o.put("\n");
     for (uint32_t i = 0; i < d.samples; ++i) { o.put("sample "); o.put(d.ref[i], d.refLength[i]); o.put("\n"); }
+    for (uint32_t i = 0; i < d.waveforms; ++i) {
+        char h[66];
+        for (int k = 0; k < 32; ++k) std::snprintf(h + 2 * k, 3, "%02x", d.waveform[i][k]);
+        o.put("waveform "); o.put(h); o.put("\n");
+    }
     for (uint32_t e = 0; e < d.elements; ++e) {
         o.put("element");
         for (int i = 0; i < kParamCount; ++i)
@@ -374,12 +427,65 @@ size_t writeText(const SoundData& d, char* out, size_t cap) {
     return o.n;
 }
 
+// ---- expansion: each element's waveform into regions ----
+
+bool expand(const SoundData& in, const WaveformData* w, SoundData& d, char* e, size_t cap) {
+    d = in;
+    for (uint32_t el = 0; el < d.elements; ++el) {
+        const int16_t* v = d.element[el].v;
+        if (!v[Waveform]) continue;
+        const WaveformData& f = w[v[Waveform] - 1];
+        const int c = v[Coarse];
+        const int32_t fine = int32_t(v[Fine] * 100 / 64) * 100;  // s x 100 / 64 cents toward zero, in 1/100 cent
+        int lowest = 127, highest = 0;  // the waveform's ends: every bank there reaches key 0 (127)
+        for (uint32_t b = 0; b < f.count; ++b) { lowest = std::min<int>(lowest, f.banks[b].keyLo); highest = std::max<int>(highest, f.banks[b].keyHi); }
+        for (uint32_t b = 0; b < f.count; ++b) {
+            const KeyBank& k = f.banks[b];
+            // the reference picks the sample by key plus coarse tune: the bank serves keys lo - c..hi - c
+            const int lo = std::max({k.keyLo == lowest ? 0 : k.keyLo - c, 0, int(v[KeyLo])}), hi = std::min({k.keyHi == highest ? 127 : k.keyHi - c, 127, int(v[KeyHi])});
+            const int vlo = std::max<int>(k.velLo, v[VelLo]), vhi = std::min<int>(k.velHi, v[VelHi]);
+            if (lo > hi || vlo > vhi) continue;
+            if (d.regions == kMaxRegions) return err(e, cap, "the waveforms expand to more than %ld regions", long(kMaxRegions)), false;
+            if (k.sample >= f.sampleCount) return err(e, cap, "a key bank names a sample its waveform lacks"), false;
+            // its sample among the sound's references
+            const char* ref = f.samples[k.sample];
+            const size_t n = std::strlen(ref);
+            uint32_t s = 0;
+            while (s < d.samples && !(d.refLength[s] == n && !std::memcmp(d.ref[s], ref, n))) ++s;
+            if (s == d.samples) {
+                if (d.samples == kMaxSamples || !goodRef(ref, n)) return err(e, cap, "the waveforms use more than %ld samples", long(kMaxSamples)), false;
+                std::memcpy(d.ref[s], ref, n + 1); d.refLength[s] = uint8_t(n); ++d.samples;
+            }
+            Region g;
+            g.loKey = uint8_t(lo); g.hiKey = uint8_t(hi); g.loVel = uint8_t(vlo); g.hiVel = uint8_t(vhi);
+            g.root = k.root;  // the coarse tune joins the transpose: the same pitch as root - c, which may lie outside 0-127
+            const int t = k.transpose + c;
+            g.element = uint16_t(el); g.sample = uint16_t(s);
+            g.tune = k.tune + fine; g.level = k.level; g.pan = k.pan;
+            g.loop = k.loop; g.loopStart = k.loopStart; g.loopEnd = k.loopEnd; g.start = k.start; g.end = k.end;
+            if (t < -127 || t > 127 || checkRegion(g, d.elements, d.samples)) return err(e, cap, "element %ld: a key bank's tuning is out of range", long(el)), false;
+            g.transpose = int8_t(t);
+            d.region[d.regions++] = g;
+        }
+    }
+    return true;
+}
+
 // ---- coverage ----
 
 uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
     uint32_t n = 0;
     auto add = [&](uint16_t el, int16_t param, const char* why, bool part = false) { if (n < cap && out) out[n] = {el, param, why, part}; ++n; };
     if (d.part[PartMono]) add(0, PartMono, "mono part: element selection and legato are not built", true);
+    // a note starts at most kMaxLayers regions (overlapping key banks of a waveform each start one)
+    uint32_t most = 0;
+    for (int key = 0; key < 128 && most <= kMaxLayers; ++key)
+        for (int vel = 1; vel < 128; ++vel) {
+            uint32_t n = 0;
+            for (uint32_t i = 0; i < d.regions; ++i) { const Region& r = d.region[i]; n += key >= r.loKey && key <= r.hiKey && vel >= r.loVel && vel <= r.hiVel; }
+            most = std::max(most, n);
+        }
+    if (most > kMaxLayers) add(0, -1, "a note starts more regions than a note may (the rest do not sound)");
     if (d.part[PartPortamento]) add(0, PartPortamento, "portamento is not built", true);
     // controller boxes: the destinations, sources and curves measured (laws::boxDest, boxCurve, controlSource); the foot
     // switch, sequenced and envelope-follower sources are not built, channel pressure's map is not measured

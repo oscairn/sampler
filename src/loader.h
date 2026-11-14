@@ -33,6 +33,11 @@ struct Samples {
     Samples(const Samples&) = delete;
     ~Samples();
 };
+// A waveform reference "waveform:<64 hex digits>" to the path of its file (the host's resolve); false with a reason.
+using WaveformResolver = std::function<bool(const char* ref, std::string& path, std::string& error)>;
+// The region table `in` plays: each element's waveform read from its file (checked by samplepack, its id compared with
+// the reference) and expanded into regions (pcm::expand). False with a reason.
+bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver&, pcm::SoundData& out, std::string& error);
 // whole: every region decoded whole into memory, nothing streams (for comparisons: OSCAIRN_PCM_DECODE_WHOLE).
 std::shared_ptr<const Samples> loadSamples(const pcm::SoundData&, const SampleResolver&, bool whole, std::string& error);
 

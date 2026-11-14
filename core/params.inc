@@ -2,7 +2,7 @@
 // Provenance: the parameter list follows the reference's element and part parameters as listed in the
 // research repository's docs/params (from the instrument's published parameter list); the ids are the
 // sample-engine fork's oscairn_* opcode stems.
-// The element parameters a sound carries, in the reference's raw units (sound format v0).
+// The element parameters a sound carries, in the reference's raw units (sound format v0; v1 added the last seven).
 // X(enum, id, low, high, default): the id is what the text form and the converter use.
 // What the core reproduces for each is in docs/coverage.md; values it does not are reported by
 // pcm::notCovered().
@@ -160,3 +160,12 @@ X(FilResVelSens, "fil_res_velsens", -64, 63, 0)
 X(PitchVelSens, "pitch_velsens", -64, 63, 0)
 // random pitch depth (raw)
 X(PitchRandom, "pitch_random", 0, 127, 0)
+// sound format v1: the element's waveform (0 none, else 1 + its index in the sound's waveform ids), its key and
+// velocity limits, coarse tune (semitones) and fine tune (raw) as the expansion applies them (docs/sound-format.md)
+X(Waveform, "waveform", 0, 32, 0)
+X(KeyLo, "key_lo", 0, 127, 0)
+X(KeyHi, "key_hi", 0, 127, 127)
+X(VelLo, "vel_lo", 1, 127, 1)
+X(VelHi, "vel_hi", 1, 127, 127)
+X(Coarse, "coarse", -48, 48, 0)
+X(Fine, "fine", -64, 63, 0)

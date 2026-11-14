@@ -171,13 +171,14 @@ struct Library {
 };
 inline Library& library() { static Library l; return l; }
 
-// The host's oscairn.assets (draft 4): library "test" is g_assetDir; anything else is unknown; resolve_sample answers
-// from the store pack (g_store).
+// The host's oscairn.assets (draft 4): library "test" is g_assetDir, where a reference "waveform:<id>" is the file
+// <id>.owf; anything else is unknown; resolve_sample answers from the store pack (g_store).
 inline const oscairn_host_assets_draft4_t* testAssets() {
     static const oscairn_host_assets_draft4_t a = {
         [](const clap_host_t*, oscairn_asset_ref_t* ref, char* path, uint32_t cap, char* msg, uint32_t mcap) {
             if (std::strcmp(ref->library, "test")) { std::snprintf(msg, mcap, "no library '%s'", ref->library); return false; }
-            const std::string p = g_assetDir + "/" + ref->path;
+            const bool wf = !std::strncmp(ref->path, "waveform:", 9);  // installed waveforms: <id>.owf
+            const std::string p = g_assetDir + "/" + (wf ? std::string(ref->path + 9) + ".owf" : std::string(ref->path));
             if (FILE* f = std::fopen(p.c_str(), "rb")) std::fclose(f);
             else { std::snprintf(msg, mcap, "no file '%s'", ref->path); return false; }
             std::snprintf(path, cap, "%s", p.c_str());

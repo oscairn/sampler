@@ -5,7 +5,7 @@
 // stay in memory streams: the caller's I/O thread fills the Core's fixed pool of Streams, handed over
 // with atomics only (the Stream rules below).
 //
-// A sound (sound format v0, sound.cpp): a region table (key and velocity ranges, root, tuning,
+// A sound (sound format v1, sound.cpp): a region table (key and velocity ranges, root, tuning,
 // level, pan, sample reference, loop) over element parameter sets in the reference's raw units
 // (params.inc). The core applies the reference's measured laws to them (laws.cpp, carried over
 // from the sample-engine fork); what it does not cover is reported by notCovered(), never
@@ -39,9 +39,9 @@ extern const ParamDef kPartParamDefs[kPartParamCount];
 int findParam(const char* id, size_t length);      // -1 if none
 int findPartParam(const char* id, size_t length);  // -1 if none
 
-// ---- the sound (format v0) ---------------------------------------------------------------------
-constexpr uint16_t kFormatVersion = 0;
-constexpr uint32_t kMaxSamples = 1024, kMaxElements = 32, kMaxRegions = 1024, kMaxRefBytes = 255;
+// ---- the sound (format v1; v0 reads unchanged) ---------------------------------------------------
+constexpr uint16_t kFormatVersion = 1;
+constexpr uint32_t kMaxSamples = 1024, kMaxElements = 32, kMaxRegions = 1024, kMaxRefBytes = 255, kMaxWaveforms = 32;
 
 struct Element {
     int16_t v[kParamCount];
@@ -55,7 +55,9 @@ struct Region {
     int32_t level = 0;      // 1/100 dB (the region's own: a key bank's level)
     int16_t pan = 0;        // -10000..10000: the region's own pan, 1/100 of -100..100
     uint8_t loop = 0;       // 0: plays to the sample's end; 1: forward loop
-    uint32_t loopStart = 0, loopEnd = 0;  // frames, the end exclusive
+    uint32_t loopStart = 0, loopEnd = 0;  // frames of the sample, the end exclusive
+    uint32_t start = 0, end = 0;          // the sample's frames it plays, the end exclusive (0: the sample's end); not in
+                                          // the blob: a waveform's key bank gives them (expand())
 };
 // A sound as parsed: the caller's memory (about 330 KB).
 struct SoundData {
@@ -65,6 +67,8 @@ struct SoundData {
     Region region[kMaxRegions];
     uint8_t refLength[kMaxSamples];
     char ref[kMaxSamples][kMaxRefBytes + 1];  // abstract sample references, NUL-terminated
+    uint32_t waveforms = 0;
+    uint8_t waveform[kMaxWaveforms][32];      // the waveform ids its elements name (v1)
     SoundData();
 };
 // The binary form: "OPCM", version, sizes, a CRC-32, then the tables (sound.cpp). writeBlob and
@@ -75,6 +79,17 @@ bool readBlob(const uint8_t* blob, size_t size, SoundData& out, char* error, siz
 size_t writeText(const SoundData&, char* out, size_t cap);
 bool readText(const char* text, SoundData& out, char* error, size_t errorCap);
 bool operator==(const SoundData&, const SoundData&);
+// A waveform as the caller read it (its file: the samplepack library): its key banks in canonical order and its
+// samples' references ("sample:<64 hex digits>"), which a bank's `sample` indexes.
+struct KeyBank {
+    uint8_t keyLo, keyHi, velLo, velHi, root; int8_t transpose; uint8_t loop; uint16_t sample;
+    int32_t tune, level; int16_t pan; uint32_t start, end, loopStart, loopEnd;
+};
+struct WaveformData { const KeyBank* banks; uint32_t count; const char* const* samples; uint32_t sampleCount; };
+// The region table the sound plays (docs/sound-format.md, "Expansion"): `in` with a region for every key bank of each
+// element's waveform (waveforms[i] for the sound's waveform id i) appended, and the samples they use. False when it
+// exceeds a limit (error says which).
+bool expand(const SoundData& in, const WaveformData* waveforms, SoundData& out, char* error, size_t errorCap);
 // Every value the core does not reproduce by a measured law (all of them; fills at most cap).
 struct Gap { uint16_t element; int16_t param; const char* why; bool part = false; };  // part: param is a PartParam; param -1: about the region table
 uint32_t notCovered(const SoundData&, Gap* out, uint32_t cap);

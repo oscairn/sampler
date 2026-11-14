@@ -30,6 +30,81 @@ static const char* kPad =
     "region key=101-127 vel=1-127 root=108 tune=1.56 level=-7.12 element=0 sample=1 loop=58-6112\n";
 
 // ---- the sound format ----
+// Version 1: waveform ids, elements that name one (no samples or regions needed), and their refusals; the expansion.
+static void soundFormatV1() {
+    std::unique_ptr<SoundData> a(new SoundData), b(new SoundData), x(new SoundData);
+    char err[256] = {};
+    const std::string w0(64, 'a'), w1 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const std::string id = "sample:" + std::string(64, '5');
+    const std::string text = "oscairn-pcm-sound/1\nsample " + id + "\nwaveform " + w0 + "\nwaveform " + w1 +
+                             "\nelement waveform=2 key_lo=10 key_hi=20 vel_lo=5 vel_hi=6 coarse=-48 fine=63\nelement\nregion key=0-127 vel=1-127 root=60 element=1 sample=0\n";
+    CHECK(readText(text.c_str(), *a, err, sizeof err));
+    CHECK(a->waveforms == 2 && a->waveform[1][0] == 0x01 && a->waveform[1][31] == 0xef && a->element[0].v[Waveform] == 2 && a->element[0].v[Coarse] == -48);
+    std::vector<uint8_t> blob(writeBlob(*a, nullptr, 0));
+    writeBlob(*a, blob.data(), blob.size());
+    CHECK(blob[4] == 1 && readBlob(blob.data(), blob.size(), *b, err, sizeof err) && *a == *b);
+    std::vector<char> t(writeText(*a, nullptr, 0) + 1);
+    writeText(*a, t.data(), t.size());
+    const std::string want = text.substr(0, 20) + "sample " + id + "\nwaveform " + w0 + "\nwaveform " + w1 +
+                             "\nelement waveform=2 key_lo=10 key_hi=20 vel_lo=5 vel_hi=6 coarse=-48 fine=63\nelement\nregion key=0-127 vel=1-127 root=60 element=1 sample=0\n";
+    CHECK(want == t.data());
+    if (want != t.data()) std::printf("  wrote:\n%s", t.data());
+    int accepted = 0;
+    for (size_t i = 0; i < blob.size(); ++i) { std::vector<uint8_t> y = blob; y[i] ^= 0x41; accepted += readBlob(y.data(), y.size(), *x, err, sizeof err); }
+    for (size_t n = 0; n < blob.size(); ++n) accepted += readBlob(blob.data(), n, *x, err, sizeof err);
+    CHECK(accepted == 0);
+    // every element on a waveform: no sample, no region
+    const std::string bare = "oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1\n";
+    CHECK(readText(bare.c_str(), *a, err, sizeof err) && a->samples == 0 && a->regions == 0);
+    blob.assign(writeBlob(*a, nullptr, 0), 0);
+    writeBlob(*a, blob.data(), blob.size());
+    CHECK(readBlob(blob.data(), blob.size(), *b, err, sizeof err) && *a == *b);
+    const std::string refused[][2] = {
+        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nsample x.flac\nelement waveform=1\n", "line 3"},       // a path in v1
+        {"oscairn-pcm-sound/1\nsample " + id + "\nwaveform " + w0 + "\nelement waveform=1\nregion element=0 sample=0\n", "waveform and regions"},
+        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1 key_lo=61 key_hi=60\n", "inverted"},
+        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1 vel_lo=61 vel_hi=60\n", "inverted"},
+        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=2\n", "does not list"},
+        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement\n", "needs a region"},
+        {"oscairn-pcm-sound/1\nwaveform " + w0.substr(1) + "g\nelement waveform=1\n", "line 2"},
+        {"oscairn-pcm-sound/0\nwaveform " + w0 + "\nelement waveform=1\n", "line 2"},                        // not in v0
+        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1 coarse=49\n", "line 3"},
+    };
+    for (auto& r : refused) { CHECK(!readText(r[0].c_str(), *x, err, sizeof err)); if (!std::strstr(err, r[1].c_str())) { ++failures; std::printf("  error '%s' lacks '%s'\n", err, r[1].c_str()); } }
+    // the blob refuses the same: an element with a waveform and a region
+    CHECK(readText(text.c_str(), *a, err, sizeof err));
+    a->region[0].element = 0;
+    blob.assign(writeBlob(*a, nullptr, 0), 0);
+    writeBlob(*a, blob.data(), blob.size());
+    CHECK(!readBlob(blob.data(), blob.size(), *b, err, sizeof err) && std::strstr(err, "waveform and regions"));
+
+    // expansion: banks at the waveform's ends reach key 0 and 127 (before the element's limits); coarse moves the key
+    // map and joins the transpose; fine is added toward zero; empty ranges give nothing; direct samples stay first
+    KeyBank kb[3] = {{20, 40, 1, 127, 30, -2, 0, 0, 500, -100, 10, 0, 0, 0, 0},
+                     {41, 60, 1, 63, 50, 0, 1, 1, 0, 0, 0, 7, 9000, 100, 8000},
+                     {41, 60, 64, 127, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+    const char* refs[2] = {"sample:1111111111111111111111111111111111111111111111111111111111111111", id.c_str()};
+    WaveformData wd[2] = {{kb, 3, refs, 2}, {kb, 1, refs, 2}};
+    CHECK(readText(text.c_str(), *a, err, sizeof err));
+    a->element[0].v[KeyLo] = 0; a->element[0].v[KeyHi] = 127; a->element[0].v[VelLo] = 1; a->element[0].v[VelHi] = 50;
+    a->element[0].v[Coarse] = 5; a->element[0].v[Fine] = -1;
+    a->element[0].v[Waveform] = 1;
+    CHECK(expand(*a, wd, *b, err, sizeof err));
+    CHECK(b->regions == 3 && b->samples == 2 && !std::strcmp(b->ref[1], refs[0]));
+    const Region &r1 = b->region[1], &r2 = b->region[2];
+    CHECK(r1.element == 0 && r1.loKey == 0 && r1.hiKey == 35 && r1.root == 30 && r1.transpose == 3 && r1.tune == 500 - 100 && r1.level == -100 && r1.pan == 10 && r1.sample == 1);
+    CHECK(r2.loKey == 36 && r2.hiKey == 127 && r2.hiVel == 50 && r2.loop == 1 && r2.loopStart == 100 && r2.loopEnd == 8000 && r2.start == 7 && r2.end == 9000 && r2.sample == 0);
+    a->element[0].v[KeyHi] = 30; a->element[0].v[Fine] = 64 - 1;  // 98.4375 cents: 98
+    CHECK(expand(*a, wd, *b, err, sizeof err) && b->regions == 2 && b->region[1].hiKey == 30 && b->region[1].tune == 500 + 9800);
+    // more than 1,024 regions
+    std::vector<KeyBank> many(1025, kb[2]);
+    for (uint32_t i = 0; i < 1025; ++i) many[i].velLo = many[i].velHi = uint8_t(1 + i % 127);
+    WaveformData big{many.data(), 1025, refs, 2};
+    a->element[0].v[VelHi] = 127; a->element[0].v[KeyHi] = 127;
+    a->regions = 0; a->element[1].v[Waveform] = 1;  // both elements on it: 2,050 regions
+    CHECK(!expand(*a, &big, *b, err, sizeof err) && std::strstr(err, "1024"));
+}
+
 static void soundFormat() {
     std::unique_ptr<SoundData> a(new SoundData), b(new SoundData), c(new SoundData);
     char err[256] = {};
@@ -79,7 +154,7 @@ static void soundFormat() {
         CHECK(*c == *a);
     }
     // a later version is refused with a reason
-    std::vector<uint8_t> v = blob; v[4] = 1;
+    std::vector<uint8_t> v = blob; v[4] = 2;
     CHECK(!readBlob(v.data(), v.size(), *c, err, sizeof err) && std::strstr(err, "version"));
     // text errors name their line
     const char* bad[][2] = {
@@ -94,6 +169,7 @@ static void soundFormat() {
         {"oscairn-pcm-sound/0\nsample x\nelement\n", "region"},
     };
     for (auto& b2 : bad) { CHECK(!readText(b2[0], *c, err, sizeof err)); if (!std::strstr(err, b2[1])) { ++failures; std::printf("  error '%s' lacks '%s'\n", err, b2[1]); } }
+    soundFormatV1();
 }
 
 // ---- coverage ----

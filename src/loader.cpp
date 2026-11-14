@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <tuple>
@@ -32,7 +33,48 @@ void hintFrames(const Record& r, uint32_t from, uint32_t count) {
     willNeed(*r.pack, uint64_t(frames - r.pack->data) + at(b0), at(b1) - at(b0));
 }
 
+std::string hex(const uint8_t* id) {
+    std::string h(64, '0');
+    for (int i = 0; i < 32; ++i) std::snprintf(&h[2 * i], 3, "%02x", id[i]);
+    return h;
+}
+
 }  // namespace
+
+bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver& resolve, pcm::SoundData& out, std::string& error) {
+    struct Read { std::vector<pcm::KeyBank> banks; std::vector<std::string> refs; std::vector<const char*> ptrs; };
+    std::vector<Read> read(in.waveforms);
+    std::vector<pcm::WaveformData> w(in.waveforms);
+    for (uint32_t i = 0; i < in.waveforms; ++i) {
+        const std::string ref = "waveform:" + hex(in.waveform[i]);
+        std::string path;
+        if (!resolve(ref.c_str(), path, error)) { error = ref + ": " + error; return false; }
+        std::vector<uint8_t> file(SP_WAVEFORM_MAX_BYTES + 1);
+        size_t len = 0;
+        if (FILE* f = std::fopen(path.c_str(), "rb")) { len = std::fread(file.data(), 1, file.size(), f); std::fclose(f); }
+        else { error = ref + ": cannot open " + path; return false; }
+        size_t samples = 0, banks = 0;
+        uint8_t id[SP_SAMPLE_ID_BYTES];
+        if (sp_status st = sp_waveform_check(file.data(), len, &samples, &banks)) { error = ref + ": not a valid waveform (samplepack status " + std::to_string(int(st)) + ")"; return false; }
+        if (sp_waveform_id(file.data(), len, id) || std::memcmp(id, in.waveform[i], sizeof id)) { error = ref + ": the file holds another waveform"; return false; }
+        Read& r = read[i];
+        for (size_t k = 0; k < samples; ++k) {
+            sp_waveform_sample(file.data(), len, k, id);
+            r.refs.push_back("sample:" + hex(id));
+        }
+        for (const auto& s : r.refs) r.ptrs.push_back(s.c_str());
+        for (size_t k = 0; k < banks; ++k) {
+            sp_key_bank b;
+            sp_waveform_bank(file.data(), len, k, &b);
+            r.banks.push_back({b.key_lo, b.key_hi, b.vel_lo, b.vel_hi, b.root, b.transpose, b.loop_mode, b.sample,
+                               b.tune, b.level, b.pan, b.start, b.end, b.loop_start, b.loop_end});
+        }
+        w[i] = {r.banks.data(), uint32_t(banks), r.ptrs.data(), uint32_t(samples)};
+    }
+    char why[256] = {};
+    if (!pcm::expand(in, w.data(), out, why, sizeof why)) { error = why; return false; }
+    return true;
+}
 
 Samples::~Samples() {
     auto hold = holdStreams();  // the I/O thread is between units: none reads these any more

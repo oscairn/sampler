@@ -6,7 +6,8 @@
 // (oscairn-clap/sound-contexts-plugin.hpp and voice-budget-plugin.hpp); what is written here is
 // what is specific to this plugin.
 //
-// A sound is a sound-format-v0 blob (core/sound.cpp). A sample reference is "sample:<id>", which the host's
+// A sound is a sound-format-v1 blob (core/sound.cpp); its waveforms ("waveform:<id>") resolve through the host's
+// resolve to files, expanded into regions when the sound is prepared. A sample reference is "sample:<id>", which the host's
 // oscairn.assets resolve_sample (draft 4) turns into a record of a pack, or a path relative to a base asset reference
 // (a library and a folder in it) naming a one-record pack file. The loader (loader.h) reads what the core needs from
 // the records when the sound is prepared or loaded; the state stores the blob and the base, never a local path.
@@ -137,7 +138,18 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!assets->resolve(host, &r, local, sizeof local, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
         return onlyRecord(local, out, error);
     }
-    // A sound from its blob and base: parse and validate, resolve every sample and load what the core needs, compile.
+    // A reference "waveform:<id>" to its installed file, through resolve.
+    bool resolveWaveform(const char* ref, const std::string& library, std::string& out, std::string& error) {
+        char local[4096] = {}, msg[256] = {};
+        oscairn_asset_ref_t r{};
+        std::snprintf(r.library, sizeof r.library, "%s", library.c_str());
+        std::snprintf(r.path, sizeof r.path, "%s", ref);
+        std::snprintf(r.sha256, sizeof r.sha256, "%s", ref + 9);
+        if (!assets->resolve(host, &r, local, sizeof local, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
+        out = local;
+        return true;
+    }
+    // A sound from its blob and base: parse and validate, expand its waveforms, resolve every sample and load what the core needs, compile.
     std::shared_ptr<const Sound> buildSound(std::vector<uint8_t> blob, const std::string& library, const std::string& path, std::string& error) {
         auto s = std::make_shared<Sound>();
         s->data.reset(new pcm::SoundData);
@@ -145,10 +157,15 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!pcm::readBlob(blob.data(), blob.size(), *s->data, why, sizeof why)) { error = why; return nullptr; }
         s->blob = std::move(blob); s->library = library; s->path = path;
         if (!assets || !assets->resolve) { error = "the host offers no oscairn.assets to resolve samples"; return nullptr; }
-        s->samples = loadSamples(*s->data, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, decodeWhole, error);
+        if (s->data->waveforms) {
+            s->expanded.reset(new pcm::SoundData);
+            if (!expandWaveforms(*s->data, [&](const char* ref, std::string& local, std::string& e) { return resolveWaveform(ref, library, local, e); }, *s->expanded, error)) return nullptr;
+        }
+        const pcm::SoundData& play = s->expanded ? *s->expanded : *s->data;
+        s->samples = loadSamples(play, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, decodeWhole, error);
         if (!s->samples) return nullptr;
         s->compiled.reset(new pcm::Compiled);
-        if (!pcm::compile(*s->data, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
+        if (!pcm::compile(play, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
         return s;
     }
     // Decoded audio the prepared sounds hold.

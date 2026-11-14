@@ -61,7 +61,7 @@ struct Cell {
     void set(float x) { v.store(x, std::memory_order_relaxed); }
 };
 
-// A sound as the shell holds it: its blob (sound format v0), where its sample paths resolve from (a
+// A sound as the shell holds it: its blob (sound format v1), where its sample paths resolve from (a
 // base asset reference), the parsed form, its samples as loaded from packs and the compiled sound.
 // Immutable once built; shared by the patches and the engine's staged copies. The main thread builds
 // and frees it.
@@ -69,6 +69,7 @@ struct Sound {
     std::vector<uint8_t> blob;
     std::string library, path;                         // the base: a sample path is <library>/<path>/<reference>
     std::unique_ptr<pcm::SoundData> data;
+    std::unique_ptr<pcm::SoundData> expanded;          // with its waveforms expanded into regions (none: data plays)
     std::shared_ptr<const Samples> samples;
     std::unique_ptr<pcm::Compiled> compiled;
 };

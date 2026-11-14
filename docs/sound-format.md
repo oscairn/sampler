@@ -1,29 +1,43 @@
-# Sound format v0
+# Sound format v1
 
-A sound is one blob: a region table over element parameter sets in the reference's raw units, and
-abstract sample references. `core/sound.cpp` writes, reads and validates it; the text form is for
-tests and hand-written sounds. Version 0 is the first; a reader refuses any other version.
+A sound is one blob: element parameter sets in the reference's raw units, and what each element plays:
+either regions over sample references, or a waveform (an Oscairn Waveform file, named by its id) that
+the engine expands into regions when it prepares the sound. `core/sound.cpp` writes, reads, validates
+and expands it; the text form is for tests and hand-written sounds. Version 1 only adds to version 0:
+a version 0 blob or text reads exactly as before, and a sound without waveforms is written as version 0.
+A reader refuses a later version.
 
 ## Blob (little-endian)
 
 | offset | field |
 |---|---|
 | 0 | `OPCM` |
-| 4 | u16 version (0), u16 flags (0) |
+| 4 | u16 version (0 or 1), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
 | 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (181 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
 | 24 | part parameters, i16 each, in `core/partparams.inc` order |
-| | samples: u8 length, then the reference's bytes (a relative path, no NUL, no `..` segment, no leading `/`) |
+| | samples: u8 length, then the reference's bytes (no NUL): in version 0 a relative path (no `..` segment, no leading `/`); in version 1 `sample:` and the sample's id as 64 lowercase hex digits |
 | | elements: u16 count, then count x (u16 parameter index in `core/params.inc` order, i16 value); indices increasing; only values that differ from the default |
 | | regions, 32 bytes each: u8 lokey, hikey, lovel, hivel, root; i8 transpose; u8 loop (0 none, 1 forward); u8 0; u16 element; u16 sample; i32 tune (1/100 cent); i32 level (1/100 dB); i16 pan (1/100 of -100..100); u16 0; u32 loop start; u32 loop end (exclusive) |
+| | version 1 only: u16 W (0 to 32), then W waveform ids, 32 bytes each |
+
+Element parameters added with version 1 (at the end of `params.inc`; their defaults are version 0's
+behaviour): `waveform` (0 to 32: 0 none, else 1 + the index of the element's waveform id), `key_lo`,
+`key_hi` (0 to 127; 0 and 127), `vel_lo`, `vel_hi` (1 to 127; 1 and 127), `coarse` (-48 to +48
+semitones; 0) and `fine` (-64 to +63, raw; 0). The element's level and pan stay `amp_level` and
+`amp_pan`.
 
 Validation refuses: a wrong magic, version, flags or size, a CRC mismatch, counts above the limits
-(1024 samples, 32 elements, 1024 regions) or zero, a part or element value outside its range, element
-indices out of order or unknown, a bad reference, a region with a bad range, root, tune (±12,000
-cents), level (-144 to +48 dB), pan, element or sample index, a loop with start not below end,
-loop points without a loop, non-zero reserved bytes, trailing bytes. Every single-byte corruption
-and every truncation of a test blob is refused (`tests/core`).
+(1024 samples, 32 elements, 1024 regions, 32 waveforms), no element, a part or element value outside its
+range, element indices out of order or unknown, a bad reference, a region with a bad range, root, tune
+(±12,000 cents), level (-144 to +48 dB), pan, element or sample index, a loop with start not below end,
+loop points without a loop, non-zero reserved bytes, trailing bytes; an element naming a waveform the
+sound does not list, an element with both a waveform and regions, an element with a waveform whose
+key or velocity limits are inverted, and a sound with neither a region nor an element on a waveform. A
+version 0 sound needs at least one sample and one region; a version 1 sound whose elements all play
+waveforms has none. Every single-byte corruption and every truncation of a test blob is refused
+(`tests/core`).
 
 Parameter indices are stable: `params.inc` and `partparams.inc` only grow at their ends; a new
 parameter's default must be the behaviour sounds had without it.
@@ -31,23 +45,52 @@ parameter's default must be the behaviour sounds had without it.
 ## Text form
 
 ```
-oscairn-pcm-sound/0
+oscairn-pcm-sound/1
 part bend_up=12
-sample library/pad-c1.flac
-element ampeg_attack=30 ampeg_release=127 fil_type=0 fil_cutoff=244 fileg_depth=52
-region key=0-33 vel=1-127 root=30 tune=9.38 level=-7.12 pan=-100 element=0 sample=0 loop=544-93904
+sample sample:2b7c...(64 hex digits)
+waveform 9f04...(64 hex digits)
+element ampeg_attack=30 ampeg_release=127 fil_type=0 fil_cutoff=244 waveform=1 coarse=-12 key_hi=95
+element amp_level=100
+region key=0-33 vel=1-127 root=30 tune=9.38 level=-7.12 pan=-100 element=1 sample=0 loop=544-93904
 ```
 
-One item a line; `sample` and `element` lines are numbered from 0 in order; tune, level and pan take
-at most two decimals; `loop=start-end` with the end exclusive (an SFZ `loop_end` plus one); a `#`
-line is a comment. Errors name their line.
+One item a line; the first line is `oscairn-pcm-sound/0` or `oscairn-pcm-sound/1`; `sample`, `waveform`
+(version 1 only) and `element` lines are numbered from 0 in their own order; tune, level and pan take
+at most two decimals; `loop=start-end` with the end exclusive (an SFZ `loop_end` plus one); a `#` line
+is a comment. Errors name their line.
+
+## Expansion of waveforms
+
+When a sound is prepared (never on the audio thread) each element with a waveform gets regions in the
+same table the explicit regions fill, after them, element by element in order and, within an element,
+key bank by key bank in the waveform's canonical order. For an element with key limits
+[key_lo, key_hi], velocity limits [vel_lo, vel_hi], coarse tune c and fine tune s, a key bank b gives at
+most one region:
+
+- keys: [b.lo - c, b.hi - c], except that every bank whose lowest key is the lowest key of any bank in
+  the waveform starts at key 0 instead, and every bank whose highest key is the highest of the waveform
+  ends at key 127 instead; then met with [key_lo, key_hi] (the sample is chosen by key plus coarse tune);
+- velocities: b's range met with [vel_lo, vel_hi];
+- root: b's root; transpose: b's transpose plus c (the same pitch as root b.root - c, which may lie
+  outside 0 to 127);
+- tune: b's tune plus s x 100 / 64 cents truncated toward zero, in whole cents;
+- level, pan, loop, loop points, start and end: b's;
+- an empty key or velocity range gives no region.
+
+A sound whose regions would then exceed 1,024 is refused, as is a key bank whose transpose or tune would
+leave its range. Key banks may overlap (a note then starts each region it hits, up to the core's
+regions a note may start; the coverage report names a sound that would exceed it).
+
+A waveform's id resolves through the host's `resolve` on the reference `waveform:<id>` to its file;
+the file must pass every check of the waveform specification and hold the waveform of that id. Its
+samples are sample references `sample:<id>`, as direct ones are.
 
 ## Samples
 
-A reference is resolved by the shell as the asset `<library>/<path>/<reference>` from the base asset
-reference the sound comes with (sound contexts' `prepare`, or the state). Milestone 1 decodes WAV or
-FLAC whole into 16-bit PCM; the pack and its codec are a later milestone, which the reference's
-abstractness leaves room for (a reference may then name a sample in a pack).
+A `sample:<id>` reference is resolved by the host's `resolve_sample` to a record in a pack; a version 0
+path reference is resolved as the asset `<library>/<path>/<reference>` from the base asset reference the
+sound comes with (sound contexts' `prepare`, or the state), and names a pack holding one record. Each
+region keeps its first frames in memory and streams the rest (docs/design.md, "Streaming").
 
 ## What the converter will need
 
@@ -58,13 +101,10 @@ To write this format instead of SFZ for element parts:
   `amp_level` (the element level, today `group_volume`), `amp_pan` (today `oscairn_pan`),
   `elfo_pitch_ratio` / `elfo_amp_ratio` (today `oscairn_elfo_pitch_oncc1` / `_amp_oncc1`), and the
   selection ones (`xa_control`, `element_group`, `keyon_delay`, `keyon_delay_note`);
-- one `region` per key bank and element: key and velocity ranges clipped to the element's limits, the
-  key bank's root, transpose, tune in cents (with the fine tune s, -64..+63: s x 100 / 64
-  cents truncated toward zero, measured at every step); an element's coarse tune moves its key map, since the reference picks the
-  sample by key plus coarse tune (measured): the key bank for keys lo..hi at root r serves keys
-  lo - c..hi - c at root r - c (the lowest bank still reaches key 0 and the highest key 127, inferred),
-  level in dB (the key bank's own; `volume` today), pan as the SFZ `pan` it writes today (-100..100),
-  the loop with its end exclusive;
+- in version 1, a waveform per element (its id in a `waveform` line, `waveform=N` on the element) with the
+  element's `key_lo`, `key_hi`, `vel_lo`, `vel_hi`, `coarse` and raw `fine`, which the engine expands
+  ("Expansion of waveforms"); in version 0, one `region` per key bank and element written out by that
+  same rule;
 - each element's number in the reference's part (`element_number`, 1-8: the elements that are off are
   dropped, so the order is not the number) and its connection (`element_connection`), with the part's
   `split_outputs` when the host should get the insertion ports;
