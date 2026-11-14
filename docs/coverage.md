@@ -11,6 +11,10 @@ marked "no", or a value the core does not reproduce, is reported by `pcm::notCov
 `pcbench coverage`) when it changes the sound; parameters the converter folds into the region table
 need no engine support.
 
+The core test `coverage_table` holds this file to `notCovered()`: every parameter id is named in a
+row; the ids of a row whose "implemented" column starts with "yes" are never reported, those of a row
+starting with "no" are reported at every value but the default (any other start: partial).
+
 ## Element
 
 | parameter | values | implemented | law (source) | verified |
@@ -18,13 +22,13 @@ need no engine support.
 | Element Switch | Off, On | yes (the converter drops elements that are off) | - | - |
 | Key On Delay Tempo Sync Switch | Off, On | no (reported) | K52-K53 in the fork | - |
 | Half Damper Switch | Off, On | yes: `half_damper` (the sustain pedal: `Core::setSustain`, `keyUp`) | measured here (acceptance g) | sine probes; the probe piano under the pedal (acceptance g) |
-| LFO Speed Range | Normal, Extended | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Speed Range | Normal, Extended | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode (`elfo_mode=1`) is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | Key Controller Set 1 Switch | Off, On | no | - | - |
 | Key Controller Set 2 Switch | Off, On | no | - | - |
 | Key Controller Set 3 Switch | Off, On | no | - | - |
 | Key Controller Set 4 Switch | Off, On | no | - | - |
 | Wave Select | 0=Preset, 1=User, 2–17=Library1–16, 18-25=Library17–24 | yes: the region table and its sample references | converter | pads (acceptance a) |
-| Element Group Number | 1–8 | Normal only; any other element trigger mode is reported | - | - |
+| Element Group Number | 1–8 | `element_group`: normal only; any other element trigger mode is reported | - | - |
 | Wave Number | 1 – 7620 (USR, Library: 1 – 1024) | yes: the region table and its sample references | converter | pads (acceptance a) |
 | Element Pan | L63 – C – R63 | yes: `amp_pan`, summed with the key bank's pan, the balance law | K1; measured here (acceptance c) | acceptance c: pans 1-127, mono, stereo and panned key banks |
 | Random Pan Depth | 0 – 127 | no | - | - |
@@ -36,9 +40,9 @@ need no engine support.
 | Velocity Limit Low | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Limit High | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Cross Fade | 0 – 127 | no (not in the sound format; the converter must report a non-zero value) | K55 | the probe piano and bass use 0 |
-| Key On Delay Time Length | 0 – 127 | no (reported) | K52-K53 in the fork | - |
+| Key On Delay Time Length | 0 – 127 | no: `keyon_delay` (reported) | K52-K53 in the fork | - |
 | Element Connection Switch | Thru, InsA, InsB | no (every element on the sound's output) | K48 | - |
-| Key On Delay Note Length | 5 – 21 (16th, 8th/3, 16th., 8th, 4th/3, 8th., 4th, 2th/3, 4th., 2nd, Whole/3, 2nd., 4thX4, 4thX5, 4thX6, 4thX7, 4thX8) | no (reported) | K52-K53 in the fork | - |
+| Key On Delay Note Length | 5 – 21 (16th, 8th/3, 16th., 8th, 4th/3, 8th., 4th, 2th/3, 4th., 2nd, Whole/3, 2nd., 4thX4, 4thX5, 4thX6, 4thX7, 4thX8) | no: `keyon_delay_note` (reported) | K52-K53 in the fork | - |
 | Element Level | 0 – 127 | yes: `amp_level` | K1 (0.375 dB grid) | law only (127 on the pads) |
 | Level Velocity Sensitivity | −64 – +63 | yes: `amp_velsens`, `amp_veloffset`, `amp_velcurve` | K1-K4 | pads (sensitivity 0); the probe piano (+24 to +30, acceptance g); core test `level_scaling_and_velocity` (curve 0) |
 | Level Velocity Offset | 0 – 127 | yes: `amp_velsens`, `amp_veloffset`, `amp_velcurve` | K1-K4 | pads (sensitivity 0); the probe piano (+24 to +30, acceptance g); core test `level_scaling_and_velocity` (curve 0) |
@@ -90,7 +94,7 @@ need no engine support.
 | PEG Depth Velocity Sensitivity Curve | 00 – 04 | yes: `pitcheg_veltime*`, `pitcheg_keytime*`, `pitcheg_veldepth*` | K13 | law only |
 | PEG Time Key Follow Sensitivity | −64 – +63 | yes: `pitcheg_veltime*`, `pitcheg_keytime*`, `pitcheg_veldepth*` | K13 | law only |
 | PEG Time Key Follow Sensitivity Center Note | C-2 – G8 | yes: `pitcheg_veltime*`, `pitcheg_keytime*`, `pitcheg_veldepth*` | K13 | law only |
-| Filter Type | LPF24D, LPF24A, LPF18, LPF18s, LPF12+HPF12, LPF6+HPF12, HPF24D, HPF12, BPF12D, BPFw, BPF6, BEF12, BEF6, DualLPF, DualHPF, DualBPF, DualBEF, LPF12+BPF6, Thru | types 0, 4, 5 and 18 (thru); every other type is reported by notCovered() | K23 (the fork's models, BSD) | type 0: pads (acceptance a, b); 4 and 5: noise against the reference (acceptance d) |
+| Filter Type | LPF24D, LPF24A, LPF18, LPF18s, LPF12+HPF12, LPF6+HPF12, HPF24D, HPF12, BPF12D, BPFw, BPF6, BEF12, BEF6, DualLPF, DualHPF, DualBPF, DualBEF, LPF12+BPF6, Thru | `fil_type`: types 0, 4, 5 and 18 (thru); every other type is reported by notCovered() | K23 (the fork's models, BSD) | type 0: pads (acceptance a, b); 4 and 5: noise against the reference (acceptance d) |
 | Filter Cutoff Frequency | 0 – 1023 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29; 0-256 measured here (acceptance d) | pads (acceptance a) (244, 6, 230, 74) |
 | Filter Cutoff Velocity Sensitivity | −64 – +63 | yes: `fil_velsens` | K34 | core test `level_scaling_and_velocity` (time shift); pads 0 |
 | Filter Resonance/ Width | 0 – 127 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29 | pads (acceptance a) (244, 6, 230, 74) |
@@ -125,14 +129,14 @@ need no engine support.
 | Filter Cutoff Scaling Offset 4 | 〃 | no | - | - |
 | Filter Cutoff Key Follow Sensitivity | −200% – +200% | yes: `fil_keyfollow` | K21 | pads (acceptance a) |
 | HPF Cutoff Key Follow Sensitivity | −200% – +200% | no | - | - |
-| LFO Wave | Saw, Triangle, Square | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Key On Reset | Off, On | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Delay Time | 0 – 127 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Speed | 0 – 63 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Amplitude Modulation Depth | 0 – 127 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Pitch Modulation Depth | 0 – 127 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Filter Modulation Depth | 0 – 127 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
-| LFO Fade In Time | 0 – 127 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Wave | Saw, Triangle, Square | reference mode: `elfo_wave` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Key On Reset | Off, On | reference mode: `elfo_keyon_reset` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Delay Time | 0 – 127 | reference mode: `elfo_delay` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Speed | 0 – 63 | reference mode: `elfo_speed` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Amplitude Modulation Depth | 0 – 127 | reference mode: `elfo_amp_depth` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Pitch Modulation Depth | 0 – 127 | reference mode: `elfo_pitch_depth` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Filter Modulation Depth | 0 – 127 | reference mode: `elfo_filter_depth` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
+| LFO Fade In Time | 0 – 127 | reference mode: `elfo_fade` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | LFO Extended Speed | 0 – 415 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | Controller Set 1-16 Switch, LFO Box 1-3 Switch | Off, On | the mod wheel's element LFO pitch and amplitude sets only (`elfo_pitch_ratio`, `elfo_amp_ratio`); other boxes no | K19, K30, K36 | core test `element_lfo` |
 | EQ Type, EQ Q, EQ 1/2 Frequency and Gain | | `eq_*`: Boost6/12/18 (flat +6.02/+12.04/+18.06 dB), Thru, 2-band at 0 dB, and any setting with the filter Thru (bypassed); P.EQ and 2-band with gain reported | measured here (acceptance g) | white noise and saw probes; the probe piano (Boost6) |

@@ -95,6 +95,84 @@ static void coverage() {
     CHECK(n == 4 && g[2].param == TriggerMode && g[3].param == EqGain2);
 }
 
+// docs/coverage.md agrees with notCovered(): every parameter id is named in a row of the element or
+// part table; the ids of a row whose "implemented" column starts with "yes" are never reported, at any
+// value, with the filter thru, type 0 or type 4; those of a row starting with "no" are reported at
+// every value but the default in one of those settings. (Rows starting otherwise are partial.)
+static void coverageTable() {
+    FILE* f = std::fopen(PCM_SOURCE_DIR "/docs/coverage.md", "rb");
+    CHECK(f != nullptr);
+    if (!f) return;
+    std::string doc;
+    char buf[4096];
+    for (size_t k; (k = std::fread(buf, 1, sizeof buf, f)) > 0;) doc.append(buf, k);
+    std::fclose(f);
+    struct Row { std::string table; char status; std::vector<std::string> ids; };  // status: y, n, p
+    std::vector<Row> rows;
+    std::string table;
+    size_t at = 0;
+    while (at < doc.size()) {
+        size_t end = doc.find('\n', at);
+        if (end == std::string::npos) end = doc.size();
+        const std::string line = doc.substr(at, end - at);
+        at = end + 1;
+        if (line.rfind("## ", 0) == 0) { table = line.substr(3); continue; }
+        if ((table != "Element" && table != "Part") || line.rfind("| ", 0) != 0 || line.rfind("| parameter", 0) == 0) continue;
+        // the implemented column: the third cell of the element table, the second of the part table (c: the bar before it)
+        size_t c = 0;
+        for (int k = 0; k < (table == "Element" ? 2 : 1) && c != std::string::npos; ++k) c = line.find('|', c + 1);
+        if (c == std::string::npos) continue;
+        const size_t ce = line.find('|', c + 1);
+        std::string cell = line.substr(c + 1, ce - c - 1);
+        while (!cell.empty() && cell[0] == ' ') cell.erase(0, 1);
+        Row r{table, cell.rfind("yes", 0) == 0 ? 'y' : cell.rfind("no", 0) == 0 ? 'n' : 'p', {}};
+        for (size_t q = cell.find('`'); q != std::string::npos; q = cell.find('`', q + 1)) {
+            const size_t qe = cell.find('`', q + 1);
+            if (qe == std::string::npos) break;
+            std::string id = cell.substr(q + 1, qe - q - 1);
+            id = id.substr(0, id.find('='));
+            r.ids.push_back(id);
+            q = qe;
+        }
+        rows.push_back(r);
+    }
+    auto names = [](const std::string& pat, const char* id) {
+        return pat.back() == '*' ? std::strncmp(id, pat.c_str(), pat.size() - 1) == 0 : pat == id;
+    };
+    std::unique_ptr<SoundData> d(new SoundData);
+    char err[256];
+    CHECK(readText("oscairn-pcm-sound/0\nsample s\nelement\nregion element=0 sample=0\n", *d, err, sizeof err));
+    for (int part = 0; part < 2; ++part) {
+        const int count = part ? int(kPartParamCount) : int(kParamCount);
+        for (int i = 0; i < count; ++i) {
+            const ParamDef& def = part ? kPartParamDefs[i] : kParamDefs[i];
+            char status = 0;
+            for (const Row& r : rows)
+                if ((r.table == "Part") == bool(part))
+                    for (const std::string& id : r.ids)
+                        if (names(id, def.id)) status = status == 0 || status == r.status ? r.status : 'p';
+            if (!status) { ++failures; std::printf("  docs/coverage.md names no row for `%s`\n", def.id); continue; }
+            if (status == 'p') continue;
+            for (int v = def.lo; v <= def.hi; ++v) {
+                if (v == def.def) continue;
+                bool reported = false;
+                for (int type : {18, 0, 4}) {
+                    std::unique_ptr<SoundData> x(new SoundData(*d));
+                    x->element[0].v[FilType] = int16_t(type);
+                    if (part) x->part[i] = int16_t(v); else x->element[0].v[i] = int16_t(v);
+                    reported |= notCovered(*x, nullptr, 0) > 0;
+                }
+                if (reported != (status == 'n')) {
+                    ++failures;
+                    std::printf("  docs/coverage.md says %s for `%s`, notCovered() %s value %d\n", status == 'y' ? "yes" : "no", def.id,
+                                reported ? "reports" : "accepts", v);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 // ---- laws (the fork's documented values) ----
 static void lawValues() {
     NEAR(20 * std::log10(laws::filterGain(230)), -5.45, 1e-4);   // K21: the default gain
@@ -518,7 +596,7 @@ static void equalLevelSegments() {
 
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
-        {"sound_format", soundFormat}, {"coverage", coverage}, {"law_values", lawValues}, {"attack_shape", attackShape},
+        {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"law_values", lawValues}, {"attack_shape", attackShape},
         {"release_shape", releaseShape}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},

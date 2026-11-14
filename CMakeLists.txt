@@ -38,6 +38,7 @@ install(TARGETS oscairn_pcm LIBRARY DESTINATION lib/clap)
 enable_testing()
 add_executable(pcmcore_tests tests/core/test_core.cpp)
 target_link_libraries(pcmcore_tests PRIVATE pcmcore)
+target_compile_definitions(pcmcore_tests PRIVATE "PCM_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")  # reads docs/coverage.md
 add_test(NAME core COMMAND pcmcore_tests)
 if(WIN32)
     return()  # shortcut: the ABI tests (dlopen) and the bench (POSIX clocks) are not ported; on Windows only the core's tests build
