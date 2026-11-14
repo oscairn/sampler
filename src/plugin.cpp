@@ -563,21 +563,31 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         return s.publish(*c, name);
     }
 
-    // ---- oscairn.asset-dependencies: every sample of every prepared sound ------------------
+    // ---- oscairn.asset-dependencies: every waveform and direct sample of every prepared sound ----------
+    // An id reference ("waveform:<id>", "sample:<id>") has the library empty and the id as its sha256; the samples a
+    // waveform names are the host's to derive from its file.
     std::vector<oscairn_asset_ref_t> dependencies() const {
         std::vector<oscairn_asset_ref_t> v;
         std::set<std::pair<std::string, std::string>> seen;
+        auto add = [&](const std::string& library, const std::string& path, const char* id) {
+            oscairn_asset_ref_t a{};
+            std::snprintf(a.library, sizeof a.library, "%s", library.c_str());
+            std::snprintf(a.path, sizeof a.path, "%s", path.c_str());
+            if (id) std::snprintf(a.sha256, sizeof a.sha256, "%s", id);
+            if (seen.insert({a.library, a.path}).second) v.push_back(a);
+        };
         for (const auto& c : contexts) {
             if (!c.prepared || !c.patch.sound) continue;
             const Sound& s = *c.patch.sound;
+            for (uint32_t i = 0; i < s.data->waveforms; ++i) {
+                char id[65];
+                for (int k = 0; k < 32; ++k) std::snprintf(id + 2 * k, 3, "%02x", s.data->waveform[i][k]);
+                add("", std::string("waveform:") + id, id);
+            }
             for (uint32_t i = 0; i < s.data->samples; ++i) {
-                oscairn_asset_ref_t a{};
                 const char* ref = s.data->ref[i];
-                const bool id = std::strncmp(ref, "sample:", 7) == 0;
-                std::snprintf(a.library, sizeof a.library, "%s", s.library.c_str());
-                std::snprintf(a.path, sizeof a.path, "%s%s%s", id || s.path.empty() ? "" : s.path.c_str(), id || s.path.empty() ? "" : "/", ref);
-                if (id) std::snprintf(a.sha256, sizeof a.sha256, "%s", ref + 7);
-                if (seen.insert({a.library, a.path}).second) v.push_back(a);
+                if (!std::strncmp(ref, "sample:", 7)) add("", ref, ref + 7);
+                else add(s.library, (s.path.empty() ? "" : s.path + "/") + ref, nullptr);
             }
         }
         return v;

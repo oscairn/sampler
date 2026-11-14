@@ -189,3 +189,28 @@ TEST(key_bank_start_and_end) {
         std::remove((g_assetDir + "/" + trimmed + ".owf").c_str());
     }
 }
+
+// The plugin lists, for its prepared sounds, each waveform as waveform:<id> and each sample it names directly as
+// sample:<id>, library empty and the id as sha256; not the samples a waveform names. A path reference keeps its base.
+TEST(waveform_asset_dependencies) {
+    const std::string wf = writeWaveform({bank(0, 127, 1, 127, 60, 0)}, {"mono"});
+    const std::string snd = "oscairn-pcm-sound/1\nsample " + sampleRef("stereo") + "\nwaveform " + wf + "\nelement waveform=1\nelement\nregion element=1 sample=0\n";
+    Inst a;
+    CHECK(a.load(stateWith(snd)));
+    auto deps = static_cast<const oscairn_plugin_asset_dependencies_t*>(a.p->get_extension(a.p, OSCAIRN_EXT_ASSET_DEPENDENCIES));
+    CHECK(deps != nullptr);
+    if (!deps) return;
+    std::vector<std::string> got;
+    for (uint32_t i = 0; i < deps->count(a.p); ++i) {
+        oscairn_asset_ref_t r{};
+        CHECK(deps->get(a.p, i, &r));
+        got.push_back(std::string(r.library) + "|" + r.path + "|" + r.sha256);
+    }
+    std::sort(got.begin(), got.end());
+    const std::string id = g_tones.at("stereo").id;
+    std::vector<std::string> want = {"|sample:" + id + "|" + id, "|waveform:" + wf + "|" + wf};
+    std::sort(want.begin(), want.end());
+    CHECK(got == want);
+    for (auto& g : got) if (std::find(want.begin(), want.end(), g) == want.end()) std::printf("  unexpected %s\n", g.c_str());
+    std::remove((g_assetDir + "/" + wf + ".owf").c_str());
+}
