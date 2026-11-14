@@ -101,7 +101,12 @@ a sound resolves every reference first, hints every record's preload span in one
 ascending offset order, then reads or decodes what stays in memory in ascending order (a second hint
 batch covers frames decoded past the windows). Nothing opens a file per sample. A read that fails at
 load fails the sound's prepare, naming the reference; a streamed block that cannot be read is a late
-stream (the voice is shed with its fade, counted).
+stream (the voice is shed with its fade, counted). What this heap holds is reported through `oscairn.memory`: the I/O
+thread's decoder with its read buffer (98,304 bytes with the planar output and the decoder's scratch, one a process)
+in the shared bytes; each pack's index and each record's frame table (shared by the sounds of the process that use the
+same record), with the heads and loop bodies, in the asset bytes. The audio thread never waits for the I/O thread (on
+the instrument it runs below the audio threads, in the time they leave): when it falls behind, voices are shed as late
+streams.
 
 What stays in memory, per region (frames from the region's start):
 

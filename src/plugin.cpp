@@ -167,13 +167,19 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!pcm::compile(play, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
         return s;
     }
-    // Decoded audio the prepared sounds hold, each buffer once (another instance sharing a buffer counts it too).
+    // What the prepared sounds hold, each once (another instance sharing it counts it too): decoded audio (heads, loop
+    // bodies, whole samples), and of their packs each pack's index and each record's frame table.
     uint64_t assetBytes() const {
         std::set<const void*> seen;
         uint64_t n = 0;
         for (const auto& c : contexts)
-            if (c.prepared && c.patch.sound && c.patch.sound->samples)
+            if (c.prepared && c.patch.sound && c.patch.sound->samples) {
                 for (const auto& b : c.patch.sound->samples->pcm) if (seen.insert(b.get()).second) n += b->size() * sizeof(int16_t);
+                for (const auto& r : c.patch.sound->samples->records) {
+                    if (r.pack && seen.insert(r.pack.get()).second) n += r.pack->index.size() * sizeof(sp_index_entry);
+                    if (r.table && seen.insert(r.table.get()).second) n += r.table->size() * sizeof(uint32_t);
+                }
+            }
         return n;
     }
 
@@ -686,7 +692,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static bool memoryEstimate(const clap_plugin_t* p, double rate, uint32_t frames, oscairn_memory_t* out) {
         auto& s = self(p);
         const auto m = s.core->memory(rate, frames);
-        *out = {m.shared + sizeof(Plugin), m.perContext, s.assetBytes()};
+        *out = {m.shared + sizeof(Plugin) + sizeof(Decoder), m.perContext, s.assetBytes()};  // the I/O thread's decoder and read buffer (one a process)
         return true;
     }
     static bool memoryCurrent(const clap_plugin_t* p, oscairn_memory_t* out) { return memoryEstimate(p, self(p).sampleRate, self(p).maxBlock, out); }

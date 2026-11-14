@@ -216,9 +216,17 @@ bool checkRecord(Record& r, std::string& error) {
     if (st != SP_OK) { error = "bad sample record (error " + std::to_string(int(st)) + ") in " + r.pack->path; return false; }
     if (std::memcmp(r.info.id, r.entry.id, SP_SAMPLE_ID_BYTES)) { error = "the record in " + r.pack->path + " holds another sample"; return false; }
     if (r.info.max_frame > kMaxFrameBytes) { error = "a sample record in " + r.pack->path + " has a frame larger than the reader takes"; return false; }
-    auto table = std::make_shared<std::vector<uint32_t>>(size_t(r.info.blocks) + 1);
-    for (size_t i = 0; i < table->size(); ++i) (*table)[i] = u32(head.data() + r.info.table_offset + 4 * i);
-    r.table = std::move(table);
+    std::vector<uint32_t> t(size_t(r.info.blocks) + 1);
+    for (size_t i = 0; i < t.size(); ++i) t[i] = u32(head.data() + r.info.table_offset + 4 * i);
+    // one copy a record in the process, as the heads: the sounds that use the same record share it
+    static std::mutex lock;
+    static std::map<std::pair<std::string, uint64_t>, std::weak_ptr<const std::vector<uint32_t>>> tables;
+    std::lock_guard<std::mutex> g(lock);
+    for (auto it = tables.begin(); it != tables.end();) it = it->second.expired() ? tables.erase(it) : std::next(it);
+    auto& slot = tables[{r.pack->path, r.entry.offset}];
+    auto held = slot.lock();
+    if (!held || *held != t) { held = std::make_shared<const std::vector<uint32_t>>(std::move(t)); slot = held; }
+    r.table = std::move(held);
     return true;
 }
 
