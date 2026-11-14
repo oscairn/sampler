@@ -27,7 +27,7 @@ extern const char* g_pluginPath;
 extern std::string g_assetDir;  // test_main.cpp: where the "test" library's files are (one-record packs of the tones)
 // The generated tones (test_main.cpp), by name, and the test host's store: sample id (hex) -> pack and record offset.
 struct TestTone { std::vector<int16_t> pcm; uint32_t frames = 0, channels = 1, rate = 44100; std::string id; };
-struct StoreEntry { std::string pack; uint64_t offset = 0; };
+struct StoreEntry { std::string pack; uint64_t offset = 0, length = 0, preload = 0; };
 extern std::map<std::string, TestTone> g_tones;
 extern std::map<std::string, StoreEntry> g_store;
 // The reference "sample:<id>" of a tone.
@@ -176,8 +176,8 @@ inline Library& library() { static Library l; return l; }
 inline const oscairn_host_assets_draft4_t* testAssets() {
     static const oscairn_host_assets_draft4_t a = {
         [](const clap_host_t*, oscairn_asset_ref_t* ref, char* path, uint32_t cap, char* msg, uint32_t mcap) {
-            if (std::strcmp(ref->library, "test")) { std::snprintf(msg, mcap, "no library '%s'", ref->library); return false; }
-            const bool wf = !std::strncmp(ref->path, "waveform:", 9);  // installed waveforms: <id>.owf
+            const bool wf = !std::strncmp(ref->path, "waveform:", 9);  // installed waveforms: <id>.owf, library empty
+            if (std::strcmp(ref->library, wf ? "" : "test")) { std::snprintf(msg, mcap, "no library '%s'", ref->library); return false; }
             const std::string p = g_assetDir + "/" + (wf ? std::string(ref->path + 9) + ".owf" : std::string(ref->path));
             if (FILE* f = std::fopen(p.c_str(), "rb")) std::fclose(f);
             else { std::snprintf(msg, mcap, "no file '%s'", ref->path); return false; }
@@ -185,11 +185,11 @@ inline const oscairn_host_assets_draft4_t* testAssets() {
             return true;
         },
         nullptr, nullptr,
-        [](const clap_host_t*, const oscairn_asset_ref_t* ref, char* path, uint32_t cap, uint64_t* offset, char* msg, uint32_t mcap) {
-            auto it = std::strncmp(ref->path, "sample:", 7) ? g_store.end() : g_store.find(ref->path + 7);
+        [](const clap_host_t*, const oscairn_asset_ref_t* ref, char* path, uint32_t cap, oscairn_sample_location_t* at, char* msg, uint32_t mcap) {
+            auto it = ref->library[0] || std::strncmp(ref->path, "sample:", 7) ? g_store.end() : g_store.find(ref->path + 7);
             if (it == g_store.end()) { std::snprintf(msg, mcap, "no sample '%s'", ref->path); return false; }
             std::snprintf(path, cap, "%s", it->second.pack.c_str());
-            *offset = it->second.offset;
+            *at = {it->second.offset, it->second.length, it->second.preload};
             return true;
         }};
     return &a;

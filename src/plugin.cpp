@@ -123,12 +123,11 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         uint8_t id[SP_SAMPLE_ID_BYTES];
         if (sampleId(ref, id)) {
             if (!assets4 || !assets->resolve_sample) { error = "the host cannot resolve sample references (oscairn.assets draft 4)"; return false; }
-            std::snprintf(r.library, sizeof r.library, "%s", library.c_str());
-            std::snprintf(r.path, sizeof r.path, "%s", ref);
+            std::snprintf(r.path, sizeof r.path, "%s", ref);  // library empty: an id names the sample wherever it is installed
             std::snprintf(r.sha256, sizeof r.sha256, "%s", ref + 7);
-            uint64_t offset = 0;
-            if (!assets->resolve_sample(host, &r, local, sizeof local, &offset, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
-            return findRecord(local, offset, id, 0, 0, out, error);  // draft 4 gives no length or preload: the pack's trailer has them
+            oscairn_sample_location_t at{};
+            if (!assets->resolve_sample(host, &r, local, sizeof local, &at, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
+            return findRecord(local, at.offset, id, at.length, at.preload, out, error);
         }
         if (library.empty()) { error = "a sample path needs a base asset reference"; return false; }
         const std::string full = (path.empty() ? std::string() : path + "/") + ref;
@@ -139,10 +138,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         return onlyRecord(local, out, error);
     }
     // A reference "waveform:<id>" to its installed file, through resolve.
-    bool resolveWaveform(const char* ref, const std::string& library, std::string& out, std::string& error) {
+    bool resolveWaveform(const char* ref, std::string& out, std::string& error) {
         char local[4096] = {}, msg[256] = {};
-        oscairn_asset_ref_t r{};
-        std::snprintf(r.library, sizeof r.library, "%s", library.c_str());
+        oscairn_asset_ref_t r{};  // library empty, as for a sample id
         std::snprintf(r.path, sizeof r.path, "%s", ref);
         std::snprintf(r.sha256, sizeof r.sha256, "%s", ref + 9);
         if (!assets->resolve(host, &r, local, sizeof local, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
@@ -159,7 +157,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!assets || !assets->resolve) { error = "the host offers no oscairn.assets to resolve samples"; return nullptr; }
         if (s->data->waveforms) {
             s->expanded.reset(new pcm::SoundData);
-            if (!expandWaveforms(*s->data, [&](const char* ref, std::string& local, std::string& e) { return resolveWaveform(ref, library, local, e); }, *s->expanded, error)) return nullptr;
+            if (!expandWaveforms(*s->data, [&](const char* ref, std::string& local, std::string& e) { return resolveWaveform(ref, local, e); }, *s->expanded, error)) return nullptr;
         }
         const pcm::SoundData& play = s->expanded ? *s->expanded : *s->data;
         s->samples = loadSamples(play, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, decodeWhole, error);

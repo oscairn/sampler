@@ -48,7 +48,7 @@ TEST(sample_references_fail_with_reasons) {
     g_store[std::string(64, 'f')] = g_store.at(g_tones.at("sine").id);  // the host names the wrong record
     const std::string wrong = soundOf("sample:" + std::string(64, 'f'));
     CHECK_EQ(a.contexts->prepare(a.p, "x", nullptr, 0, wrong.c_str(), testBase(), msg, sizeof msg), CLAP_INVALID_ID);
-    CHECK(std::strstr(msg, "no record of that sample") != nullptr);
+    CHECK(std::strstr(msg, "holds another sample") != nullptr || std::strstr(msg, "bad sample record") != nullptr);
     g_store.erase(std::string(64, 'f'));
 }
 

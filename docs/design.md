@@ -89,10 +89,9 @@ allocator).
 
 ## Streaming
 
-A sample reference is `sample:<id>` (the host's `resolve_sample` gives the pack and the record's
-offset) or a path naming a one-record pack. Each pack file is mapped once per process, read-only,
-advised random access, and shared by every instance; its trailer gives every record's offset,
-length and preload span. Loading a sound resolves every reference first, hints every record's
+A sample reference is `sample:<id>` (the host's `resolve_sample` gives the pack and the record's offset,
+length and preload span) or a path naming a one-record pack, whose trailer gives them. Each pack file is
+mapped once per process, read-only, advised random access, and shared by every instance. Loading a sound resolves every reference first, hints every record's
 preload span in one read-ahead batch, reads the headers in ascending offset order, then copies or
 decodes what stays in memory in ascending order (a second hint batch covers frames decoded past
 the windows). Nothing opens a file per sample.

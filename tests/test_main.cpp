@@ -78,7 +78,7 @@ static bool packTones(const std::string& dir) {
     for (size_t i = 0; i < n; ++i) {
         std::string hex;
         for (int k = 0; k < 32; ++k) { char h[3]; std::snprintf(h, 3, "%02x", e[i].id[k]); hex += h; }
-        g_store[hex] = {store, e[i].offset};
+        g_store[hex] = {store, e[i].offset, e[i].length, e[i].preload};
     }
     for (auto& [name, t] : g_tones) std::remove((dir + "/" + name + ".wav").c_str());
     return g_store.size() == g_tones.size();
