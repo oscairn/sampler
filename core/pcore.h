@@ -219,7 +219,8 @@ private:
     int64_t lfoStart_[kMaxSounds] = {};      // the engine clock the sound's part LFO last started (reset) at
     uint8_t cycle_[kMaxSounds][8] = {};      // each element group's next cycle position (an element index)
     uint32_t draw_[kMaxSounds] = {};         // the random elements' generator
-    uint32_t pendingSlots_ = 0;              // slots with layers held back by a key-on delay
+    uint32_t pendingSlots_ = 0;
+    uint32_t rand_ = 0x9e3779b9u;            // random pitch draws              // slots with layers held back by a key-on delay
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];

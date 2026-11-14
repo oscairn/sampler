@@ -1004,6 +1004,19 @@ static void pitchVelocity() {
     }
 }
 
+// Random pitch depth (measured): depth 16 draws whole steps of 18.75 cents within +-3, each about as often.
+static void randomPitch() {
+    Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 pitch_random=16", sine(44100, 441, 44100, 16384), 1, 44100.f, "0-44100", 44100);
+    int count[7] = {}, off = 0;
+    for (int n = 0; n < 140; ++n) {
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const double c = sineCents(r.run(8192), 1000, 8192, 441, 44100), k = c / 18.75;
+        if (std::fabs(k - std::round(k)) > 0.05 || std::fabs(k) > 3.05) ++off; else ++count[int(std::lround(k)) + 3];
+    }
+    CHECK(off == 0);
+    for (int k = 0; k < 7; ++k) CHECK(count[k] >= 8);
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -1013,7 +1026,7 @@ int main() {
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
-        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity}, {"pitch_velocity", pitchVelocity},
+        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity}, {"pitch_velocity", pitchVelocity}, {"random_pitch", randomPitch},
     };
     for (auto& t : tests) {
         const int before = failures;

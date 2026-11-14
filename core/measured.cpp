@@ -234,6 +234,14 @@ float pitchVelocityCents(int s, int v) noexcept
     return float(v) * float(s >= 63 ? 64 : s) * (1200.0f / 8192.0f);
 }
 
+float randomPitchCents(int depth, uint32_t draw) noexcept
+{
+    // 40 notes at each of depths 16, 32, 64, 127 on a sine: every pitch on the 18.75-cent grid, the extremes at +-3, 7, 15, 31
+    // steps, spread as uniform (standard deviations 31 / 80 / 153 / 337 cents against 37 / 75 / 162 / 336)
+    const int k = (std::max(1, depth) - 1) / 4;
+    return 18.75f * float(int((draw & 0xffffffu) % uint32_t(2 * k + 1)) - k);
+}
+
 float hpfKeyCents(int kf, int key) noexcept
 {
     // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,

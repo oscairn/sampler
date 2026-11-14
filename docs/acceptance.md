@@ -621,6 +621,12 @@ Pitch velocity sensitivity (`a_pvs*`, `l_pvs*`): a sine at key 60, velocities as
 sensitivity, nothing at velocity 0): rms 0.29 cents, at most 0.7, over 70 notes (each take's own offset, about 1-2 cents,
 removed). Engine: `pitch_velsens` (`laws::pitchVelocityCents`, at note-on); core test `pitch_velocity`.
 
+Random pitch depth (`l_rnd*`): 40 notes of a sine at each of depths 16, 32, 64 and 127. Every pitch lies on an 18.75-cent
+grid (1200 / 64); the extremes are +-3, 7, 15 and 31 steps, (depth - 1) / 4; the spread is that of a uniform draw
+(standard deviations 31, 80, 153, 337 cents against 37, 75, 162, 336 expected from 40 draws). The engine draws each note's
+step from its own generator (the reference's sequence is not reproduced; started again at a reset). Engine:
+`pitch_random`; core test `random_pitch`.
+
 - Engine: `fil_res_velsens`; core test `resonance_velocity` (the law's values; a step through resonance 100 at the
   softest velocity rings as resonance 36).
 

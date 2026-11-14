@@ -68,6 +68,9 @@ int resonanceAtVelocity(int resonance, int sensitivity, int velocity) noexcept;
 // Cents a note at velocity v (1-127) moves: v x s x 1200 / 8192 (an octave at velocity 128 and sensitivity 64; +63 as +64)
 float pitchVelocityCents(int sensitivity, int velocity) noexcept;
 
+// Cents of a random pitch draw: a whole number k of 18.75 cents, uniform within +-(depth - 1) / 4 (`draw`: 24 random bits)
+float randomPitchCents(int depth, uint32_t draw) noexcept;
+
 // ---- pitch key follow ----
 float pitchKeyFollowCents(int raw) noexcept;  // cents a key at a raw sensitivity (96: 100, 64: 0)
 

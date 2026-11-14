@@ -871,7 +871,8 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     // (pitch key follow: the centre note at its pitch, every key from it at the measured cents a key)
     const float pitchKey = e[PitchKeyFollow] == 96 ? 100.0f * (float(key) - float(r.root))
         : 100.0f * float(e[PitchKeyFollowCenter] - r.root) + laws::pitchKeyFollowCents(e[PitchKeyFollow]) * float(key - e[PitchKeyFollowCenter]);
-    const float cents = pitchKey + float(r.tune) / 100.0f + 100.0f * float(r.transpose) + laws::pitchVelocityCents(e[PitchVelSens], vel);
+    const float cents = pitchKey + float(r.tune) / 100.0f + 100.0f * float(r.transpose) + laws::pitchVelocityCents(e[PitchVelSens], vel)
+                      + (e[PitchRandom] ? laws::randomPitchCents(e[PitchRandom], (rand_ = rand_ * 1664525u + 1013904223u) >> 8) : 0.0f);
     const float ratio = std::pow(2.0f, cents / 1200.0f) * float(double(sv.rate) / sr_);
     v.baseStep = std::min<double>(ratio, kMaxStep);
     p.pos[i] = 0;
@@ -1267,6 +1268,7 @@ void Core::reset() {
     for (auto& p : pool_) p.n = 0;
     for (auto& s : slot_) s = Slot{};
     pendingSlots_ = 0;
+    rand_ = 0x9e3779b9u;  // the random pitches start over
     for (auto& b : bend_) b = 0;
     for (auto& w : wheel_) w = 0;
     for (auto& d : pedal_) d = 0;
