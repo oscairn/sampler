@@ -17,8 +17,12 @@ most 200; shedding at most 2,000 a shed voice (the shed block and the next over 
 and no case more than 10 % over `tools/cost/baseline.txt`. It needs valgrind, so it is a documented
 script run in the aarch64 container
 (`docker run --rm -v "$PWD":/src:ro --tmpfs /out:exec IMAGE sh /src/tools/cost/cg.sh /src /out check`),
-not a CTest test. Last run (0.5.0): every gate passes (mono 10,595, stereo 15,065, rest 193, shedding 1,904 and
-1,688 a voice for 16 and 32 voices). (0.4.0: 10,557, 15,027, 192, 1,868 and 1,667.)
+not a CTest test. The streamed plans (`mono-stream`, `stereo-stream`: a 4,096-frame head in memory, the rest and
+the loop from the core's stream rings, filled between blocks outside the measured window) are held to the same
+per-voice gates: they measure what reading streamed audio costs the audio thread. Last run (0.6.0, 9fcec60): every
+gate passes (mono 10,734, stereo 15,222, streamed mono 10,778, streamed stereo 15,261, rest 193, shedding 1,907 and
+1,704 a voice for 16 and 32 voices). (0.5.0: 10,595, 15,065, 193, 1,904 and 1,688; 0.4.0: 10,557, 15,027, 192,
+1,868 and 1,667.)
 
 ## Instructions per block (aarch64, NEON)
 
@@ -78,6 +82,32 @@ bytes) and pan knots (8), the key-on delay knots (348).
 them as they reach silence. Shedding 16 and 32 voices cost 1,904 and 1,688 instructions a shed voice (0.5.0, the gate's run), about 1/8 of a voice-block
 plus the scan for the quietest. The shell's own give-ups (the voice budget's order) fade over the
 SDK's 3 ms choke instead, as in the analog engine.
+
+## Memory (0.6.0)
+
+What a sound keeps in memory (docs/design.md, "Streaming"), per region of a record with the default
+4,096-frame window and 1,024-frame blocks: a head of 32 + 4,096 + 8 frames (8,272 bytes mono, 16,544
+stereo), and a forward loop's body whole when it is at most 16,384 frames, (body + 8) frames; a
+region of at most 4,096 frames is all head with its 1,024-frame guard. Measured through
+`oscairn.memory` (asset bytes): a stereo one-shot of 150,000 frames adds 16,544 bytes, a second region
+of it with an 8,000-frame loop body adds 32,032. Buffers are shared by every region and sound of the
+process that plays the same frames of the same record.
+
+A synthetic sound of 854 regions over 854 distinct stereo 48 kHz samples of 96,000 frames (2 s), half
+one-shots and half looped with an 8,000-frame body near the end, by those rules:
+
+| | bytes |
+|---|---|
+| heads (854 x 16,544) | 14,128,576 |
+| loop bodies (427 x 32,032) | 13,677,664 |
+| resident audio | 27,806,240 (26.5 MiB) |
+| the same decoded whole (854 x 388,224, with the guards) | 331,543,296 (316.2 MiB) |
+| the stream pool (128 rings of 4,096 stereo frames, 16,464 bytes each), per instance | 2,107,392 |
+
+The stream pool is part of the core (`sizeof(pcm::Core)` 3,638,336 bytes on macOS arm64) and so of
+`oscairn.memory`'s shared bytes; each instance has its own. The parsed and expanded sound tables
+(`pcm::SoundData`, 314,364 bytes each, two for a sound with waveforms) are main-thread memory freed
+with the sound and not reported.
 
 ## Time on this Mac (Apple silicon, thread CPU per block, `pcbench time`; the 0.1.0 core, not rerun)
 
