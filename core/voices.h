@@ -53,7 +53,7 @@ struct CentsEnv {
     bool moving() const { return stage != Sustain && stage != Done; }
 };
 
-struct VoiceScalar {
+struct VoiceScalar {  // 512 bytes (static_assert below): the pools index it by shifts
     uint16_t id = 0;           // the slot's layer id
     uint8_t slot = 0, sound = 0, channel = 0, key = 60, bus = 0;
     bool releasing = false, fresh = true, filterMoves = false, eq = false;  // eq: the element EQ shapes the sound
@@ -90,6 +90,7 @@ struct VoiceScalar {
     int16_t base[6] = {}, moved[6] = {};
     const int16_t* element = nullptr;  // the element's parameters (in the Compiled sound)
 };
+static_assert(sizeof(VoiceScalar) == 512, "the pools' indexing cost grows past 512 bytes (docs/cost.md)");
 
 struct Pool {
     PlanDesc plan{};

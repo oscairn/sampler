@@ -199,7 +199,7 @@ bool keySounds(const Compiled&, int key, int velocity);
 // ---- the engine --------------------------------------------------------------------------------
 constexpr uint32_t kMaxVoices = 64;   // the caller's voice slots (notes); a note plays every region it hits
 constexpr uint32_t kMaxSounds = 8;    // sound slots
-constexpr uint32_t kMaxLayers = 8;    // regions a note may start
+constexpr uint32_t kMaxLayers = 16;   // regions a note may start
 constexpr uint32_t kPoolVoices = 128; // element voices of one plan
 constexpr int kSub = 16;              // frames between control steps, from each block's start
 

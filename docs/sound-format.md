@@ -79,7 +79,7 @@ most one region:
 
 A sound whose regions would then exceed 1,024 is refused, as is a key bank whose transpose or tune would
 leave its range. Key banks may overlap (a note then starts each region it hits, up to the core's
-regions a note may start; the coverage report names a sound that would exceed it).
+16 regions a note may start; the coverage report names a sound that would exceed it).
 
 A waveform's id resolves through the host's `resolve` on the reference `waveform:<id>` to its file;
 the file must pass every check of the waveform specification and hold the waveform of that id. Its
@@ -109,7 +109,7 @@ To write this format instead of SFZ for element parts:
   element's `key_lo`, `key_hi`, `vel_lo`, `vel_hi`, `coarse` and raw `fine`, which the engine expands
   ("Expansion of waveforms"); in version 0, one `region` per key bank and element written out by that
   same rule;
-- each element's number in the reference's part (`element_number`, 1-8: the elements that are off are
+- each element's number in the reference's part (`element_number`, 1-32, 1-8 in a part of the reference: the elements that are off are
   dropped, so the order is not the number) and its connection (`element_connection`), with the part's
   `split_outputs` when the host should get the insertion ports;
 - the part's bend range (`bend_up`, `bend_down`), its velocity sensitivity depth and offset (`vel_depth`,

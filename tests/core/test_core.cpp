@@ -860,6 +860,15 @@ static void elementNumber() {
         }
         NEAR(20 * std::log10(lv[1] / lv[0]), type == 18 ? -5.625 : 0.0, 1e-4);
     }
+    // a part of more than 8 elements: numbers up to 32 load, and a note starts up to 16 regions (a sound written before
+    // the limits grew loads unchanged: sound_format)
+    std::string text = "oscairn-pcm-sound/0\nsample s\n";
+    for (int e = 0; e < 20; ++e) text += "element ampeg_decay1=127 ampeg_decay2=127 element_number=" + std::to_string(e + 1) + "\n";
+    for (int e = 0; e < 20; ++e) text += "region key=0-127 root=60 loop=100-40000 sample=0 element=" + std::to_string(e) + "\n";
+    Rig r(text.c_str(), constant(48000, 4000), 48000.f, 48000);
+    r.core->noteOn(0, 0, 0, 60, 1.0f);
+    r.run(256);
+    CHECK(r.core->elementVoices() == 16);
 }
 
 // Controller boxes (measured: docs/acceptance.md (l)): the fine tune at the wheel's values, each box truncated
