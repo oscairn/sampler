@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later
  * macOS: interposes the C allocator in every image of the test process (the plugin's too) and
- * counts allocations while va_alloc_on is set. dyld applies the __interpose tuples of any dylib
+ * counts the allocations of thread va_alloc_thread while va_alloc_on is set. dyld applies the __interpose tuples of any dylib
  * the process loads; the main executable's own are ignored, hence a library. operator new calls
  * malloc, so it is counted. */
 #include <stdlib.h>
 #include <stddef.h>
+#include <pthread.h>
 volatile long va_alloc_count = 0;
 volatile int va_alloc_on = 0;
-#define NOTE() do { if (va_alloc_on) va_alloc_count = va_alloc_count + 1; } while (0)
+pthread_t va_alloc_thread;
+#define NOTE() do { if (va_alloc_on && pthread_equal(pthread_self(), va_alloc_thread)) va_alloc_count = va_alloc_count + 1; } while (0)
 static void* i_malloc(size_t s) { NOTE(); return malloc(s); }
 static void* i_calloc(size_t a, size_t b) { NOTE(); return calloc(a, b); }
 static void* i_realloc(void* p, size_t s) { NOTE(); return realloc(p, s); }

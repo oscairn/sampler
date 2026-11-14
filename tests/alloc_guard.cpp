@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Counts heap allocations made anywhere in this process while enabled, by interposing the C
-// allocator (operator new reaches it too), so allocations inside the dlopen'ed plugin are caught
-// whatever language it is written in.
+// Counts the heap allocations the enabling thread (the audio thread: the guard is on around process())
+// makes while enabled, by interposing the C allocator (operator new reaches it too), so allocations
+// inside the dlopen'ed plugin are caught whatever language it is written in. Other threads (the
+// plugin's I/O thread runs beside process()) are not counted.
 //   macOS: dyld interposition from a small library (alloc_interpose.c) linked into the harness.
 //   Linux (glibc): this executable defines malloc and friends, which the dynamic linker binds the
 //   plugin's calls to; they forward to glibc's __libc_* entry points.
@@ -19,10 +20,12 @@
 #define VA_NO_GUARD 1
 #endif
 
+#include <pthread.h>
 #if !defined(__APPLE__)
 namespace {
 volatile bool g_on = false;
 volatile long g_count = 0;
+pthread_t g_thread;
 }
 #endif
 
@@ -31,7 +34,7 @@ bool allocGuardAvailable() { return false; }
 const char* allocGuardName() { return "unavailable (sanitizer build)"; }
 
 #elif defined(__APPLE__)
-extern "C" { extern volatile long va_alloc_count; extern volatile int va_alloc_on; }  // alloc_interpose.c
+extern "C" { extern volatile long va_alloc_count; extern volatile int va_alloc_on; extern pthread_t va_alloc_thread; }  // alloc_interpose.c
 bool allocGuardAvailable() { return true; }
 const char* allocGuardName() { return "macOS dyld interposition"; }
 
@@ -39,7 +42,7 @@ const char* allocGuardName() { return "macOS dyld interposition"; }
 extern "C" {
 void* __libc_malloc(size_t); void* __libc_calloc(size_t, size_t); void* __libc_realloc(void*, size_t);
 void __libc_free(void*); void* __libc_memalign(size_t, size_t);
-static inline void note() { if (g_on) g_count = g_count + 1; }
+static inline void note() { if (g_on && pthread_equal(pthread_self(), g_thread)) g_count = g_count + 1; }
 void* malloc(size_t n) { note(); return __libc_malloc(n); }
 void* calloc(size_t a, size_t b) { note(); return __libc_calloc(a, b); }
 void* realloc(void* p, size_t n) { note(); return __libc_realloc(p, n); }
@@ -56,9 +59,9 @@ const char* allocGuardName() { return "glibc malloc interposition"; }
 void allocGuardEnable(bool) {}
 long allocGuardCount() { return 0; }
 #elif defined(__APPLE__)
-void allocGuardEnable(bool on) { if (on) va_alloc_count = 0; va_alloc_on = on; }
+void allocGuardEnable(bool on) { if (on) { va_alloc_count = 0; va_alloc_thread = pthread_self(); } va_alloc_on = on; }
 long allocGuardCount() { return va_alloc_count; }
 #else
-void allocGuardEnable(bool on) { if (on) g_count = 0; g_on = on; }
+void allocGuardEnable(bool on) { if (on) { g_count = 0; g_thread = pthread_self(); } g_on = on; }
 long allocGuardCount() { return g_count; }
 #endif

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// No allocation in process(). The harness counts every heap allocation in the process while the
+// No allocation in process(). The harness counts every heap allocation the audio thread makes while the
 // plugin's process() runs (alloc_guard.cpp), so this holds for the plugin whatever it is written
-// in. The check first proves the interposer sees allocations, so a silent guard cannot pass.
+// in. The check first proves the interposer sees allocations, so a silent guard cannot pass, and that
+// it counts the audio thread only (the plugin's I/O thread may run beside process()).
+#include <atomic>
 #include <cstdlib>
+#include <thread>
 #include "host.h"
 
 TEST(allocation_guard_sees_allocations) {
@@ -15,6 +18,13 @@ TEST(allocation_guard_sees_allocations) {
     std::free(p); delete[] q;
     CHECK(n >= 2);
     if (n < 2) std::printf("  the interposer counted %ld allocations of 2\n", n);
+    std::atomic<bool> go{false};
+    std::thread other([&] { while (!go.load()) {} void* volatile r = std::malloc(100); std::free(r); });  // started before: its start allocates
+    allocGuardEnable(true);
+    go = true;
+    other.join();
+    allocGuardEnable(false);
+    CHECK_EQ(allocGuardCount(), 0);
 }
 
 TEST(no_allocation_in_process) {
