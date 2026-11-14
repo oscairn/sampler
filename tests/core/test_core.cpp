@@ -412,6 +412,19 @@ static void filterTypes45() {
     const auto y = lo.run(22050);
     const double down = 20 * std::log10(rmsOf(y, 11025, 22050) / (16384 * kUnit * gain / std::sqrt(2.0)));
     CHECK(down < -18 && down > -30);
+    // the high-pass key follow (measured: the cutoff's law about key 60): at key 84 (the sample's root there too, so the
+    // tone stays 110 Hz) key follow 0 moves the high-pass 4800 cents down: the tone passes; at 64 it does not move
+    for (int kf : {0, 64}) {
+        const std::string text = "oscairn-pcm-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fil_type=4 fil_cutoff=1023 fil_hpf_cutoff=512 fil_hpf_keyfollow="
+                                 + std::to_string(kf) + "\nregion key=0-127 root=84 element=0 sample=0 loop=0-44100\n";
+        Rig k(text.c_str(), sine(44100, 110, 44100, 16384), 44100.f, 44100);
+        k.core->setGain(0, 1, 0);
+        k.core->setInterp(Interp::Hermite);
+        k.core->noteOn(0, 0, 0, 84, 1.0f);
+        const auto z = k.run(22050);
+        const double at = 20 * std::log10(rmsOf(z, 11025, 22050) / (16384 * kUnit * gain / std::sqrt(2.0)));
+        if (kf == 0) NEAR(at, 0.0, 1.0); else CHECK(at < -18 && at > -30);
+    }
 }
 
 // The element EQ against the reference's response (white noise through type 0 wide open, each take fitted

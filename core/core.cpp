@@ -902,8 +902,9 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     for (int k = 0; k < 6; ++k) { v.base[k] = bases[k]; v.moved[k] = 0; }
     p.f[DAMP][i] = laws::filterDamping(e[FilResonance]);
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][i] = 0;
+    v.hpfCents = laws::hpfKeyCents(e[FilHpfKeyFollow], key);
     if (s.plan[ri].filter == Filter::LowHigh || s.plan[ri].filter == Filter::PoleHigh)
-        designHigh(p, i, laws::filterCutoffHz(e[FilHpfCutoff], 0.0f), rate_);
+        designHigh(p, i, laws::filterCutoffHz(e[FilHpfCutoff], v.hpfCents), rate_);
     // the element EQ (with a filter only: thru bypasses it, measured)
     laws::Biquad bq;
     v.eq = s.plan[ri].filter != Filter::Thru && laws::elementEq(e[EqType], e[EqQ], e[EqFreq1], e[EqGain1], e[EqFreq2], e[EqGain2], sr_, bq);
@@ -1213,7 +1214,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
                     p.f[DAMP][i] = laws::filterDamping(at(laws::BoxResonance, 127));
                     v.filterMoves = true;
                     if (p.plan.filter == Filter::LowHigh || p.plan.filter == Filter::PoleHigh)
-                        designHigh(p, i, laws::filterCutoffHz(at(laws::BoxHpf, 1023), 0.0f), rate_);
+                        designHigh(p, i, laws::filterCutoffHz(at(laws::BoxHpf, 1023), v.hpfCents), rate_);
                 }
                 v.level = v.levelRest * laws::levelGain(at(laws::BoxLevel, 127));
             }

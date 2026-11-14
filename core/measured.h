@@ -49,6 +49,9 @@ bool elementEq(int type, int q, int freq1, int gain1, int freq2, int gain2, doub
 double eqHz(int raw) noexcept;
 double eqPeakQ(int raw) noexcept;
 
+// ---- high-pass key follow ----
+float hpfKeyCents(int keyFollow, int key) noexcept;  // cents the high-pass cutoff moves at a key
+
 // ---- controller boxes ----
 // A box's output (measured: docs/acceptance.md (l)): (curve(c) + o - 1024) x ratio / 8 within +-8192, c the source on
 // 0..1024, o 1024 unipolar or 512 bipolar, ratio raw +127 counting as +128. A destination moves by the sum over its

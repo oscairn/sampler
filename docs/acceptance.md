@@ -471,6 +471,17 @@ read in cents against the take with the source at 0), the source a knob's stored
   `knobs_ribbon_and_switches_drive_their_boxes`; a destination's modulation sounds as the linear box it stands for
   (`modulation_sounds_as_the_equivalent_linear_box`, sample for sample).
 
+## (n) High-pass key follow against the reference
+
+Recordings `a_hkf*` (run pcm-round5-2026-11-14): white noise through type 4 (low-pass wide open, high-pass at 400), the
+high-pass key follow at 0, 32, 64, 96 and 127, a note each at keys 24, 48, 60, 72 and 96; half-octave bands of each
+note against the same note at key follow 64, the reference against the engine's render of the same probe.
+
+- The high-pass moves by the cutoff key follow's law, (raw - 64) x 3.125 cents a key about key 60: rms 0.60 dB over 262
+  bands within 40 dB of the passband (worst 4.6 dB, a noise band), key follow 0 to 127 alike. Key follow 64 is none.
+- Engine: `fil_hpf_keyfollow`; core test `filter_types_4_5` (key follow 0 at key 84 lets a 110 Hz tone through a
+  440 Hz high-pass; without the law it falls 24 dB).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

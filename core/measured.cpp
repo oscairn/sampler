@@ -153,6 +153,13 @@ bool elementEq(int type, int q, int f1, int g1, int f2, int g2, double sr, Biqua
     return true;
 }
 
+float hpfKeyCents(int kf, int key) noexcept
+{
+    // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,
+    // 127 against 64 at keys 24, 48, 60, 72, 96; round 5, batch A): rms 0.60 dB over 262 half-octave bands within 40 dB
+    return float(kf - 64) * 3.125f * float(key - 60);
+}
+
 float boxSource(int v) noexcept
 {
     // measured through the fine tune at 17 wheel values and the coarse tune at 6 (every one within 0.1 cent;

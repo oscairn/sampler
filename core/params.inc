@@ -131,3 +131,5 @@ X(BoxSw13, "box_sw13", 0, 1, 1)
 X(BoxSw14, "box_sw14", 0, 1, 1)
 X(BoxSw15, "box_sw15", 0, 1, 1)
 X(BoxSw16, "box_sw16", 0, 1, 1)
+// the high-pass cutoff's key follow (types 4 and 5): raw, 64 none
+X(FilHpfKeyFollow, "fil_hpf_keyfollow", 0, 127, 64)

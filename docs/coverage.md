@@ -129,7 +129,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Filter Cutoff Scaling Offset 3 | 〃 | no | - | - |
 | Filter Cutoff Scaling Offset 4 | 〃 | no | - | - |
 | Filter Cutoff Key Follow Sensitivity | −200% – +200% | yes: `fil_keyfollow` | K21 | pads (acceptance a) |
-| HPF Cutoff Key Follow Sensitivity | −200% – +200% | no | - | - |
+| HPF Cutoff Key Follow Sensitivity | −200% – +200% | yes: `fil_hpf_keyfollow` (types 4 and 5) | measured here (acceptance n): the cutoff key follow's law, (raw - 64) x 3.125 cents a key about key 60 | white noise at key follow 0, 32, 96, 127 against 64, keys 24-96: rms 0.60 dB (acceptance n); core test `filter_types_4_5` |
 | LFO Wave | Saw, Triangle, Square | reference mode: `elfo_wave` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | LFO Key On Reset | Off, On | reference mode: `elfo_keyon_reset` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | LFO Delay Time | 0 – 127 | reference mode: `elfo_delay` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |

@@ -78,6 +78,7 @@ To write this format instead of SFZ for element parts:
   `boxN_p2`, and each element's switch for each box (`box_sw1`..`box_sw16`, on by default); the mod wheel's element LFO
   pitch and amplitude boxes stay `elfo_pitch_ratio` / `elfo_amp_ratio` (not boxes); boxes on destinations or from
   sources the engine does not move yet are kept and reported by `notCovered()`;
+- each element's HPF Cutoff Key Follow Sensitivity raw (`fil_hpf_keyfollow`, 0-127, 64 none);
 - the part's assignable knob values (`knob1`..`knob8`, raw 0-1023 as stored; default 512): the shell's knob parameters
   start there, and boxes from the knobs (sources 8-15) read them; boxes from the ribbon (6) and switches 1-2 (16, 17)
   read the shell's parameters of those names (`docs/parameters.md`), which the host's controls drive. A plain box
