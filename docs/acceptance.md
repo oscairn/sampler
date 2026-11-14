@@ -351,6 +351,12 @@ second is a scaled copy of the first (0.5227, no delay; residual -110 dB).
 |---|---|---|
 | level, one to four elements, element 2 and 8 alone, thru and type 0 | ±0.25 dB | pass (largest 0.03 dB with the filter thru; 0.21 dB with type 0) |
 
+Element connection (run pcm-round3-2026-11-14, takes `u_conn*`): a saw through type 0 wide open with its
+element connection at thru, insertion A and insertion B, both insertion switches off. All three play at
+the same level (-20.364, -20.364, -20.369 dB; the waveforms equal after the recorder's note timing,
+residual -66 dB), so `element_connection` changes only the output port (with `split_outputs`); the
+engine within 0.2 dB of the reference on all three (the type 0 gain of D17).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

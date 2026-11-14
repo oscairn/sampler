@@ -109,6 +109,7 @@ static void coverage() {
     d->element[0].v[TriggerMode] = 2;   // key off: covered
     d->element[0].v[EqType] = 2;      // Boost6: a flat +6.02 dB
     d->element[0].v[HalfDamper] = 1;
+    d->element[0].v[ElementConnection] = 2;  // to insertion B: the thru level (measured), covered
     uint32_t n = notCovered(*d, g, 16);
     CHECK(n == 2 && g[0].param == FilType && g[1].param == ElfoMode);
     d->element[0].v[TriggerMode] = 1;   // legato: not covered
