@@ -202,6 +202,7 @@ static void coverageTable() {
 
 // ---- laws (the fork's documented values) ----
 static void lawValues() {
+    CHECK(laws::boxSource(80) == 642.0f && laws::boxSource(96) == 772.0f && laws::boxSource(127) == 1024.0f && laws::boxSource(64) == 512.0f);
     NEAR(20 * std::log10(laws::filterGain(230)), -5.45, 1e-4);   // K21: the default gain
     NEAR(laws::levelGain(127), 1.0, 1e-7);
     NEAR(20 * std::log10(laws::levelGain(64)), -0.375 * std::round(40 * std::log10(127.0 / 64) / 0.375), 1e-5);

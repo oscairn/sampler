@@ -254,7 +254,9 @@ float boxSource(int v) noexcept
     // measured through the fine tune at 17 wheel values and the coarse tune at 6 (every one within 0.1 cent;
     // 64 plays as 512, not 516)
     v = std::max(0, std::min(127, v));
-    return v <= 64 ? 8.0f * v : 512.0f + (v - 64) * 512.0f / 63.0f;
+    // above 64 in whole steps, truncated (a box of +63 on the part LFO's depth, 128 steps a full box: wheel 80 / 96 / 112 play
+    // depths 78 / 94 / 110, not the 79 / 95 / 111 of the exact quotient; round 6, batch N)
+    return v <= 64 ? 8.0f * float(v) : float(512 + (v - 64) * 512 / 63);
 }
 
 // Measured through the fine tune at ratio +63 (round 5, batch A): knob 1 stored at 0, 64, 256, 511, 512, 768, 1000,

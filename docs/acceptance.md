@@ -492,6 +492,9 @@ read in cents against the take with the source at 0), the source a knob's stored
   the hold plays index 72, from 127 to 0 index 40); a wheel moved during the release changes its rate on the reference
   (1328 dB/s against 1871 for the new index from the start), which the engine does not follow (D18). The attack is read
   at note-on (inferred: the probe could not tell).
+- The controllers' map above 64 takes whole steps, truncated: 512 + (v - 64) x 512 / 63 rounded down (round 6, batch N: a
+  box of +63 on the part LFO's depth, 128 steps a full box, plays depths 78 / 94 / 110 at wheel 80 / 96 / 112, where the exact
+  quotient gives 79 / 95 / 111; 45 wheel steps over five boxes all agree with the truncated map).
 - Engine: the knobs, ribbon and switches are CLAP parameters (`docs/parameters.md`); ABI test
   `knobs_ribbon_and_switches_drive_their_boxes`; a destination's modulation sounds as the linear box it stands for
   (`modulation_sounds_as_the_equivalent_linear_box`, sample for sample).

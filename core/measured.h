@@ -81,7 +81,7 @@ float hpfKeyCents(int keyFollow, int key) noexcept;  // cents the high-pass cuto
 // A box's output (measured: docs/acceptance.md (l)): (curve(c) + o - 1024) x ratio / 8 within +-8192, c the source on
 // 0..1024, o 1024 unipolar or 512 bipolar, ratio raw +127 counting as +128. A destination moves by the sum over its
 // boxes of trunc(output x span / 8192) (each box truncated toward zero), within +-span.
-// The source maps: a controller value v (0-127) is 8 v up to 64, then 512 + (v - 64) x 512 / 63 (1024 at 127); the
+// The source maps: a controller value v (0-127) is 8 v up to 64, then 512 + (v - 64) x 512 / 63 truncated (1024 at 127); the
 // pitch bend its 14-bit value / 16.
 float boxSource(int v127) noexcept;
 // The part's own sources at x (0..1, the shell's parameters): the ribbon (6) as its controller, CC 16 at round(127 x);
