@@ -460,6 +460,17 @@ read in cents against the take with the source at 0), the source a knob's stored
   at the top, a note per wheel value through a ratio +32 box): the wheel at 64 and at 127 sound as the static depths
   +16 and +32 within 0.01 dB in every octave band, so its span is 64 raw steps; a held note does not follow the wheel
   (round 3, `v_fegd_*`): the depth is read when the note starts.
+- The element LFO's depth through boxes (`b_pmd_*`, `b_amd_*`, `b_pmdw_*`, `a_pmd_*`, `a_amd_*`): a box from knob 1 on E.LFO PMD
+  and AMD at ratios 8, 16, 32, 63 and -32, stored values 16-1023, and the mod wheel through PMD boxes of 16, 32, 63 at
+  wheel 32, 64, 96, 127. The depth is one function of the box output o = c x ratio / 8, whatever the ratio or the source
+  (wheel and knob at the same o within 0.3 %): peak-to-peak pitch 0 up to o = 32, 4.61 cents from 64, 9.22 at 1024, then
+  doubling about every 1024 to 1047 cents at 8056; amplitude 2.56 dB at 1024, 5.14 at 2048, 12.13 at 4092, 82.5 at 8056.
+  A negative ratio gives no pitch modulation. The reference's depths come in steps (0.92 cent). The fork's law (K19:
+  2^((2 ratio + cc - 253) / 16)) meets this only at large depths (6.45 cents measured against 0.31 at wheel 32, ratio
+  16), and K30's amplitude points sit 0.3 dB below these at large depths and far below at small ones; both replaced. Hold-
+  outs (batch A, ratio 32, knob 256 / 512 / 768 / 1023): 9.30 / 18.56 / 36.17 / 72.39 cents against the knots' 9.22 /
+  18.44 / 35.97 / 71.95 (within 0.9 %); amplitude 5.14 and 12.14 dB against 5.14 and 12.13. Between the knots
+  interpolated (unverified). Negative amplitude ratios: not measured (reported).
 - Per-box truncation, checked again on static knob values (`b_tr_*`): two, three or four boxes on the fine tune, each
   a fraction of a cent (knob 512 or 1023, ratio +1 or +2). Three boxes of 0.781 cent play 0.00 cents (summed then
   truncated: 2), three of 1.561 play 2.96 (4), two of 1.561 play 2.04 (3), three of 1.562 play 2.96 (4); single boxes

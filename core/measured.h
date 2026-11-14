@@ -49,6 +49,12 @@ bool elementEq(int type, int q, int freq1, int gain1, int freq2, int gain2, doub
 double eqHz(int raw) noexcept;
 double eqPeakQ(int raw) noexcept;
 
+// ---- the element LFO's depth (reference mode) ----
+// Peak to peak, from the box output o driving it (o = c x ratio / 8, any source; the mod wheel's elfo_pitch_ratio and
+// elfo_amp_ratio as boxes): the pitch in cents (nothing for o <= 32, and for a negative o), the amplitude in dB.
+float elfoPitchDepthCents(float o) noexcept;
+float elfoAmpDepthDb(float o) noexcept;
+
 // ---- high-pass key follow ----
 float hpfKeyCents(int keyFollow, int key) noexcept;  // cents the high-pass cutoff moves at a key
 
@@ -68,7 +74,9 @@ float boxCurveAt(int curve, float c) noexcept;
 // The destinations the core moves: the reference's number, the span (raw steps of a full box) in the
 // destination's unit (index, or cents for the tunings). The first kLiveDests move a sounding voice at every control
 // step; the others are read when the note starts (the filter envelope's depth: measured so).
-enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, BoxFegDepth, kBoxDests };
+// The element LFO's pitch and amplitude depth (E.LFO PMD / AMD) take the box output itself (span 8192), summed with the
+// mod wheel's element LFO ratios, into elfoPitchDepthCents / elfoAmpDepthDb.
+enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, BoxFegDepth, BoxElfoPmd, BoxElfoAmd, kBoxDests };
 constexpr int kLiveDests = 6;
 int boxDest(int reference) noexcept;  // -1: not built
 extern const int16_t kBoxSpan[kBoxDests];

@@ -399,29 +399,5 @@ float filterGain(int32_t gain) noexcept
 
 // ---- element LFO ----
 
-float lfoPitchDepthCents(int32_t ratio, float cc) noexcept
-{
-    // Pitch depth, peak to peak: 1118 * 2^((min(2 |ratio|, 127) + cc - 253) / 16) cents, nothing at
-    // controller value 0
-    const float index = std::min(127.0f, 2.0f * static_cast<float>(std::abs(ratio)));
-    if (index <= 0.0f || cc <= 0.0f)
-        return 0.0f;
-    const float cents = 1118.0f * std::exp2((index + cc - 253.0f) / 16.0f);
-    return ratio < 0 ? -cents : cents;
-}
-
-float lfoAmpDepthDb(float depth) noexcept
-{
-    // Peak-to-peak dips measured at these effective depths (K30), linear between
-    static constexpr float at[8] = { 0.f, 8.f, 16.f, 24.f, 32.f, 40.f, 48.f, 63.f };
-    static constexpr float db[8] = { 0.f, 2.2f, 4.8f, 8.1f, 11.8f, 16.9f, 23.9f, 83.f };
-    const float e = std::max(0.0f, std::min(63.0f, depth));
-    for (int k = 0; k < 7; ++k) {
-        if (e <= at[k + 1])
-            return db[k] + (db[k + 1] - db[k]) * (e - at[k]) / (at[k + 1] - at[k]);
-    }
-    return db[7];
-}
-
 }  // namespace laws
 }  // namespace pcm

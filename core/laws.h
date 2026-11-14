@@ -81,8 +81,6 @@ extern const float kDampingKnotLimit[kDampingKnots];
 
 // ---- element LFO, reference mode (ElementLfo) ----
 constexpr double kLfoHz = 4.848;
-float lfoPitchDepthCents(int32_t ratio, float cc) noexcept;  // peak to peak; cc 0-127
-float lfoAmpDepthDb(float depth) noexcept;                   // peak to peak at an effective depth 0-63
 
 }  // namespace laws
 }  // namespace pcm

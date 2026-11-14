@@ -2,7 +2,7 @@
 
 Per sound (a parameter event with a channel reaches the sounds that channel selects; without one, every selected
 sound). The ids are stable: a new parameter gets a new id, an id is never reused or renumbered. Every parameter is
-automatable; the box destinations (ids 14-20) are also modulatable (`CLAP_PARAM_IS_MODULATABLE`).
+automatable; the box destinations (ids 14-22) are also modulatable (`CLAP_PARAM_IS_MODULATABLE`).
 
 | id | name | patch-text key | range | default | what it does |
 |---|---|---|---|---|---|
@@ -19,6 +19,7 @@ automatable; the box destinations (ids 14-20) are also modulatable (`CLAP_PARAM_
 | 18 | Fine Tune | `fine` | -100..100 | 0 | the box destination fine tune, cents |
 | 19 | High-Pass Cutoff | `hpf_cutoff` | -1023..1023 | 0 | the box destination high-pass cutoff (filter types 4 and 5), raw index steps |
 | 20 | Filter EG Depth | `feg_depth` | -64..64 | 0 | the box destination filter envelope depth, raw steps; read when a note starts (as the reference reads its box) |
+| 21, 22 | Element LFO Pitch Depth, Element LFO Amp Depth | `elfo_pmd`, `elfo_amd` | -8192..8192 | 0 | the box destinations E.LFO PMD / AMD in box-output units (a full box is 8192), added to the boxes' outputs and the mod wheel's element LFO ratios before the depth law |
 
 A host passes no MIDI controller for the ribbon, the knobs or the switches (only CC 1, 2, 4, 11, 64-67, 120, 123 and
 pitch bend reach a plugin), so they are parameters. The maps were measured on the reference through a box on the fine
@@ -26,7 +27,7 @@ tune (`docs/acceptance.md` (m)): a stored knob value enters a box as itself, the
 the controllers' map, the switches as their controllers at 0 and 127. A knob starts at the sound's stored value
 (`prepare` text, or a state that holds no knobs); a value given in the `prepare` shell line or its parameter list wins.
 
-## Box destinations (ids 14-20)
+## Box destinations (ids 14-22)
 
 Each destination the core's boxes move is a parameter, so that a converter can map a plain source-to-destination box
 onto the host's control tree with a host-side curve instead of an in-engine box. Its value is an offset in the
@@ -47,10 +48,10 @@ destination beyond what was measured, as a knob can.
 ## Editor hints (`oscairn.ui`)
 
 Every parameter has a hint: Level (role level, priority 1), Pan (pan), Cutoff (cutoff, 2), Resonance (resonance, 3),
-Element Level (level 1), Filter EG Depth (filter envelope, 4); the knobs are one group, the ribbon with the switches another (the switches as switches), the
+Element Level (level 1), Filter EG Depth (filter envelope, 4); the element LFO depths are a group; the knobs are one group, the ribbon with the switches another (the switches as switches), the
 tunings with the high-pass cutoff a third.
 
 ## State
 
-The CLAP state `oscairn-pcm-state 2` and the sound-contexts snapshot `oscairn-pcm-contexts/2` save ids 0-20 (not the
+The CLAP state `oscairn-pcm-state 2` and the sound-contexts snapshot `oscairn-pcm-contexts/2` save ids 0-22 (not the
 modulation), then the sound. A state 1 (ids 0-2 only) still loads, its knobs at the sound's values.

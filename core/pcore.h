@@ -114,6 +114,7 @@ struct Compiled {
     struct Box { uint8_t number, src, dest; int8_t curve; float ratio, off; };
     uint8_t boxes = 0;
     Box box[16];
+    bool elfoBoxes = false;           // a box drives the element LFO's depth
 };
 // Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
 // region's sample is missing or empty, or a loop lies outside its sample (error says which).
@@ -196,7 +197,7 @@ private:
     uint16_t nextId_ = 1;
     float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {}, pressure_[16] = {}, foot_[16] = {}, breath_[16] = {};
     float boxSourceOf(uint32_t sound, int channel, int src) const;
-    static constexpr int kControls = 18, kOffsets = 7;
+    static constexpr int kControls = 18, kOffsets = 9;
     float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
     bool offsetOn_[kMaxSounds] = {};

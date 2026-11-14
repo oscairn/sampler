@@ -153,6 +153,39 @@ bool elementEq(int type, int q, int f1, int g1, int f2, int g2, double sr, Biqua
     return true;
 }
 
+// Measured on sines (round 5, batch B): a box from knob 1 on E.LFO PMD / AMD at ratios 8, 16, 32, 63 and stored values
+// 16-1023; the depth is one function of o = c x ratio / 8 whatever the ratio (and the source: the mod wheel at 32, 64,
+// 96, 127 through ratios 16, 32, 63 plays the knob's depth at the same o within 0.3 %); peak to peak by zero crossings
+// (pitch) and the demodulated envelope (amplitude). Between the knots log-linear (pitch), linear (amplitude). The
+// reference's depths come in steps (0.92 cent, about 0.3 dB at small depths); the knots keep its values.
+namespace {
+float knots(const float* o, const float* y, int n, float x, bool logy) noexcept
+{
+    if (x <= o[0]) return y[0];
+    for (int k = 1; k < n; ++k)
+        if (x <= o[k]) {
+            const float u = (x - o[k - 1]) / (o[k] - o[k - 1]);
+            if (logy && y[k - 1] > 0) return y[k - 1] * std::pow(y[k] / y[k - 1], u);
+            return y[k - 1] + (y[k] - y[k - 1]) * u;
+        }
+    return y[n - 1];
+}
+}  // namespace
+
+float elfoPitchDepthCents(float x) noexcept
+{
+    static const float o[] = { 32, 64, 128, 256, 512, 1008, 1024, 1536, 2016, 2048, 3072, 4092, 6048, 8056, 8192 };
+    static const float y[] = { 0, 4.61f, 4.61f, 5.53f, 6.45f, 8.30f, 9.22f, 12.91f, 17.52f, 18.44f, 35.97f, 71.95f, 263.86f, 1047.3f, 1146 };
+    return x <= 32 ? 0.0f : knots(o, y, int(sizeof o / sizeof o[0]), x, true);  // 8192: one more step of the last doubling (inferred)
+}
+
+float elfoAmpDepthDb(float x) noexcept
+{
+    static const float o[] = { 0, 256, 512, 768, 1024, 1536, 2048, 3072, 4092, 6048, 8056, 8192 };
+    static const float y[] = { 0, 0.8f, 1.5f, 2.2f, 2.56f, 4.04f, 5.14f, 8.45f, 12.13f, 23.17f, 82.46f, 83 };
+    return knots(o, y, int(sizeof o / sizeof o[0]), std::max(0.0f, x), false);
+}
+
 float hpfKeyCents(int kf, int key) noexcept
 {
     // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,
@@ -232,7 +265,7 @@ float boxCurveAt(int curve, float c) noexcept
 // the high-pass cutoff 1023 (one take within 2 steps; inferred from the cutoff's); the filter envelope's depth 64 (raw
 // depth steps: the wheel at 64 and 127 through a ratio +32 box, a note each, sound as the static depths +16 and +32
 // within 0.01 dB in every octave band; a held note does not follow the box: read at note-on; round 5, batch A)
-const int16_t kBoxSpan[kBoxDests] = { 1023, 128, 128, 2400, 100, 1023, 64 };
+const int16_t kBoxSpan[kBoxDests] = { 1023, 128, 128, 2400, 100, 1023, 64, 8192, 8192 };
 
 int boxDest(int ref) noexcept
 {
@@ -244,6 +277,8 @@ int boxDest(int ref) noexcept
     case 68: return BoxFine;
     case 87: return BoxHpf;
     case 79: return BoxFegDepth;
+    case 64: return BoxElfoPmd;
+    case 65: return BoxElfoAmd;
     default: return -1;
     }
 }

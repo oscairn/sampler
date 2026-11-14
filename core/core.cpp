@@ -108,6 +108,8 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
         if (dest < 0 || curve < 0 || !src || b[2] == 0) continue;
         out.box[out.boxes++] = {uint8_t(k), uint8_t(b[0]), uint8_t(dest), int8_t(curve), b[2] == 127 ? 128.f : float(b[2]), b[3] ? 512.f : 1024.f};
     }
+    out.elfoBoxes = false;
+    for (uint32_t b = 0; b < out.boxes; ++b) out.elfoBoxes |= out.box[b].dest == laws::BoxElfoPmd || out.box[b].dest == laws::BoxElfoAmd;
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
@@ -1178,18 +1180,33 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         const float fc = grid ? centsAdvance(v.feg, clock_, sr_) : float(v.feg.cents);
         const float pc = grid ? centsAdvance(v.peg, clock_, sr_) : float(v.peg.cents);
         // the element LFO (reference mode): a triangle at 4.848 Hz from note-on, falling from zero
+        // its depth from the box outputs driving it: the mod wheel's element LFO ratios, E.LFO PMD / AMD boxes, the offsets
         float lfoCents = 0, lfoGain = 1;
-        const float wheel = wheel_[v.channel] * 127.0f;
-        if ((v.lfoPitchRatio != 0 || v.lfoAmpRatio != 0) && wheel > 0) {
+        const Compiled* snd = sound_[v.sound];
+        float oP = 0, oA = 0;
+        if (v.lfoPitchRatio != 0 || v.lfoAmpRatio != 0) {
+            const float c = laws::boxSource(int(std::lround(wheel_[v.channel] * 127.0f))) * 0.125f;
+            oP = c * (v.lfoPitchRatio == 127 ? 128.0f : v.lfoPitchRatio); oA = c * (v.lfoAmpRatio == 127 ? 128.0f : v.lfoAmpRatio);
+        }
+        if (snd && (snd->elfoBoxes || offsetOn_[v.sound])) {
+            oP += float(offset_[v.sound][laws::BoxElfoPmd]); oA += float(offset_[v.sound][laws::BoxElfoAmd]);
+            for (uint32_t b = 0; b < snd->boxes; ++b) {
+                const Compiled::Box& x = snd->box[b];
+                if ((x.dest != laws::BoxElfoPmd && x.dest != laws::BoxElfoAmd) || !v.element[BoxSw1 + x.number]) continue;
+                const float o = std::max(-8192.0f, std::min(8192.0f, (laws::boxCurveAt(x.curve, boxSourceOf(v.sound, v.channel, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f));
+                (x.dest == laws::BoxElfoPmd ? oP : oA) += o;
+            }
+        }
+        oP = std::min(8192.0f, oP); oA = std::min(8192.0f, oA);
+        if (oP > 32 || oA > 0) {
             const double cycles = double(clock_ - v.start) * laws::kLfoHz / sr_;
             const float ph = float(cycles - std::floor(cycles));
             const float w = ph < 0.25f ? -4.0f * ph : (ph < 0.75f ? 4.0f * ph - 2.0f : 4.0f - 4.0f * ph);
-            lfoCents = 0.5f * laws::lfoPitchDepthCents(int32_t(v.lfoPitchRatio), wheel) * w;
-            const float amp = laws::lfoAmpDepthDb(std::fabs(v.lfoAmpRatio) * wheel / 127.0f) * (v.lfoAmpRatio < 0 ? -1.0f : 1.0f);
+            lfoCents = 0.5f * laws::elfoPitchDepthCents(oP) * w;
+            const float amp = laws::elfoAmpDepthDb(oA);  // shortcut: a negative amplitude depth plays none (not measured; reported)
             lfoGain = std::pow(10.0f, -amp * 2.0f * std::min(ph, 1.0f - ph) / 20.0f);
         }
         // the controller boxes (the element's switch for each), in raw steps or cents from the bases
-        const Compiled* snd = sound_[v.sound];
         // (a voice moved before its sound's offsets went back to zero is put back too)
         if (snd && (snd->boxes || offsetOn_[v.sound] || (v.moved[0] | v.moved[1] | v.moved[2] | v.moved[3] | v.moved[4] | v.moved[5]))) {
             int32_t step[laws::kLiveDests];

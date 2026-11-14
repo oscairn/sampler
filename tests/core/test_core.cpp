@@ -568,7 +568,7 @@ static double sineCents(const std::vector<float>& o, int from, int to, double hz
     return 1200 * std::log2((sr * (n - 1) / double(last - first)) / hz);
 }
 // The element LFO in reference mode through the mod wheel: a 4.848 Hz triangle, pitch depth
-// lfoPitchDepthCents(ratio, cc) and amplitude depth lfoAmpDepthDb peak to peak.
+// elfoPitchDepthCents and amplitude depth elfoAmpDepthDb peak to peak at the box output c x ratio / 8.
 static void elementLfo() {
     Rig a("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 elfo_amp_ratio=32", constant(44100, 16384), 1, 44100.f, "100-44000", 44100);
     a.core->setModWheel(0, 1.0f);
@@ -576,14 +576,27 @@ static void elementLfo() {
     const auto o = a.run(44100);
     double lo = 1e9, hi = 0;
     for (int i = 4410; i < 44100; ++i) { lo = std::min(lo, double(o[size_t(2 * i)])); hi = std::max(hi, double(o[size_t(2 * i)])); }
-    NEAR(20 * std::log10(hi / lo), laws::lfoAmpDepthDb(32), 0.2);
+    NEAR(20 * std::log10(hi / lo), laws::elfoAmpDepthDb(4096), 0.2);
     Rig p("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 elfo_pitch_ratio=40", sine(44100, 441, 44100, 16384), 1, 44100.f, "0-44100", 44100);
     p.core->setModWheel(0, 1.0f);
     p.core->noteOn(0, 0, 0, 60, 1.0f);
     const auto q = p.run(44100);
     double clo = 1e9, chi = -1e9;
     for (int w = 0; w < 40; ++w) { const double c = sineCents(q, 4410 + w * 882, 4410 + w * 882 + 441, 441, 44100); clo = std::min(clo, c); chi = std::max(chi, c); }
-    NEAR(chi - clo, laws::lfoPitchDepthCents(40, 127), 0.15 * laws::lfoPitchDepthCents(40, 127));  // 10 ms windows sample the triangle's peaks
+    NEAR(chi - clo, laws::elfoPitchDepthCents(5120), 0.15 * laws::elfoPitchDepthCents(5120));  // 10 ms windows sample the triangle's peaks
+    // the same law from a knob box on E.LFO PMD (knob 768, ratio +32: o 3072, 35.97 cents), and nothing at a negative ratio
+    for (int ratio : {32, -32}) {
+        const std::string text = "oscairn-pcm-sound/0\npart knob1=768 box1_src=8 box1_dst=64 box1_ratio=" + std::to_string(ratio) +
+                                 "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127\nregion key=0-127 root=60 element=0 sample=0 loop=0-44100\n";
+        Rig k(text.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+        k.core->setGain(0, 1, 0);
+        k.core->setControl(0, 8, 768 / 1023.f);  // the shell starts knob 1 at the sound's value
+        k.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto z = k.run(44100);
+        double lo2 = 1e9, hi2 = -1e9;
+        for (int w = 0; w < 40; ++w) { const double c = sineCents(z, 4410 + w * 882, 4410 + w * 882 + 441, 441, 44100); lo2 = std::min(lo2, c); hi2 = std::max(hi2, c); }
+        if (ratio > 0) NEAR(hi2 - lo2, 35.97, 0.15 * 35.97); else NEAR(hi2 - lo2, 0.0, 0.05);
+    }
 }
 // A moving pitch envelope: the hold level's pitch at the start, the attack level's after the attack.
 static void movingPitchEnvelope() {

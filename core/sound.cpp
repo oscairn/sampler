@@ -391,6 +391,7 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
         else if (!((b[0] >= 0 && b[0] <= 4) || (b[0] >= 6 && b[0] <= 17))) add(0, int16_t(base), "a controller box source not built (foot switch, sequenced, envelope followers)", true);
         else if (b[0] == 2) add(0, int16_t(base), "channel pressure as a box source: its map is not measured", true);
         else if (laws::boxCurve(b[4], b[5], b[6], b[7]) < 0) add(0, int16_t(base + 5), "a controller box curve not measured", true);
+        else if (b[1] == 65 && b[2] < 0) add(0, int16_t(base + 2), "a negative ratio on the element LFO's amplitude depth is not measured", true);
     }
     for (uint32_t e = 0; e < d.elements; ++e) {
         const int16_t* v = d.element[e].v;
@@ -398,6 +399,7 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
         if (type != 0 && type != 4 && type != 5 && type != 18)
             add(uint16_t(e), FilType, "filter types other than 0 (two low-pass sections), 4 (low-pass and high-pass sections), 5 (one-pole and high-pass section) and 18 (thru)");
         if (v[ElfoMode] == 1) add(uint16_t(e), ElfoMode, "the element LFO's own settings (settings mode) are not built");
+        if (v[ElfoMode] == 0 && v[ElfoAmpRatio] < 0) add(uint16_t(e), ElfoAmpRatio, "a negative element LFO amplitude ratio is not measured");
         if (v[TriggerMode] && v[TriggerMode] != 2) add(uint16_t(e), TriggerMode, "element trigger modes other than normal and key-off are not built");
         if (v[KeyOnDelay] || v[KeyOnDelayNote]) add(uint16_t(e), v[KeyOnDelay] ? KeyOnDelay : KeyOnDelayNote, "key-on delay is not built");
     }
