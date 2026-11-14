@@ -185,7 +185,15 @@ starting with "no" are reported at every value but the default (any other start:
 parameter at random over its full raw range, up to 6 random regions with random keys, velocities,
 roots, transposition ±48, tune ±12 semitones, level -40 to +6 dB, pan, loops or none), 200 blocks
 of 1-128 frames per round with random notes, note-offs, chokes, note volume, mod wheel, sustain pedal
-and pitch bend (0.3.0: also four random controller boxes per sound over every part parameter's range, breath, foot
-controller and channel pressure): 4,800 blocks, about 4,800 notes. Output finite and below 64, no allocation in
-process(). Run on 0.3.0's builds: NEON (arm64; peak 4.26), SSE2 (x86_64 under Rosetta) and scalar (`PV_SCALAR`), each
-passing; Linux arm64 release, ASan+UBSan and TSan passing.
+and pitch bend, four random controller boxes per sound over every part parameter's range (the built destinations and
+sources likelier), breath, foot controller, channel pressure, random stored knob values, and (0.4.0) every shell
+parameter's value (knobs, ribbon, switches, box destinations, a little past their ranges) and the destinations'
+modulation to twice their spans: 4,800 blocks, about 3,800 notes. Output finite and below 64, no allocation in
+process(). `fuzz_every_note_ends` (0.4.0): eight rounds of random sounds (releases and half damper times at most index
+90, no time shifts), random notes, pedals, controllers and chokes, then every key and the pedal up and 12 s: no voice
+remains and every note-on got exactly one NOTE_END. `one_shot_regions_end_their_voices` and
+`pad_voices_end_by_the_release_rule` (0.4.0) hold the voice-end rule: a voice ends when its amplitude envelope's release
+reaches -96.45 dB (a release at index i lasts at most its seconds per 60 dB x 96.45 / 60, from any level; entered again,
+it keeps its rate from where it stands), or when a region without a loop plays past its sample's end. Run on 0.4.0's
+builds: NEON (arm64), SSE2 (x86_64 under Rosetta) and scalar (`PV_SCALAR`), ASan+UBSan on macOS; Linux arm64 release,
+ASan+UBSan and TSan.
