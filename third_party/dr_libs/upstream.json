@@ -1,5 +1,0 @@
-{
-  "repository": "https://github.com/mackron/dr_libs",
-  "commit": "e4a7765e598e9e54dc0f520b7e4416359bee80cc",
-  "note": "dr_flac.h (v0.12.42) and dr_wav.h (v0.13.15) only, unchanged; public domain or MIT No Attribution (LICENSE: the licence text at the end of each header)."
-}
