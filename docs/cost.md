@@ -17,8 +17,8 @@ most 200; shedding at most 2,000 a shed voice (the shed block and the next over 
 and no case more than 10 % over `tools/cost/baseline.txt`. It needs valgrind, so it is a documented
 script run in the aarch64 container
 (`docker run --rm -v "$PWD":/src:ro --tmpfs /out:exec IMAGE sh /src/tools/cost/cg.sh /src /out check`),
-not a CTest test. Last run (0.4.0): every gate passes (mono 10,557, stereo 15,027, rest 192, shedding 1,857 and
-1,661 a voice for 16 and 32 voices).
+not a CTest test. Last run (0.4.0): every gate passes (mono 10,557, stereo 15,027, rest 192, shedding 1,868 and
+1,667 a voice for 16 and 32 voices).
 
 ## Instructions per block (aarch64, NEON)
 
@@ -65,7 +65,7 @@ over the sound's boxes there, nothing per block.
 ## Shedding
 
 `Core::shed(n)` fades the n quietest element voices out over 16 frames (one control step) and frees
-them as they reach silence. Shedding 16 and 32 voices cost 1,857 and 1,661 instructions a shed voice (0.4.0), about 1/8 of a voice-block
+them as they reach silence. Shedding 16 and 32 voices cost 1,868 and 1,667 instructions a shed voice (0.4.0, the gate's run), about 1/8 of a voice-block
 plus the scan for the quietest. The shell's own give-ups (the voice budget's order) fade over the
 SDK's 3 ms choke instead, as in the analog engine.
 
