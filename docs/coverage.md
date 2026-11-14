@@ -77,7 +77,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Random Pitch Depth | 0 – 127 | yes: `pitch_random`: each note a whole number of 18.75 cents, uniform within +-(depth - 1) / 4 steps (the sequence differs from the reference's) | measured here (acceptance s) | 160 notes at 4 depths; core test `random_pitch` |
 | Pitch Key Follow Sensitivity | −200% – +200% | yes: `pitch_keyfollow`, `pitch_keyfollow_center`: the centre note at its pitch, every key from it at the measured cents a key | measured here at every raw value (acceptance o): whole cents within 0.013 | core test `pitch_key_follow` |
 | Pitch Key Follow Sensitivity Center Note | C-2 – G8 | yes: `pitch_keyfollow_center` (with `pitch_keyfollow`) | measured here (acceptance o): centres 48, 60, 72 within 1 cent | core test `pitch_key_follow` |
-| Fine Tune Key Follow Scaling Sensitivity | −64 – +63 | no (100 cents a key) | - | - |
+| Fine Tune Key Follow Scaling Sensitivity | −64 – +63 | no (not in the sound format; the converter must report a non-zero value with a non-zero fine tune) | measured here, not built: no effect at fine tune 0 (3 values, 5 keys); with a fine tune f the fine tune at a key is about f x (1 + s (key - 60) / 4096), about key 60 whatever the pitch key follow's centre (12 settings at 6 keys, within about 1 cent) | - |
 | PEG Hold Time | 0 – 127 | yes: `pitcheg_*`, read once a control step, the pitch ramped across it | K11-K13 | pads (levels neutral); moving pitch: core test `moving_pitch_envelope` |
 | PEG Attack Time | 0 – 127 | yes: `pitcheg_*`, read once a control step, the pitch ramped across it | K11-K13 | pads (levels neutral); moving pitch: core test `moving_pitch_envelope` |
 | PEG Decay 1 Time | 0 – 127 | yes: `pitcheg_*`, read once a control step, the pitch ramped across it | K11-K13 | pads (levels neutral); moving pitch: core test `moving_pitch_envelope` |
@@ -195,7 +195,8 @@ of 1-128 frames per round with random notes, note-offs, chokes, note volume, mod
 and pitch bend, four random controller boxes per sound over every part parameter's range (the built destinations and
 sources likelier), breath, foot controller, channel pressure, random stored knob values, and (0.4.0) every shell
 parameter's value (knobs, ribbon, switches, box destinations, a little past their ranges) and the destinations'
-modulation to twice their spans: 4,800 blocks, about 3,800 notes. Output finite and below 64, no allocation in
+modulation to twice their spans, and (0.5.0) every part LFO setting, the part's cutoff, resonance and filter envelope depth
+offsets, the element selection modes and key-on delays (as element parameters): 4,800 blocks, about 3,900 notes. Output finite and below 64, no allocation in
 process(). `fuzz_every_note_ends` (0.4.0): eight rounds of random sounds (releases and half damper times at most index
 90, no time shifts), random notes, pedals, controllers and chokes, then every key and the pedal up and 12 s: no voice
 remains and every note-on got exactly one NOTE_END. `one_shot_regions_end_their_voices` and

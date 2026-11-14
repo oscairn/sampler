@@ -17,8 +17,8 @@ most 200; shedding at most 2,000 a shed voice (the shed block and the next over 
 and no case more than 10 % over `tools/cost/baseline.txt`. It needs valgrind, so it is a documented
 script run in the aarch64 container
 (`docker run --rm -v "$PWD":/src:ro --tmpfs /out:exec IMAGE sh /src/tools/cost/cg.sh /src /out check`),
-not a CTest test. Last run (0.4.0): every gate passes (mono 10,557, stereo 15,027, rest 192, shedding 1,868 and
-1,667 a voice for 16 and 32 voices).
+not a CTest test. Last run (0.5.0): every gate passes (mono 10,595, stereo 15,065, rest 193, shedding 1,904 and
+1,688 a voice for 16 and 32 voices). (0.4.0: 10,557, 15,027, 192, 1,868 and 1,667.)
 
 ## Instructions per block (aarch64, NEON)
 
@@ -62,10 +62,20 @@ plugin's code 423,816 bytes of text on macOS arm64 against 405,780 at 0.3.0 (the
 unchanged). The destinations read at note-on (filter envelope depth, attack) and at the note-off (release) cost a pass
 over the sound's boxes there, nothing per block.
 
+0.5.0: the part LFO, element selection, key-on delay, the part's offsets and the velocity, random pitch laws add 38
+instructions a voice-block to a voice that uses none of them (mono 10,595 against 10,557: the part LFO's checks in the
+control step; the offsets are applied when the sound is compiled, selection, delay and the velocity laws at note-on). A
+voice that the part LFO reaches runs it once a control step (its cost a moved voice's, not measured with callgrind). The
+voice's scalar side stays at 512 bytes (the LFO's four bytes in padding: at 536 bytes the pools' indexing cost 110
+instructions a voice-block more); `sizeof(pcm::Core)` 1,524,224 against 1,518,912 (the held-back layers of key-on delays,
+the selection's cycle positions and draws, the LFOs' start clocks); a compiled sound 69,104 bytes against 68,392; the
+plugin's code 441,312 bytes of text on macOS arm64 against 423,816 at 0.4.0. New tables: the LFO's pitch depth knots (66
+bytes) and pan knots (8), the key-on delay knots (348).
+
 ## Shedding
 
 `Core::shed(n)` fades the n quietest element voices out over 16 frames (one control step) and frees
-them as they reach silence. Shedding 16 and 32 voices cost 1,868 and 1,667 instructions a shed voice (0.4.0, the gate's run), about 1/8 of a voice-block
+them as they reach silence. Shedding 16 and 32 voices cost 1,904 and 1,688 instructions a shed voice (0.5.0, the gate's run), about 1/8 of a voice-block
 plus the scan for the quietest. The shell's own give-ups (the voice budget's order) fade over the
 SDK's 3 ms choke instead, as in the analog engine.
 
