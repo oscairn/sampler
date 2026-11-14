@@ -58,6 +58,26 @@ static void soundFormat() {
     CHECK(accepted == 0);
     // the element EQ's gains take their whole range, -12 to +12 dB (raw 32-96)
     CHECK(readText("oscairn-pcm-sound/0\nsample s\nelement eq_gain1=32 eq_gain2=96\nregion element=0 sample=0\n", *c, err, sizeof err));
+    // a blob from before the last part parameters were added (two fewer): read, those at their defaults
+    {
+        std::vector<uint8_t> old(blob.size() - 4);
+        std::memcpy(old.data(), blob.data(), 16);  // magic, version, flags, total, crc, then the counts
+        size_t at = 16;
+        for (int k = 0; k < 3; ++k, at += 2) std::memcpy(&old[at], &blob[at], 2);
+        const uint16_t parts = uint16_t(kPartParamCount - 2);
+        std::memcpy(&old[at], &parts, 2);
+        std::memcpy(&old[at + 2], &blob[at + 2], size_t(parts) * 2);
+        std::memcpy(&old[at + 2 + size_t(parts) * 2], &blob[at + 2 + size_t(kPartParamCount) * 2], blob.size() - (at + 2 + size_t(kPartParamCount) * 2));
+        const uint32_t total = uint32_t(old.size());
+        std::memcpy(&old[8], &total, 4);
+        uint32_t crc = 0xffffffffu;
+        for (size_t i = 16; i < old.size(); ++i) { crc ^= old[i]; for (int k = 0; k < 8; ++k) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1))); }
+        crc = ~crc;
+        std::memcpy(&old[12], &crc, 4);
+        CHECK(readBlob(old.data(), old.size(), *c, err, sizeof err));
+        if (!readBlob(old.data(), old.size(), *c, err, sizeof err)) std::printf("  %s\n", err);
+        CHECK(*c == *a);
+    }
     // a later version is refused with a reason
     std::vector<uint8_t> v = blob; v[4] = 1;
     CHECK(!readBlob(v.data(), v.size(), *c, err, sizeof err) && std::strstr(err, "version"));

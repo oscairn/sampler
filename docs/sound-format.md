@@ -12,7 +12,7 @@ tests and hand-written sounds. Version 0 is the first; a reader refuses any othe
 | 4 | u16 version (0), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
-| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (4 in v0) |
+| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (6 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
 | 24 | part parameters, i16 each, in `core/partparams.inc` order |
 | | samples: u8 length, then the reference's bytes (a relative path, no NUL, no `..` segment, no leading `/`) |
 | | elements: u16 count, then count x (u16 parameter index in `core/params.inc` order, i16 value); indices increasing; only values that differ from the default |

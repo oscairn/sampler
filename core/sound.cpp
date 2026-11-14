@@ -151,8 +151,10 @@ bool readBlob(const uint8_t* blob, size_t size, SoundData& d, char* e, size_t ca
     const uint32_t parts = r.u16();
     if (d.samples > kMaxSamples || d.elements > kMaxElements || d.regions > kMaxRegions) return err(e, cap, "too many samples, elements or regions"), false;
     if (!d.elements || !d.regions || !d.samples) return err(e, cap, "a sound needs a sample, an element and a region"), false;
-    if (parts != kPartParamCount) return err(e, cap, "%ld part parameters, v0 has %ld", long(parts), long(kPartParamCount)), false;
+    // a blob written before later part parameters were added has fewer: those keep their defaults
+    if (parts > kPartParamCount) return err(e, cap, "%ld part parameters, this engine knows %ld", long(parts), long(kPartParamCount)), false;
     for (int i = 0; i < kPartParamCount; ++i) {
+        if (uint32_t(i) >= parts) { d.part[i] = kPartParamDefs[i].def; continue; }
         const int v = int16_t(r.u16());
         if (v < kPartParamDefs[i].lo || v > kPartParamDefs[i].hi) return err(e, cap, "part parameter %ld out of range", i), false;
         d.part[i] = int16_t(v);
