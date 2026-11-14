@@ -43,8 +43,11 @@ float kernelCutoff(double r) noexcept
     // reference's slope is gentler than a sinc's); linear between, 1 / r beyond.
     static constexpr double at[6] = { 1.0, 1.059, 1.122, 1.335, 1.498, 1.888 };
     static constexpr double cut[6] = { 1.0, 0.905, 0.81, 0.625, 0.455, 0.405 };
+    // Below the root (measured through the pitch bend, 1-12 semitones down, so the sample is not picked
+    // again): the bank's 0.95 fits the reference's gentler slope best, rms 1.15 dB, at most 2.27 (0.9:
+    // 2.67 / 7.03; 1.0: 1.61 / 3.01)
     if (r < 0.95)
-        return 0.9f;
+        return 0.95f;
     if (r <= 1.0)
         return 1.0f;
     if (r >= at[5])

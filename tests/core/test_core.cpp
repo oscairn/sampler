@@ -413,11 +413,12 @@ static void filterTypes45() {
 }
 
 // Interpolation: at the root (a 44.1 kHz source at 44.1 kHz) the 20-tap kernel passes the source
-// unchanged, as the reference does; above the root its cutoff follows the step (laws::kernelCutoff).
+// unchanged, as the reference does; above the root its cutoff follows the step, below it 0.95 (both
+// measured: laws::kernelCutoff).
 static void kernelByTransposition() {
     NEAR(laws::kernelCutoff(1.0), 1.0, 1e-6);
     NEAR(laws::kernelCutoff(0.97), 1.0, 1e-6);
-    NEAR(laws::kernelCutoff(0.8), 0.9, 1e-6);
+    NEAR(laws::kernelCutoff(0.8), 0.95, 1e-6);
     NEAR(laws::kernelCutoff(1.498), 0.455, 1e-6);
     NEAR(laws::kernelCutoff(1.888 * 2), 0.2025, 1e-6);
     std::vector<int16_t> noise(30000);

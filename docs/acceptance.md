@@ -197,7 +197,7 @@ their root and 1-11 semitones above, filter Thru. The output's harmonic levels a
 cycle's own give the kernel's response at each harmonic's source frequency; the power off the
 harmonics (images, aliases) is read against the total. (The white-noise Thru probes did not load on
 the reference, see (d); the root-24 region's analysis did not resolve, so below the root the
-reference is not measured.)
+reference was measured in round 3 instead, below.)
 
 Response at 0.5 / 0.7 / 0.8 / 0.85 / 0.9 / 0.95 of the source's Nyquist (dB), and off-harmonic power:
 
@@ -227,10 +227,19 @@ Response at 0.5 / 0.7 / 0.8 / 0.85 / 0.9 / 0.95 of the source's Nyquist (dB), an
   and two semitones, 3.5 dB at five, 0.2 and 0.05 dB at seven and eleven. Images of the 1.0 kernel from
   0.95 to 1.0 land above 20 kHz (and at a 48 kHz host between 22.05 and 24 kHz).
 
+Below the root (round 3, run pcm-round3-2026-11-14, takes `q_bend*`): the root-48 cycle at note 48 bent
+down by the pitch bend (range -1 to -12; a coarse tune would pick another sample: the reference selects
+by key plus coarse tune). The reference's response is the same at 1, 5, 7 and 12 semitones down: 0.3 /
+0.5 / 0.7 / 0.8 / 0.85 / 0.9 / 0.95 of the source's Nyquist about -0.4 / -0.2 / -1.2 / -2.2 / -2.6 / -3.9 /
+-5.0 dB, off-harmonic power -72 to -83 dB. Of the bank's kernels 0.95 fits best (rms 1.15 dB, at most
+2.27 dB, at 0.95 of Nyquist 1.3-2.2 dB below); 0.9, the engine's before, was off by up to 7.0 dB, and 1.0
+by up to 3.0. The engine now takes 0.95 below 0.95 of the root's step.
+
 | check | tolerance | result |
 |---|---|---|
 | root, 0.5-0.95 of the source's Nyquist, 44.1 kHz | ±0.5 dB of the reference | pass (largest 0.04 dB) |
 | above the root, aliases | at or below the reference's | pass (-81 to -89 dB against -69 to -75) |
+| below the root, response | reported (fit rms above) | 0.95: rms 1.15 dB, at most 2.27 dB |
 | above the root, response | reported (fit rms above) | the shape differs by up to 4.6 dB at one point (+5 semitones, 0.5 of Nyquist: -0.5 against -5.5) |
 
 ## (g) Probe sounds B (a piano) and C (a bass) against the reference
@@ -352,7 +361,7 @@ second is a scaled copy of the first (0.5227, no delay; residual -110 dB).
 | D4 | Velocity: the pads convert with sensitivity 0; the reference plays velocity 30 0.4 dB softer relative to 100 | 0.4 dB | open (converter or law) |
 | D5 | A segment's end waits for the next control step | at most 15 frames | by design |
 | D6 | Upward transposition | the cutoff follows the step (f); the reference's slope is gentler than the kernel's (fit rms 2.2-3.5 dB at 1-5 semitones) | open (shape) |
-| D7 | Passband at the root | - | resolved: flat as the reference (f); below the root (0.95 and down) the 0.9 kernel stays, the reference not measured there |
+| D7 | Passband at and below the root | - | resolved: flat at the root (f); below it the bank's 0.95, fitted (f, round 3: rms 1.15 dB; the reference's slope is gentler) |
 | D8 | Voice end | - | resolved: -96.45 dB, measured (e) |
 | D10 | Part Velocity Sensitivity Depth / Offset | - | resolved: measured and built (`vel_depth`, `vel_offset`; (h)); the converter must write them |
 | D11 | Probe sound C, the bass (two layers an octave apart) | - | resolved: the converter's (an element's sample is picked by key plus coarse tune, (g)); the first 0.5 s 0.6-1.6 dB low above 2 kHz, open |
