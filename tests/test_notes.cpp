@@ -260,16 +260,17 @@ TEST(random_note_lifetime) {
 
 // Output ports: a sound with split_outputs plays each element on its connection's port (0 thru, 1 to
 // insertion A, 2 to insertion B); without it, or with a host that gives the main port only, everything
-// is on the main port, the same samples.
+// is on the main port, the same samples; so it is when the host gives the ports but never activates them.
 TEST(output_ports) {
     const std::string routed = "oscairn-pcm-sound/0\npart split_outputs=1\nsample sine.osp\n"
         "element ampeg_decay1=127 ampeg_decay2=127 element_connection=1\nelement ampeg_decay1=127 ampeg_decay2=127 element_connection=2\n"
         "region key=0-127 root=57 element=0 sample=0 loop=0-44100\nregion key=0-127 root=69 element=1 sample=0 loop=0-44100\n";
     auto energy = [](const std::vector<float>& x) { double e = 0; for (float v : x) e += double(v) * v; return e; };
     std::vector<float> sum;
-    for (int mode = 0; mode < 3; ++mode) {  // 0: split, three ports; 1: split, main only; 2: not split, three ports
+    for (int mode = 0; mode < 4; ++mode) {  // 0: split, three ports; 1: split, main only; 2: not split, three ports; 3: split, three not activated
         Inst a;
         a.outputs = mode == 1 ? 1 : 3;
+        a.activatePorts = mode != 3;
         std::string snd = routed;
         if (mode == 2) snd.replace(snd.find("split_outputs=1"), 15, "split_outputs=0");
         CHECK(a.load(stateWith(snd)));

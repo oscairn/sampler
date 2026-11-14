@@ -99,6 +99,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     const uint32_t deviceCap = envCap(kEnvMaxVoices, kMaxDeviceVoices);
     const uint32_t soundCap = envCap(kEnvMaxVoicesPerSound, kMaxDeviceVoicesPerSound);
     const bool decodeWhole = [] { const char* e = std::getenv(kEnvDecodeWhole); return e && !std::strcmp(e, "1"); }();
+    std::array<std::atomic<bool>, 3> portActive{};  // output ports 1 and 2 as the host set them (not saved); 0 is always used
     std::array<bool, kVoices> choking{};  // the core was told to fade this voice
     std::array<bool, kVoices> keyUpSent{};  // the core was told the key is up under the pedal
     struct Owed { int32_t id; int16_t channel, key; };
@@ -351,11 +352,11 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             }
         float* const* out = pr->audio_outputs_count ? pr->audio_outputs[0].data32 : nullptr;
         if (!out || !out[0] || !out[1]) return;
-        // ports 1 and 2 (to insertion A and B) where the host gives them; else their sound joins the main port
+        // ports 1 and 2 (to insertion A and B) where the host gives and activated them; else their sound joins the main port
         float* left[3]; float* right[3];
         for (uint32_t k = 0; k < 3; ++k) {
             float* const* o = k < pr->audio_outputs_count ? pr->audio_outputs[k].data32 : nullptr;
-            const bool own = o && o[0] && o[1] && pr->audio_outputs[k].channel_count >= 2;
+            const bool own = o && o[0] && o[1] && pr->audio_outputs[k].channel_count >= 2 && (k == 0 || portActive[k].load(std::memory_order_relaxed));
             left[k] = (own ? o[0] : out[0]) + from; right[k] = (own ? o[1] : out[1]) + from;
             if (own) { std::memset(o[0] + from, 0, (to - from) * sizeof(float)); std::memset(o[1] + from, 0, (to - from) * sizeof(float)); }
         }
@@ -705,6 +706,15 @@ const clap_plugin_audio_ports_t kAudioPorts = {
         info->flags = i == 0 ? CLAP_AUDIO_PORT_IS_MAIN : 0; info->channel_count = 2; info->port_type = CLAP_PORT_STEREO; info->in_place_pair = CLAP_INVALID_ID;
         return true;
     }};
+// A port takes its elements only once the host has activated it (clap.audio-ports-activation); until then, or when it
+// is deactivated, they play on the main port.
+const clap_plugin_audio_ports_activation_t kPortsActivation = {
+    [](const clap_plugin_t*) { return true; },
+    [](const clap_plugin_t* p, bool isInput, uint32_t i, bool on, uint32_t) {
+        if (isInput || i > 2) return false;
+        if (i) Plugin::self(p).portActive[i].store(on, std::memory_order_relaxed);
+        return true;
+    }};
 const clap_plugin_note_ports_t kNotePorts = {
     [](const clap_plugin_t*, bool isInput) -> uint32_t { return isInput ? 1 : 0; },
     [](const clap_plugin_t*, uint32_t i, bool isInput, clap_note_port_info_t* info) {
@@ -732,6 +742,7 @@ const struct {
 
 const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &kAudioPorts;
+    if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS_ACTIVATION) || !std::strcmp(id, CLAP_EXT_AUDIO_PORTS_ACTIVATION_COMPAT)) return &kPortsActivation;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &kNotePorts;
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &kParamsExt;
     if (!std::strcmp(id, CLAP_EXT_STATE)) return &kState;

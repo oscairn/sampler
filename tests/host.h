@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+#include <clap/ext/audio-ports-activation.h>
+
 #include "check.h"
 
 extern const char* g_pluginPath;
@@ -214,6 +216,7 @@ struct Inst {
     std::vector<Rec> log;       // every event the plugin pushed
     std::vector<float> L, R;    // every sample rendered (the main port)
     uint32_t outputs = 1;       // audio output ports the test host gives (1 or 3)
+    bool activatePorts = true;  // with 3: activate ports 1 and 2 before the first block
     std::vector<float> PL[2], PR[2];  // ports 1 and 2 when given
     long frame = 0;
     bool guard = false;         // count heap allocations inside process()
@@ -262,6 +265,10 @@ struct Inst {
         clap_process_t pr{};
         pr.steady_time = frame; pr.frames_count = frames; pr.in_events = &in.api; pr.out_events = &out.api;
         pr.audio_outputs = buf; pr.audio_outputs_count = outputs;
+        if (outputs > 1 && activatePorts && frame == 0) {
+            auto act = static_cast<const clap_plugin_audio_ports_activation_t*>(p->get_extension(p, CLAP_EXT_AUDIO_PORTS_ACTIVATION));
+            for (uint32_t k = 1; k < 3; ++k) if (!act || !act->set_active(p, false, k, true, 32)) ++g_failures;
+        }
         if (settle) streaming->settle(p);
         if (guard) allocGuardEnable(true);
         const auto st = p->process(p, &pr);
