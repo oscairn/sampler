@@ -120,14 +120,14 @@ starting with "no" are reported at every value but the default (any other start:
 | FEG Depth Velocity Sensitivity Curve | 00 – 04 | yes: `fileg_veltime*`, `fileg_keytime*`, `fileg_veldepth*` | K33-K34 | pads (acceptance a) (depth velocity 39, curve 2: velocities 30, 100, 127) |
 | FEG Time Key Follow Sensitivity | −64 – +63 | yes: `fileg_veltime*`, `fileg_keytime*`, `fileg_veldepth*` | K33-K34 | pads (acceptance a) (depth velocity 39, curve 2: velocities 30, 100, 127) |
 | FEG Time Key Follow Sensitivity Center Note | C-2 – G8 | yes: `fileg_veltime*`, `fileg_keytime*`, `fileg_veldepth*` | K33-K34 | pads (acceptance a) (depth velocity 39, curve 2: velocities 30, 100, 127) |
-| Filter Cutoff Scaling Break Point 1 | C-2 – E8 | no | - | - |
-| Filter Cutoff Scaling Break Point 2 | C#-2 – F8 | no | - | - |
-| Filter Cutoff Scaling Break Point 3 | D-2 – F#8 | no | - | - |
-| Filter Cutoff Scaling Break Point 4 | D#-2 – G8 | no | - | - |
-| Filter Cutoff Scaling Offset 1 | −128 – +127 | no | - | - |
-| Filter Cutoff Scaling Offset 2 | 〃 | no | - | - |
-| Filter Cutoff Scaling Offset 3 | 〃 | no | - | - |
-| Filter Cutoff Scaling Offset 4 | 〃 | no | - | - |
+| Filter Cutoff Scaling Break Point 1 | C-2 – E8 | yes: `fil_scaling_key1`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Break Point 2 | C#-2 – F8 | yes: `fil_scaling_key2`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Break Point 3 | D-2 – F#8 | yes: `fil_scaling_key3`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Break Point 4 | D#-2 – G8 | yes: `fil_scaling_key4`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Offset 1 | −128 – +127 | yes: `fil_scaling_offset1`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Offset 2 | 〃 | yes: `fil_scaling_offset2`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Offset 3 | 〃 | yes: `fil_scaling_offset3`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
+| Filter Cutoff Scaling Offset 4 | 〃 | yes: `fil_scaling_offset4`: the cutoff index moves by 3.125 x the offset at the key (linear between the break points, flat beyond) | measured here (acceptance o): rms 8.4 index steps over 28 notes | core test `controller_boxes` (scaling cases) |
 | Filter Cutoff Key Follow Sensitivity | −200% – +200% | yes: `fil_keyfollow` | K21 | pads (acceptance a) |
 | HPF Cutoff Key Follow Sensitivity | −200% – +200% | yes: `fil_hpf_keyfollow` (types 4 and 5) | measured here (acceptance n): the cutoff key follow's law, (raw - 64) x 3.125 cents a key about key 60 | white noise at key follow 0, 32, 96, 127 against 64, keys 24-96: rms 0.60 dB (acceptance n); core test `filter_types_4_5` |
 | LFO Wave | Saw, Triangle, Square | reference mode: `elfo_wave` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |

@@ -780,6 +780,17 @@ static void controllerBoxes() {
         a->core->setModWheel(0, 0.0f);
         CHECK(a->run(8192) == b->run(8192));
     }
+    {   // filter cutoff scaling: offsets of +64 at every break point move cutoff 512 by 3.125 x 64 = 200 index steps; -64 to
+        // +64 between break points 36 and 48 is 0 at key 42
+        auto a = rig("", "fil_type=0 fil_cutoff=512 fil_keyfollow=64 fil_scaling_offset1=64 fil_scaling_offset2=64 fil_scaling_offset3=64 fil_scaling_offset4=64");
+        auto b = rig("", "fil_type=0 fil_cutoff=712 fil_keyfollow=64");
+        auto c = rig("", "fil_type=0 fil_cutoff=512 fil_keyfollow=64 fil_scaling_offset1=-64 fil_scaling_offset2=64");
+        auto d = rig("", "fil_type=0 fil_cutoff=512 fil_keyfollow=64");
+        for (auto* x : {a.get(), b.get()}) x->core->noteOn(0, 0, 0, 60, 1.0f);
+        for (auto* x : {c.get(), d.get()}) x->core->noteOn(0, 0, 0, 42, 1.0f);
+        CHECK(a->run(8192) == b->run(8192));
+        CHECK(c->run(8192) == d->run(8192));
+    }
     {   // the amplitude envelope's attack (read at note-on) and release (read at the note-off) boxes, span 128: the wheel at 127
         // through ratio -16 takes attack 80 to 48, through +16 release 40 to 72
         auto a = rig("box1_dst=75 box1_ratio=-16 box2_dst=78 box2_ratio=16", "ampeg_attack=80 ampeg_release=40"), b = rig("", "ampeg_attack=48 ampeg_release=72");

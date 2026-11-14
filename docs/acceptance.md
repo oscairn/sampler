@@ -507,6 +507,19 @@ note against the same note at key follow 64, the reference against the engine's 
 - Engine: `fil_hpf_keyfollow`; core test `filter_types_4_5` (key follow 0 at key 84 lets a 110 Hz tone through a
   440 Hz high-pass; without the law it falls 24 dB).
 
+## (o) Filter cutoff scaling against the reference
+
+Cutoff scaling (`a_cs_*`, run pcm-round5-2026-11-14): white noise through type 0 at cutoff 512 (key follow 0), break
+points and offsets set three ways (all offsets +64; -64 / +64 / -32 / +127 at 36 / 48 / 60 / 72; +100 / -100 / 0 / +50 at
+20 / 50 / 70 / 100) and all at -128, twelve keys each; each note matched against the engine's static cutoffs in 2-step
+increments by its third-octave band shape.
+
+- The cutoff index moves by 3.125 index steps an offset unit, the offset linear in key between the break points and flat
+  beyond: rms 8.4 index steps over 28 notes (worst 22; notes past index 900, where the table tops out, and keys 12, 24
+  and 108, where the transposed noise is too narrow to match, left out). A law in cents (37 cents a unit) fits no better
+  (rms 78 against 94 cents). How scaling combines with boxes on the cutoff is not measured (the engine adds the scaling
+  to the base the boxes move).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

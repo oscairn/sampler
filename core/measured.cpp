@@ -186,6 +186,20 @@ float elfoAmpDepthDb(float x) noexcept
     return knots(o, y, int(sizeof o / sizeof o[0]), std::max(0.0f, x), false);
 }
 
+// Measured on white noise through type 0 at cutoff 512 (round 5, batch A: three settings of break points and offsets,
+// twelve keys each, every note matched against static cutoffs in 2-step increments): 3.125 index steps an offset unit,
+// linear between the break points; rms 8.4 index steps over 28 notes (worst 22), the notes past index 900 (the table's
+// top) and the keys 12, 24 and 108 (the transposed noise too narrow to match) left out.
+float cutoffScalingSteps(const int16_t* k, const int16_t* o, int key) noexcept
+{
+    float off = o[0];
+    if (key >= k[3]) off = o[3];
+    else
+        for (int i = 0; i < 3; ++i)
+            if (key >= k[i] && key < k[i + 1]) off = o[i] + float(o[i + 1] - o[i]) * float(key - k[i]) / float(k[i + 1] - k[i]);
+    return 3.125f * off;
+}
+
 float hpfKeyCents(int kf, int key) noexcept
 {
     // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,

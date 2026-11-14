@@ -897,8 +897,9 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     v.pegScale = ps;
     // the filter: cutoff with key follow and velocity
     const float keyCents = float(e[FilKeyFollow] - 64) * 3.125f * float(key - 60) + laws::cutoffVelocityCents(e[FilCutoff], e[FilVelSens], vel);
-    p.f[C0][i] = laws::cutoffCents(float(e[FilCutoff])) + keyCents;
-    v.keyCents = keyCents;
+    const float scaled = std::max(0.0f, std::min(1023.0f, float(e[FilCutoff]) + laws::cutoffScalingSteps(e + FilScalingKey1, e + FilScalingOffset1, key)));
+    p.f[C0][i] = laws::cutoffCents(scaled) + keyCents;
+    v.keyCents = keyCents + laws::cutoffCents(scaled) - laws::cutoffCents(float(e[FilCutoff]));  // the boxes move the base index
     v.element = e;
     const int16_t bases[6] = {e[FilCutoff], e[FilResonance], e[AmpLevel], 0, 0, e[FilHpfCutoff]};
     for (int k = 0; k < 6; ++k) { v.base[k] = bases[k]; v.moved[k] = 0; }

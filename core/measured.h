@@ -55,6 +55,10 @@ double eqPeakQ(int raw) noexcept;
 float elfoPitchDepthCents(float o) noexcept;
 float elfoAmpDepthDb(float o) noexcept;
 
+// ---- filter cutoff scaling ----
+// Index steps added to the cutoff at a key: the offset at the key (linear between the break points, flat beyond) x 3.125.
+float cutoffScalingSteps(const int16_t* keys, const int16_t* offsets, int key) noexcept;
+
 // ---- high-pass key follow ----
 float hpfKeyCents(int keyFollow, int key) noexcept;  // cents the high-pass cutoff moves at a key
 
