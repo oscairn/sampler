@@ -914,6 +914,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     for (int k = ES0; k < ES0 + 4; ++k) p.f[k][i] = 0;
     // the element LFO in reference mode, through the mod wheel's controller sets
     if (e[ElfoMode] == 0) { v.lfoPitchRatio = e[ElfoPitchRatio]; v.lfoAmpRatio = e[ElfoAmpRatio]; }
+    v.mods = s.boxes || v.lfoPitchRatio != 0 || v.lfoAmpRatio != 0 || offsetOn_[sl.sound];
     v.fresh = true;
     v.curCents = 1e30f; v.curPitch = 0;
     float* f[5] = {p.f[G], p.f[M], p.f[A], p.f[LO], p.f[HI]};
@@ -1114,7 +1115,7 @@ void Core::setOffset(uint32_t s, int dest, float steps) {
     bool on = false;
     for (int k = 0; k < kOffsets; ++k) on |= offset_[s][k] != 0;
     offsetOn_[s] = on;
-    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) p.v[i].dirty = true;
+    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) { p.v[i].dirty = true; p.v[i].mods = true; }
 }
 float Core::boxSourceOf(uint32_t s, int ch, int src) const {
     if (src == 6 || (src >= 8 && src < kControls)) return laws::controlSource(src, control_[s][src]);
@@ -1185,9 +1186,9 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         // the element LFO (reference mode): a triangle at 4.848 Hz from note-on, falling from zero
         // its depth from the box outputs driving it: the mod wheel's element LFO ratios, E.LFO PMD / AMD boxes, the offsets
         float lfoCents = 0, lfoGain = 1;
-        const Compiled* snd = sound_[v.sound];
+        const Compiled* snd = v.mods ? sound_[v.sound] : nullptr;
         float oP = 0, oA = 0;
-        if (v.lfoPitchRatio != 0 || v.lfoAmpRatio != 0) {
+        if (snd && (v.lfoPitchRatio != 0 || v.lfoAmpRatio != 0)) {
             const float c = laws::boxSource(int(std::lround(wheel_[v.channel] * 127.0f))) * 0.125f;
             oP = c * (v.lfoPitchRatio == 127 ? 128.0f : v.lfoPitchRatio); oA = c * (v.lfoAmpRatio == 127 ? 128.0f : v.lfoAmpRatio);
         }
@@ -1200,8 +1201,8 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
                 (x.dest == laws::BoxElfoPmd ? oP : oA) += o;
             }
         }
-        oP = std::min(8192.0f, oP); oA = std::min(8192.0f, oA);
-        if (oP > 32 || oA > 0) {
+        if (snd && (oP > 32 || oA > 0)) {
+            oP = std::min(8192.0f, oP); oA = std::min(8192.0f, oA);
             const double cycles = double(clock_ - v.start) * laws::kLfoHz / sr_;
             const float ph = float(cycles - std::floor(cycles));
             const float w = ph < 0.25f ? -4.0f * ph : (ph < 0.75f ? 4.0f * ph - 2.0f : 4.0f - 4.0f * ph);
@@ -1210,8 +1211,8 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
             lfoGain = std::pow(10.0f, -amp * 2.0f * std::min(ph, 1.0f - ph) / 20.0f);
         }
         // the controller boxes (the element's switch for each), in raw steps or cents from the bases
-        // (a voice moved before its sound's offsets went back to zero is put back too)
-        if (snd && (snd->boxes || offsetOn_[v.sound] || (v.moved[0] | v.moved[1] | v.moved[2] | v.moved[3] | v.moved[4] | v.moved[5]))) {
+        // (a voice moved before its sound's offsets went back to zero is put back too: mods stays set)
+        if (snd) {
             int32_t step[laws::kLiveDests];
             for (int k = 0; k < laws::kLiveDests; ++k) step[k] = offset_[v.sound][k];
             const int16_t* e = v.element;

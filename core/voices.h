@@ -71,6 +71,7 @@ struct VoiceScalar {
     float volume = 1, soundGain = 1, soundPanL = 1, soundPanR = 1;
     float lfoPitchRatio = 0, lfoAmpRatio = 0;  // controller-set ratios (0: none)
     bool halfDamper = false, pedalRelease = false;  // a half damper element; releasing under the pedal
+    bool mods = false;         // boxes, element LFO ratios or the sound's offsets may move this voice (else control skips them)
     int32_t releaseBase = 0, halfDamperTime = 127;  // the release index (time shifts in) and the half damper's
     int64_t releaseAt = 0;     // a key-off element: the engine clock its release starts at (0: none)
     int64_t start = 0;         // engine clock of the first sample
