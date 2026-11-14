@@ -152,7 +152,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Mono/Poly Mode, Key Assign Mode | no: `mono` is reported | K54 in the fork | - |
 | Portamento Switch, Time, Mode, Time Mode | no: `portamento` is reported | - | - |
 | Velocity Limit Low / High, Note Limit Low / High | clipped into the regions by the converter | converter | - |
-| Velocity Sensitivity Depth / Offset | no (the probe piano's offset above 64 plays the reference 1.51 dB louder at velocity 80; D10) | - | - |
+| Velocity Sensitivity Depth / Offset | yes: `vel_depth`, `vel_offset`; the note's velocity on the 0-2047 scale, moved as measured, for everything (element velocity limits, level, filter and envelope velocity laws) | measured here (acceptance h) | 18 pairs at 11 velocities (rms 0.057 dB); velocity limits and cutoff velocity sensitivity follow it |
 | AEG / FEG offsets (Attack, Decay, Sustain, Release, FEG Depth), Filter Cutoff, Resonance | added to the element values by the converter (steps not measured there) | converter | - |
 | Part LFO (all), User LFO | no (K17) | - | - |
 | Part EQ, insertion effects, sends, dry level, output select | the host's effects chain, outside this plugin | - | - |

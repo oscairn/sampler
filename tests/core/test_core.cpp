@@ -594,9 +594,37 @@ static void equalLevelSegments() {
     NEAR(20 * std::log10(out[2 * 4000] / (16384 * kUnit)), 0.0, 0.01);  // sustained at full level
 }
 
+// The part's velocity sensitivity (measured: docs/acceptance.md (h)): the note's velocity on the 0-2047
+// scale, scale2048(v) x scale2048(depth) / 1024 + 2 (scale2048(offset) - 1024), for the level and for the
+// element velocity limits.
+static void partVelocity() {
+    NEAR(laws::partVelocity2048(64, 64, 64), 1024, 0);    // neutral: as played
+    NEAR(laws::partVelocity2048(80, 32, 64), 642, 0);     // depth 32 halves: 1284 / 2
+    NEAR(laws::partVelocity2048(1, 64, 96), 1056, 0);     // offset 96 adds 1039
+    NEAR(laws::partVelocity2048(127, 0, 127), 2046, 0);   // depth 0: the offset alone
+    NEAR(laws::partVelocity2048(100, 64, 0), 0, 0);       // clamped
+    NEAR(laws::velocityFrom2048(1023), 63, 0);            // the step at or below: 1023 is velocity 63 (measured)
+    NEAR(laws::velocityFrom2048(1024), 64, 0);
+    NEAR(laws::velocityFrom2048(2047), 127, 0);
+    const char* text = "oscairn-pcm-sound/0\npart vel_offset=96\nsample s\n"
+                       "element amp_velsens=32 amp_pan=1\nelement amp_velsens=32 amp_pan=127\n"
+                       "region key=0-127 vel=1-63 root=60 element=0 sample=0 loop=100-29000\n"
+                       "region key=0-127 vel=64-127 root=60 element=1 sample=0 loop=100-29000\n";
+    Rig r(text, constant(30000, 16384), 44100.f, 44100);
+    r.core->noteOn(0, 0, 0, 60, 1.0f / 127.0f);
+    const auto o = r.run(4410);
+    // velocity 1 plays as 1056 (velocity 66): the upper region, on the right, at 40 log10(1056 / 2047) dB
+    CHECK(std::fabs(o[2 * 4000]) < 1e-9);
+    float pl, pr;
+    laws::balanceGains(127, pl, pr);
+    const double want = 16384 * kUnit * laws::velocityGain2048({32, 0, 3}, 1056) * pr;
+    NEAR(o[2 * 4000 + 1], want, 1e-6);
+    CHECK(keySounds(*r.sound, 60, 1));
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
-        {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"law_values", lawValues}, {"attack_shape", attackShape},
+        {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"law_values", lawValues}, {"attack_shape", attackShape},
         {"release_shape", releaseShape}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},

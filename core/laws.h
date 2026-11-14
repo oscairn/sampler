@@ -48,6 +48,8 @@ TimeShifts timeShifts(const TimeScaling& s, int key, int velocity) noexcept;
 struct Velocity { int32_t sensitivity = 0, offset = 0, curve = 3; };
 int32_t velocityScale(const Velocity& v, int velocity) noexcept;  // 0..2047
 float velocityGain(const Velocity& v, int velocity) noexcept;
+int32_t scale2048(int32_t velocity) noexcept;                       // 1-127 on the 0-2047 scale
+float velocityGain2048(const Velocity& v, int32_t velocity2048) noexcept;  // a velocity on that scale
 struct LevelScaling {
     int32_t keys[4] = {36, 48, 60, 72};
     int32_t offsets[4] = {0, 0, 0, 0};

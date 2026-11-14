@@ -97,6 +97,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     for (uint32_t e = 0; e < d.elements; ++e) out.element[e] = d.element[e];
     out.bendUp = float(d.part[PartBendUp]);
     out.bendDown = float(d.part[PartBendDown]);
+    out.velDepth = d.part[PartVelDepth]; out.velOffset = d.part[PartVelOffset];
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
@@ -127,6 +128,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
 
 bool keySounds(const Compiled& s, int key, int velocity) {
     if (!s.loaded) return false;
+    velocity = laws::velocityFrom2048(laws::partVelocity2048(velocity, s.velDepth, s.velOffset));  // as noteOn
     for (uint32_t i = 0; i < s.regions; ++i) {
         const Region& r = s.region[i];
         if (key >= r.loKey && key <= r.hiKey && velocity >= r.loVel && velocity <= r.hiVel) return true;
@@ -726,21 +728,24 @@ void Core::noteOn(uint32_t voice, uint32_t sound, int channel, int key, float ve
     kill(voice);
     const Compiled* s = sound_[sound];
     if (!s) return;
-    const int vel = std::max(1, std::min(127, int(std::lround(velocity * 127.0f))));
+    const int played = std::max(1, std::min(127, int(std::lround(velocity * 127.0f))));
+    // the part's velocity sensitivity: what every law and the velocity limits see (measured)
+    const int32_t vel2048 = laws::partVelocity2048(played, s->velDepth, s->velOffset);
+    const int vel = laws::velocityFrom2048(vel2048);
     Slot& sl = slot_[voice];
     sl = Slot{};
     sl.sound = uint8_t(sound);
-    sl.key = uint8_t(key); sl.vel = uint8_t(vel); sl.channel = uint8_t(channel & 15);
+    sl.key = uint8_t(key); sl.vel = uint8_t(vel); sl.vel2048 = int16_t(vel2048); sl.channel = uint8_t(channel & 15);
     for (uint32_t i = 0; i < s->regions && sl.layers < kMaxLayers; ++i) {
         const Region& r = s->region[i];
         if (key < r.loKey || key > r.hiKey || vel < r.loVel || vel > r.hiVel) continue;
         if (s->element[r.element].v[TriggerMode] == 2) { sl.keyOff = true; continue; }  // sounds from the key's release
-        startLayer(voice, *s, i, key, vel, channel);
+        startLayer(voice, *s, i, key, vel, vel2048, channel);
     }
     sl.on = sl.layers > 0 || sl.keyOff;
 }
 
-void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, int vel, int channel) {
+void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, int vel, int32_t vel2048, int channel) {
     const Region& r = s.region[ri];
     const SampleView& sv = s.sample[ri];
     Pool& p = poolOf(s.plan[ri]);
@@ -767,7 +772,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     p.dstep[i] = 0;
     // level: velocity, level scaling, element level, the region's level, staging
     laws::Velocity vl{e[AmpVelSens], e[AmpVelOffset], e[AmpVelCurve]};
-    float level = laws::velocityGain(vl, vel);
+    float level = laws::velocityGain2048(vl, vel2048);
     bool scaling = e[AmpKeyFollow] != 0;
     for (int k = 0; k < 4; ++k) scaling |= e[AmpScalingOffset1 + k] != 0;
     if (scaling) {
@@ -884,7 +889,7 @@ void Core::startKeyOff(uint32_t voice) {
         const Region& r = s->region[ri];
         if (sl.key < r.loKey || sl.key > r.hiKey || sl.vel < r.loVel || sl.vel > r.hiVel || s->element[r.element].v[TriggerMode] != 2) continue;
         const uint8_t before = sl.layers;
-        startLayer(voice, *s, ri, sl.key, sl.vel, sl.channel);
+        startLayer(voice, *s, ri, sl.key, sl.vel, sl.vel2048, sl.channel);
         if (sl.layers > before) {
             Pool& p = pool_[sl.pool[sl.layers - 1]];
             p.v[p.n - 1].releaseAt = clock_ + std::llround(2.0 * sr_);

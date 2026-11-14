@@ -65,6 +65,6 @@ To write this format instead of SFZ for element parts:
   lo - c..hi - c at root r - c (the lowest bank still reaches key 0 and the highest key 127, inferred),
   level in dB (the key bank's own; `volume` today), pan as the SFZ `pan` it writes today (-100..100),
   the loop with its end exclusive;
-- the part's bend range (`bend_up`, `bend_down`), and `mono` / `portamento` when set (reported as not
-  covered);
+- the part's bend range (`bend_up`, `bend_down`), its velocity sensitivity depth and offset (`vel_depth`,
+  `vel_offset`, raw 0-127, 64 neutral), and `mono` / `portamento` when set (reported as not covered);
 - the samples as references relative to the base it gives the sound (the asset library's folder).

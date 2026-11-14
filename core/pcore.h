@@ -106,12 +106,13 @@ struct Compiled {
     PlanDesc plan[kMaxRegions];       // each region's (the interpolator is the core's choice)
     Element element[kMaxElements];
     float bendUp = 2, bendDown = -2;  // semitones at full bend
+    int16_t velDepth = 64, velOffset = 64;  // the part's velocity sensitivity (raw)
     double noteCost = 0;              // estimated instructions a block of the costliest note (all its layers)
 };
 // Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
 // region's sample is missing or empty, or a loop lies outside its sample (error says which).
 bool compile(const SoundData&, const SampleView* views, Compiled& out, char* error, size_t errorCap);
-// Whether a key and velocity (0..127) start any region.
+// Whether a key and velocity (1..127, as played: the part's velocity sensitivity applies) start any region.
 bool keySounds(const Compiled&, int key, int velocity);
 
 // ---- the engine --------------------------------------------------------------------------------
@@ -163,10 +164,10 @@ public:
 
 private:
     struct Slot { bool on = false, keyUp = false, keyOff = false; uint8_t sound = 0; uint8_t layers = 0; uint8_t pool[kMaxLayers]; uint16_t id[kMaxLayers]; uint64_t age = 0; float volume = 1;
-                  uint8_t key = 0, vel = 0, channel = 0; };
+                  uint8_t key = 0, vel = 0, channel = 0; int16_t vel2048 = 0; };
     Pool& poolOf(const PlanDesc&);
     void free_(Pool&, uint32_t pos);
-    void startLayer(uint32_t slot, const Compiled&, uint32_t region, int key, int velocity, int channel);
+    void startLayer(uint32_t slot, const Compiled&, uint32_t region, int key, int velocity, int32_t velocity2048, int channel);
     void control(Pool&, uint32_t i, bool grid);
     void releaseLayer(Pool&, uint32_t i, int32_t releaseIndex);
     void startKeyOff(uint32_t slot);

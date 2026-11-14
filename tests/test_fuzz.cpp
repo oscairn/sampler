@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Fuzz through the ABI: random sounds over the full raw range of every element parameter (covered or
-// not), random regions, notes, controllers (mod wheel, sustain pedal, pitch bend), note volume and
-// chokes, random block sizes, thousands of blocks. The output must stay finite and bounded, and
+// not) and of the part's (bend range, velocity sensitivity), random regions, notes, controllers (mod
+// wheel, sustain pedal, pitch bend), note volume and chokes, random block sizes, thousands of blocks. The output must stay finite and bounded, and
 // process() must not allocate. (Run on each build: NEON, SSE2, scalar; see docs/cost.md.)
 #include <algorithm>
 #include <cmath>
@@ -24,7 +24,8 @@ const P kParams[] = {
 };
 
 std::string randomSound(Rng& r) {
-    std::string s = "oscairn-pcm-sound/0\npart bend_up=" + std::to_string(r.in(0, 24)) + " bend_down=" + std::to_string(-r.in(0, 48)) + "\nsample sine.wav\n";
+    std::string s = "oscairn-pcm-sound/0\npart bend_up=" + std::to_string(r.in(0, 24)) + " bend_down=" + std::to_string(-r.in(0, 48))
+                  + " vel_depth=" + std::to_string(r.in(0, 127)) + " vel_offset=" + std::to_string(r.in(0, 127)) + "\nsample sine.wav\n";
     const int elements = r.in(1, 3);
     for (int e = 0; e < elements; ++e) {
         s += "element";

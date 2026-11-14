@@ -290,6 +290,38 @@ is within 0.2 dB and its release to -30 dB is 1.58 s on both. A sine probe two o
 an octave below its element's region confirm the selection (takes `m_tune_c12`, `m_down*`). In the
 first 0.5 s the bands above 2 kHz are 0.6-1.6 dB low on both layers: open (with D3).
 
+## (h) The part's velocity sensitivity against the reference
+
+Recordings `m_vs_*` and `n_vs_*` (run pcm-round3-2026-11-14): a sine at element velocity sensitivity
++63 (a gate: only the top of the range sounds) and +32 (factor 1: level 40 log10 of the 0-2047
+velocity), 14 and 18 depth / offset pairs, each at 7 or 11 velocities; `n_vlim_*`: two elements split
+at velocity 64 and panned apart; `n_fvel_*`: a saw through type 0 at cutoff velocity sensitivity +63.
+Each note's level is inverted through the element law to the velocity it played.
+
+- Law (`laws::partVelocity2048`): the note's velocity on the element law's 0-2047 scale (16 a step to
+  64, then 1023 / 63 a step), times the depth on that scale over 1024, plus twice the offset on that
+  scale less 1024, truncated, clamped to 0-2047. Depth 64 and offset 64 leave the velocity as played;
+  depth 0 leaves the offset alone. Fit over 150 notes at +32: rms 0.057 dB, at most 0.16 dB; the 98
+  gate notes at +63 agree at every velocity. A form centred on 64 ((v - 64) depth / 64 + offset) is off
+  by up to 64 steps.
+- The moved velocity is the note's for everything: the element velocity limits (offset 96 plays every
+  note on the upper element; 1023 on the scale counts as velocity 63, so the velocity is the highest
+  step at or below), the level, and the cutoff velocity sensitivity (offset 96 opens the filter from
+  velocity 64).
+- Engine against reference, note by note: every level take within 0.12 dB; element selection equal on
+  all 44 notes of the split takes; probe sound B (offset 69 against 64 at key 60, velocity 80): the
+  reference +1.51 dB, the engine +1.50 dB.
+
+Found on the way: the cutoff velocity sensitivity law (the fork's) leaves the saw at +63 23-26 dB too
+quiet at velocities 20-40 (D15), and an element after the first plays 5.6 dB below the first with the
+filter thru (D16).
+
+| check | tolerance | result |
+|---|---|---|
+| level against the reference, 18 depth / offset pairs x 11 velocities | ±0.25 dB | pass (largest 0.12 dB) |
+| element velocity limits under depth / offset | equal | pass (44 of 44 notes) |
+| probe sound B, offset 69 against 64 | ±0.25 dB | pass (+1.50 against +1.51) |
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |
@@ -302,11 +334,13 @@ first 0.5 s the bands above 2 kHz are 0.6-1.6 dB low on both layers: open (with 
 | D6 | Upward transposition | the cutoff follows the step (f); the reference's slope is gentler than the kernel's (fit rms 2.2-3.5 dB at 1-5 semitones) | open (shape) |
 | D7 | Passband at the root | - | resolved: flat as the reference (f); below the root (0.95 and down) the 0.9 kernel stays, the reference not measured there |
 | D8 | Voice end | - | resolved: -96.45 dB, measured (e) |
-| D10 | Part Velocity Sensitivity Depth / Offset | the probe piano's offset: +1.51 dB at velocity 80 on the reference | not built here, not carried by the converter |
+| D10 | Part Velocity Sensitivity Depth / Offset | - | resolved: measured and built (`vel_depth`, `vel_offset`; (h)); the converter must write them |
 | D11 | Probe sound C, the bass (two layers an octave apart) | - | resolved: the converter's (an element's sample is picked by key plus coarse tune, (g)); the first 0.5 s 0.6-1.6 dB low above 2 kHz, open |
 | D12 | The release after the sustain pedal goes up | - | resolved: key-off elements start at the pedal's release (g) |
 | D13 | A half damper element under the pedal releases only from its sustain | inferred from two cases (g) | unverified beyond them |
 | D14 | Key-off elements release 2.0 s after their start whatever their settings | the fork's K42, measured once | as the fork |
+| D15 | Cutoff velocity sensitivity (the fork's law) at low velocities | a saw at +63, cutoff 400: 23-26 dB too quiet at velocities 20-40 (h) | open |
+| D16 | Elements after the first play 5.6 dB below the first with the filter thru (identical elements; not seen with filters) | 5.63 dB (h) | open: being measured |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,

@@ -119,13 +119,17 @@ constexpr float curveDb[5][kKnots] = {
         -5.27f, -4.14f, -3.39f, -3.01f, -2.26f, -1.51f, -1.13f, -0.38f, 0.00f },
 };
 
+}  // namespace
+
 // A note velocity, or a velocity offset, 1-127 on the 0-2047 scale the response works on:
 // 16 per step up to 64, then 1023 / 63 per step (renders lv1 and lv2; checked on sv1)
-int32_t scale2048(int32_t v)
+int32_t scale2048(int32_t v) noexcept
 {
     v = std::max<int32_t>(0, std::min<int32_t>(127, v));
     return v <= 64 ? 16 * v : static_cast<int32_t>(std::lround(1024.0 + (v - 64) * 1023.0 / 63.0));
 }
+
+namespace {
 
 // The sensitivity's factor, in 2048ths: |s| / 31.75 up to 31, then 31.75 / (63.75 - |s|),
 // and 127 at 64 (so that only the end of the range sounds)
@@ -148,10 +152,9 @@ double curveDbAt(int curve, int32_t r)
 }
 }  // namespace
 
-int32_t velocityScale(const Velocity& v, int velocity) noexcept
+static int32_t velocityScaleAt(const Velocity& v, int32_t vel) noexcept
 {
     const int32_t s = v.sensitivity >= 63 ? 64 : std::max<int32_t>(-64, v.sensitivity); // +63 counts as 64
-    const int32_t vel = scale2048(velocity);
     const int32_t offset = v.offset > 0 ? scale2048(v.offset) : 0;
     const int64_t k = factor2048(s);
     const int64_t moved = s >= 0 ? (2047 - std::min(vel + offset, 2047)) * k
@@ -159,9 +162,13 @@ int32_t velocityScale(const Velocity& v, int velocity) noexcept
     return 2047 - static_cast<int32_t>(std::min<int64_t>(2047, moved / 2048));
 }
 
-float velocityGain(const Velocity& v, int velocity) noexcept
+int32_t velocityScale(const Velocity& v, int velocity) noexcept { return velocityScaleAt(v, scale2048(velocity)); }
+
+float velocityGain(const Velocity& v, int velocity) noexcept { return velocityGain2048(v, scale2048(velocity)); }
+
+float velocityGain2048(const Velocity& v, int32_t velocity2048) noexcept
 {
-    const int32_t r = velocityScale(v, velocity);
+    const int32_t r = velocityScaleAt(v, std::max<int32_t>(0, std::min<int32_t>(2047, velocity2048)));
     if (r <= 0)
         return 0.0f;
     const double steps = (v.curve == 3 || v.curve < 0 || v.curve > 4)
