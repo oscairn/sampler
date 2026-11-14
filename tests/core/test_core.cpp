@@ -886,6 +886,22 @@ static void partLfo() {
             if (delay) NEAR(sineCents(o, int(0.47 * 44100), int(0.60 * 44100), 441, 44100), -112.0, 0.5);  // past it: from the start's phase
         }
     }
+    {   // the element's depth ratio: 0 keeps a cutoff slot still, a pitch slot plays on
+        const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64 plfo_dst2=66 plfo_depth2=64", "fil_type=0 fil_cutoff=512 plfo_ratio1=0 plfo_ratio2=0");
+        Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r.run(44100);
+        const int lag = int(laws::kPartLfoLag * 44100);
+        NEAR(sineCents(o, lag + int(0.6 * per), lag + int(0.9 * per), 441, 44100), -112.0, 0.5);
+        double lo = 1e9, hi = 0;  // the 441 Hz tone's level through cutoff 512 stays put across the cycle
+        for (int k = 0; k < 8; ++k) {
+            double s2 = 0; const int a = 4410 + k * 3000;
+            for (int i = a; i < a + 1000; ++i) s2 += double(o[size_t(2 * i)]) * o[size_t(2 * i)];
+            lo = std::min(lo, s2); hi = std::max(hi, s2);
+        }
+        NEAR(10 * std::log10(hi / lo), 0.0, 0.3);
+    }
     {   // a box on slot 1's depth (destination 57): the wheel at 32 through ratio +127 makes depth 64 of depth 0
         const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=0 box1_src=1 box1_dst=57 box1_ratio=127", "");
         Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);

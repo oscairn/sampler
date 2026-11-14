@@ -553,7 +553,8 @@ them.
 | key-on reset | off: one oscillator, started by the first note, not reset later; each on: every note its own from its start (a second note's oscillator from its own start while the first runs on); first on: one, reset at a note while no other key is down | the same | phases within the tracker's resolution | 3 takes, two notes tracked apart |
 | box on slot 1's depth (57) | trunc(output x 128 / 8192) depth steps, within 0-127 | the same | every step the law's depth | 45 wheel steps |
 | slots | slots 2 and 3 as slot 1; two slots on the pitch add (64 + 64: 224.5 cents; 32 + 96: 555.6 against 554.5); the element's switch for a slot keeps it out | the same | within 1.3 cents | 5 takes |
-| element ratio, phase offset | no effect on the pitch at ratios 0-96 (slots 1, 2) or offsets 1-5 (one element) | no effect; other destinations' ratios and offsets between elements reported | - | 9 takes |
+| element ratio | no effect on the pitch (ratios 0-96, slots 1, 2) or the level (0); the cutoff still at 0 and at about half its swing at 64 | the cutoff's slot scaled by ratio / 127, others unscaled; the pan's and resonance's reported | - | 8 takes |
+| element phase offset | no effect: offsets 1-5 on one element, 120 and 180 degrees on a second element two octaves up (each tracked apart), resets each on and first on | no effect; with reset off and more than one element reported | - | 8 takes |
 | level | the low half of a square: depth level steps down from level 127 (the top half held at 127) | levelGain(127 - depth) | within 0.17 dB, rms 0.07 | 15 depths |
 | pan | raw pan steps added, saturating: 34, 50, 57, 61, 62 at depths 16-80 (the balance law's grid), the far side silent from 96 | the table, linear between 16-step knots | within 0.22 dB | 5 depths and 3 silent |
 | cutoff | 8 index steps a depth step | the same | the band-shape fits of engine and reference within 4 index steps | 5 depths, 10 plateaus |
@@ -564,6 +565,12 @@ swing's size over time): the delay, fade in, hold and fade out take one time law
 along a straight line in dB from -26 dB to full, the fade out falls along one to -26 dB and then stops; a hold of 127 holds
 for ever; they follow each other (delay, fade in, hold, fade out: `m_dfh`). Engine against reference over 15 takes: rms
 0.3-1.5 dB of the swing's size (floored at -30 dB), the worst points at the segments' edges.
+
+A recorder hazard found on the way: after a take with the part LFO on the cutoff, the reference stays changed for the rest
+of the session, across loads (the next sines play 6-11 dB quieter, the pan's swing roughly halves, a level slot stops; the
+pitch is not affected); after a take with a high resonance the next takes play loud and level-modulated. Every level, pan
+and cutoff figure above comes from takes recorded before either in their session; later takes were re-recorded or left
+out.
 
 Not built (reported): tempo sync, the random speed, the resonance destination (its takes clipped), destinations other than
 the four.

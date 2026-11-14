@@ -909,9 +909,11 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     const int bankPan = int(std::lround(float(r.pan) / 10000.0f * 63.0f));
     v.panRaw = int16_t(std::max(1, std::min(127, e[AmpPan] + bankPan)));
     laws::balanceGains(v.panRaw, v.panL, v.panR);
-    // the part LFO's slots here: the element's switch for each (its depth ratios and phase offset measured without effect)
-    for (int j = 0; j < s.lfo.slots; ++j)
+    // the part LFO's slots here: the element's switch and depth ratio for each (the ratio measured to act on the cutoff only)
+    for (int j = 0; j < s.lfo.slots; ++j) {
         if (e[PlfoBoxSw1 + s.lfo.slot[j]]) { v.lfoSlots = uint8_t(v.lfoSlots | 1 << j); v.plfo = uint8_t(v.plfo | 1 << s.lfo.dest[j]); }
+        v.lfoRatio[j] = uint8_t(e[PlfoRatio1 + s.lfo.slot[j]]);
+    }
     v.soundGain = gain_[sl.sound]; v.soundPanL = panL_[sl.sound]; v.soundPanR = panR_[sl.sound];
     // the amplitude envelope with its time shifts
     AmpEnv& a = v.amp;
@@ -1318,6 +1320,7 @@ PV_NOINLINE float Core::partLfo(Pool& p, uint32_t i) {
         float amp = lf.depth[j];
         if (lf.box1 && lf.slot[j] == 0)  // slot 1's depth moved by its boxes (the element's switches): raw steps, within 0-127
             amp = laws::partLfoDepth(lf.dest[j], std::max(0, std::min(127, lf.depth1 + noteOnSteps(*sound_[v.sound], v.element, v.sound, v.channel, laws::BoxLfoDepth1))));
+        if (lf.dest[j] == laws::LfoCutoff) amp *= float(v.lfoRatio[j]) / 127.0f;  // the element's depth ratio (measured on the cutoff only)
         x[lf.dest[j]] += amp * w;
     }
     auto at = [&](int k, float lfo, float hi) { return std::max(0.0f, std::min(hi, float(v.base[k] + v.moved[k]) + lfo)); };

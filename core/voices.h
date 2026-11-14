@@ -58,6 +58,7 @@ struct VoiceScalar {
     uint8_t slot = 0, sound = 0, channel = 0, key = 60, bus = 0;
     bool releasing = false, fresh = true, filterMoves = false, eq = false;  // eq: the element EQ shapes the sound
     bool steady = false, dirty = true;  // steady: control steps change nothing until an event makes it dirty
+    uint8_t lfoRatio[3] = {127, 127, 127};  // the element's part LFO depth ratio for each slot (it scales a slot on the cutoff)
     // the sample and its loop (virtual, unwrapped positions; see feed())
     const int16_t* data = nullptr;
     int64_t frames = 0, loopStart = 0, loopEnd = 0, cycEnd = 0, shift = 0;

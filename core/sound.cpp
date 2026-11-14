@@ -403,15 +403,15 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
         lfo = true;
         if (laws::lfoDest(dst) < 0) add(0, int16_t(PartLfoDst1 + 2 * k), "a part LFO destination this engine does not move yet", true);
         for (uint32_t e = 0; e < d.elements; ++e)
-            if (d.element[e].v[PlfoRatio1 + k] != 127 && dst != 65)
-                add(uint16_t(e), int16_t(PlfoRatio1 + k), "a part LFO depth ratio on a destination other than the pitch is not measured");
+            if (d.element[e].v[PlfoRatio1 + k] != 127 && dst != 64 && dst != 65 && dst != 66)
+                add(uint16_t(e), int16_t(PlfoRatio1 + k), "a part LFO depth ratio on the pan or resonance is not measured");
     }
     if (lfo) {
         if (d.part[PartLfoTempoSync]) add(0, PartLfoTempoSync, "a part LFO synced to the tempo is not built", true);
         if (d.part[PartLfoRandomSpeed]) add(0, PartLfoRandomSpeed, "the part LFO's random speed is not built", true);
-        if (d.elements > 1)
+        if (d.elements > 1 && d.part[PartLfoKeyOnReset] == 0)  // (no effect measured with each-on and first-on resets)
             for (uint32_t e = 0; e < d.elements; ++e)
-                if (d.element[e].v[PlfoPhaseOffset]) add(uint16_t(e), PlfoPhaseOffset, "the part LFO's phase offset between elements is not measured");
+                if (d.element[e].v[PlfoPhaseOffset]) add(uint16_t(e), PlfoPhaseOffset, "the part LFO's phase offset between elements with reset off is not measured");
     }
     for (uint32_t e = 0; e < d.elements; ++e) {
         const int16_t* v = d.element[e].v;
