@@ -140,7 +140,7 @@ starting with "no" are reported at every value but the default (any other start:
 | LFO Fade In Time | 0 – 127 | reference mode: `elfo_fade` carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | LFO Extended Speed | 0 – 415 | reference mode: carried and ignored, as the reference ignores them (K18); the settings mode is not covered | K18, K35 | core test `element_lfo` (reference mode) |
 | Controller Set 1-16 Switch, LFO Box 1-3 Switch | Off, On | the mod wheel's element LFO pitch and amplitude sets only (`elfo_pitch_ratio`, `elfo_amp_ratio`); other boxes no | K19, K30, K36 | core test `element_lfo` |
-| EQ Type, EQ Q, EQ 1/2 Frequency and Gain | | `eq_*`: Boost6/12/18 (flat +6.02/+12.04/+18.06 dB), Thru, 2-band at 0 dB, and any setting with the filter Thru (bypassed); P.EQ and 2-band with gain reported | measured here (acceptance g) | white noise and saw probes; the probe piano (Boost6) |
+| EQ Type, EQ Q, EQ 1/2 Frequency and Gain | | yes: `eq_*`: Boost6/12/18 (flat +6.02/+12.04/+18.06 dB), Thru, any setting with the filter Thru (bypassed), P.EQ (one biquad) and 2-band (two first-order shelves in one biquad), every raw value | measured here (acceptance g, k): one frequency table, Q = 0.7 x 2^(raw / 8), gains 0.375 dB a step | 191 white-noise takes within 0.46 dB in 1/6-octave bands (acceptance k); the probe piano (Boost6) |
 | Part LFO Phase Offset, Destination Depth Ratios | | no (K17) | - | - |
 
 ## Part

@@ -37,5 +37,17 @@ int velocityFrom2048(int32_t velocity2048) noexcept;
 // above the root the cutoff follows the step.
 float kernelCutoff(double transposition) noexcept;
 
+// ---- element EQ ----
+// The element EQ for one voice as one biquad at the host's rate (a0 = 1), from the raw type, Q, frequencies
+// and gains (measured on white noise through type 0 wide open: docs/acceptance.md (k)). Type 0 (2-band):
+// a first-order low shelf (frequency 1, gain 1) times a first-order high shelf (frequency 2, gain 2); type 1
+// (P.EQ): a peak at frequency 1, gain 1, Q. Gains (raw - 64) x 0.375 dB. False when the EQ leaves the sound
+// unchanged (types 2-5: Boost6/12/18 are flat gains the voice's level carries; 5 thru; 0 dB).
+struct Biquad { double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0; };
+bool elementEq(int type, int q, int freq1, int gain1, int freq2, int gain2, double sampleRate, Biquad& out) noexcept;
+// The frequency table every band reads (Hz at a raw value, its low 8 bits) and the peak's Q at a raw Q.
+double eqHz(int raw) noexcept;
+double eqPeakQ(int raw) noexcept;
+
 }  // namespace laws
 }  // namespace pcm

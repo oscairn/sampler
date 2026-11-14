@@ -532,8 +532,12 @@ struct Kernel {
             feedLane<C, I>(p, o, n, sc, base);
             vf buf[C][kSub];
             fetchLane<C, I>(p, t, o, n, base, buf);
-            if constexpr (K != 0) filterLane<C, K, R>(p, o, n, buf, accL, accR);  // and the mix
-            else mixLane<C, R>(p, o, n, buf, accL, accR);
+            if constexpr (K != 0) {  // and the mix; the element EQ only in lanes that use it
+                bool eq = false;
+                for (int j = 0; j < W && o + j < int(p.n); ++j) eq |= p.v[o + j].eq;
+                if (eq) filterLane<C, K, R, true>(p, o, n, buf, accL, accR);
+                else filterLane<C, K, R, false>(p, o, n, buf, accL, accR);
+            } else mixLane<C, R>(p, o, n, buf, accL, accR);
         }
     }
     // each voice's base pointer for this piece's taps (idle lanes read zeros)
@@ -584,18 +588,31 @@ struct Kernel {
         else if constexpr (K == 2) return highSection(h, section(q, x, a1, a2, a3, a4), b1, b2, b3, b4);
         else return highSection(h, pole(q, x, a1, a2), b1, b2, b3, b4);
     }
-    template <int C, int K, bool R> static PCM_STAGE void filterLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
+    // the element EQ's biquad (transposed direct form II): y = b0 x + s1; s1 = b1 x - a1 y + s2; s2 = b2 x - a2 y
+    struct Eq { vf b0, b1, b2, a1, a2; };
+    static PV_INLINE vf eqStep(const Eq& e, vf x, vf& s1, vf& s2) {
+        const vf y = fma(e.b0, x, s1);
+        s1 = fma(e.b1, x, s2) - e.a1 * y;
+        s2 = e.b2 * x - e.a2 * y;
+        return y;
+    }
+    template <int C, int K, bool R, bool E> static PCM_STAGE void filterLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
         const Lane l{&p, o};
         const Coefs q(l), h(l, K == 1 ? CINV : HINV);
         const Buses bs = busesOf<R>(l);
+        Eq eq{};
+        if constexpr (E) eq = {l(EB0), l(EB1), l(EB2), l(EA1), l(EA2)};
         for (int c = 0; c < C; ++c) {
             vf a1 = l(st(0, c, 0)), a2 = l(st(0, c, 1)), a3 = l(st(0, c, 2)), a4 = l(st(0, c, 3));
             vf b1 = l(st(1, c, 0)), b2 = l(st(1, c, 1)), b3 = l(st(1, c, 2)), b4 = l(st(1, c, 3));
+            vf e1 = splat(0.f), e2 = splat(0.f);
+            if constexpr (E) { e1 = l(ES0 + 2 * c); e2 = l(ES0 + 2 * c + 1); }
             const vf* x = buf[c];
             if constexpr (C == 1) {
                 vf gl = l(GL), gr = l(GR); const vf dgl = l(DGL), dgr = l(DGR);
                 for (int s = 0; s < n; ++s) {
-                    const vf y = chain<K>(q, h, x[s], a1, a2, a3, a4, b1, b2, b3, b4);
+                    vf y = chain<K>(q, h, x[s], a1, a2, a3, a4, b1, b2, b3, b4);
+                    if constexpr (E) y = eqStep(eq, y, e1, e2);
                     gl = gl + dgl; gr = gr + dgr;
                     put<R>(accL, s, y, gl, bs); put<R>(accR, s, y, gr, bs);
                 }
@@ -604,7 +621,8 @@ struct Kernel {
                 vf g = l(c ? GR : GL); const vf dg = l(c ? DGR : DGL);
                 vf* acc = c ? accR : accL;
                 for (int s = 0; s < n; ++s) {
-                    const vf y = chain<K>(q, h, x[s], a1, a2, a3, a4, b1, b2, b3, b4);
+                    vf y = chain<K>(q, h, x[s], a1, a2, a3, a4, b1, b2, b3, b4);
+                    if constexpr (E) y = eqStep(eq, y, e1, e2);
                     g = g + dg;
                     put<R>(acc, s, y, g, bs);
                 }
@@ -612,6 +630,7 @@ struct Kernel {
             }
             l.set(st(0, c, 0), a1); l.set(st(0, c, 1), a2); l.set(st(0, c, 2), a3); l.set(st(0, c, 3), a4);
             l.set(st(1, c, 0), b1); l.set(st(1, c, 1), b2); l.set(st(1, c, 2), b3); l.set(st(1, c, 3), b4);
+            if constexpr (E) { l.set(ES0 + 2 * c, e1); l.set(ES0 + 2 * c + 1, e2); }
         }
     }
     template <int C, bool R> static PCM_STAGE void mixLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
@@ -705,7 +724,7 @@ Core::Core() {
         Pool& p = pool_[k];
         p.plan = {uint8_t(k / kFilters + 1), Interp::Sinc, Filter(k % kFilters)};
         std::memset(p.f, 0, sizeof p.f);
-        for (uint32_t i = 0; i < kPoolVoices; ++i) { p.f[C0][i] = p.f[CENTS][i] = 0; p.f[DAMP][i] = 2; p.pos[i] = p.step[i] = p.dstep[i] = 0; }
+        for (uint32_t i = 0; i < kPoolVoices; ++i) { p.f[C0][i] = p.f[CENTS][i] = 0; p.f[DAMP][i] = 2; p.f[EB0][i] = 1; p.pos[i] = p.step[i] = p.dstep[i] = 0; }
         for (auto& k : p.kernel) k = 0;
     }
     prepare(48000);
@@ -864,6 +883,11 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][i] = 0;
     if (s.plan[ri].filter == Filter::LowHigh || s.plan[ri].filter == Filter::PoleHigh)
         designHigh(p, i, laws::filterCutoffHz(e[FilHpfCutoff], 0.0f), rate_);
+    // the element EQ (with a filter only: thru bypasses it, measured)
+    laws::Biquad bq;
+    v.eq = s.plan[ri].filter != Filter::Thru && laws::elementEq(e[EqType], e[EqQ], e[EqFreq1], e[EqGain1], e[EqFreq2], e[EqGain2], sr_, bq);
+    p.f[EB0][i] = float(bq.b0); p.f[EB1][i] = float(bq.b1); p.f[EB2][i] = float(bq.b2); p.f[EA1][i] = float(bq.a1); p.f[EA2][i] = float(bq.a2);
+    for (int k = ES0; k < ES0 + 4; ++k) p.f[k][i] = 0;
     // the element LFO in reference mode, through the mod wheel's controller sets
     if (e[ElfoMode] == 0) { v.lfoPitchRatio = e[ElfoPitchRatio]; v.lfoAmpRatio = e[ElfoAmpRatio]; }
     v.fresh = true;
@@ -998,6 +1022,7 @@ void Core::free_(Pool& p, uint32_t i) {
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][last] = 0;
     p.f[G][last] = p.f[GL][last] = p.f[GR][last] = p.f[DGL][last] = p.f[DGR][last] = 0;
     p.f[C0][last] = p.f[CENTS][last] = 0; p.f[DAMP][last] = 2; p.f[B1][last] = p.f[B2][last] = 0;
+    p.f[EB0][last] = 1; for (int k = EB1; k < NFIELDS; ++k) p.f[k][last] = 0;  // the EQ: identity, silent states
 }
 
 void Core::kill(uint32_t voice) {

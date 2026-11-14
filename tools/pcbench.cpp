@@ -14,7 +14,8 @@
 // CASE: rest | held N | shed N (N held voices shed in one block) | release N (N held voices released,
 // their filter envelopes moving the cutoff every control step); PLAN: mono | stereo (the pads'
 // element: filter type 0, the pads' envelopes) | mono-thru | stereo-thru | mono-t4 | stereo-t4 | mono-t5 |
-// stereo-t5 (types 4 and 5 with the pads' envelopes); 48 kHz; built-in samples.
+// stereo-t5 (types 4 and 5 with the pads' envelopes); any of them with -eq (the element EQ's peak); 48 kHz;
+// built-in samples.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -208,6 +209,7 @@ static bool caseSound(Host& h, const std::string& plan, const Builtin& s) {
     if (thru) el += " fil_type=18";
     if (plan.find("t4") != std::string::npos) el += " fil_type=4";  // the probe piano's and bass's types
     if (plan.find("t5") != std::string::npos) el += " fil_type=5";
+    if (plan.find("eq") != std::string::npos) el += " eq_type=1 eq_freq1=157 eq_gain1=88 eq_q=8";  // the element EQ (a peak)
     const std::string text = "oscairn-pcm-sound/0\nsample builtin\n" + el + "\nregion key=0-127 root=60 element=0 sample=0 loop=1000-59000\n";
     if (!parseSound(text, *h.data)) return false;
     return h.load(stereo ? &s.sv : &s.mv);

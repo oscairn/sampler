@@ -113,9 +113,9 @@ static void coverage() {
     uint32_t n = notCovered(*d, g, 16);
     CHECK(n == 2 && g[0].param == FilType && g[1].param == ElfoMode);
     d->element[0].v[TriggerMode] = 1;   // legato: not covered
-    d->element[0].v[EqType] = 0; d->element[0].v[EqGain2] = 70;  // a 2-band EQ with gain: not covered
+    d->element[0].v[EqType] = 0; d->element[0].v[EqGain2] = 70;  // a 2-band EQ with gain: covered
     n = notCovered(*d, g, 16);
-    CHECK(n == 4 && g[2].param == TriggerMode && g[3].param == EqGain2);
+    CHECK(n == 3 && g[2].param == TriggerMode);
 }
 
 // docs/coverage.md agrees with notCovered(): every parameter id is named in a row of the element or
@@ -414,6 +414,34 @@ static void filterTypes45() {
     CHECK(down < -18 && down > -30);
 }
 
+// The element EQ against the reference's response (white noise through type 0 wide open, each take fitted
+// within 0.04 dB rms; the targets are those fits at the given frequencies): a sine through the EQ against
+// the same with the EQ thru, at 44.1 kHz.
+static void elementEq() {
+    struct Case { const char* eq; double hz, db; } cases[] = {
+        {"eq_type=1 eq_freq1=157 eq_gain1=96 eq_q=8", 1000, 11.96}, {"eq_type=1 eq_freq1=157 eq_gain1=96 eq_q=8", 250, 1.74},
+        {"eq_type=1 eq_freq1=157 eq_gain1=96 eq_q=8", 4000, 1.98}, {"eq_type=1 eq_freq1=157 eq_gain1=48 eq_q=8", 500, -1.74},
+        {"eq_type=1 eq_freq1=157 eq_gain1=48 eq_q=8", 1000, -5.95}, {"eq_type=1 eq_freq1=220 eq_gain1=96 eq_q=8", 4000, 7.84},
+        {"eq_type=1 eq_freq1=220 eq_gain1=96 eq_q=8", 12000, 6.91}, {"eq_type=0 eq_freq1=80 eq_gain1=96", 250, 9.33},
+        {"eq_type=0 eq_freq1=80 eq_gain1=96", 1000, 2.79}, {"eq_type=0 eq_freq2=200 eq_gain2=32", 2000, -3.62},
+        {"eq_type=0 eq_freq2=200 eq_gain2=32", 8000, -10.31}, {"eq_type=0 eq_freq1=80 eq_gain1=96 eq_freq2=200 eq_gain2=32", 2000, 0.91 - 3.62},
+        {"eq_type=1 eq_freq1=243 eq_gain1=96 eq_q=8", 8665, 10.36},  // past the top threshold: the Q's own frequency
+        {"eq_type=1 eq_freq1=157 eq_gain1=96 eq_q=31", 1000, 11.25},
+    };
+    for (const Case& c : cases) {
+        double lv[2];
+        for (int b = 0; b < 2; ++b) {
+            Rig x(std::string("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fil_type=0 fil_cutoff=1023 fileg_depth=0 ") + (b ? c.eq : "eq_type=5"),
+                  sine(44100, c.hz, 44100, 8192), 1, 44100.f, "0-44100", 44100);
+            x.core->setInterp(Interp::Hermite);
+            x.core->noteOn(0, 0, 0, 60, 1.0f);
+            const auto o = x.run(22050);
+            lv[b] = 20 * std::log10(rmsOf(o, 11025, 22050));
+        }
+        if (std::fabs(lv[1] - lv[0] - c.db) > 0.1) { ++failures; std::printf("  %s at %g Hz: %+.2f dB, the reference %+.2f\n", c.eq, c.hz, lv[1] - lv[0], c.db); }
+    }
+}
+
 // Interpolation: at the root (a 44.1 kHz source at 44.1 kHz) the 20-tap kernel passes the source
 // unchanged, as the reference does; above the root its cutoff follows the step, below it 0.95 (both
 // measured: laws::kernelCutoff).
@@ -667,7 +695,7 @@ int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
         {"release_shape", releaseShape}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
-        {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45},
+        {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments},

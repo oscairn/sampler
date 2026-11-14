@@ -17,7 +17,9 @@ enum Field {
     ST0,                   // filter states: [section][channel][low1, low2, band1, band2]
     DAMP = ST0 + 16,       // damping of the resonance (before the limit)
     B1, B2,                // 1 on output bus 1 (to insertion A) / bus 2 (to insertion B), else 0
-    NFIELDS
+    EB0, EB1, EB2, EA1, EA2,  // the element EQ's biquad (identity when it is flat)
+    ES0,                   // its states: [channel][s1, s2] (transposed direct form II)
+    NFIELDS = ES0 + 4
 };
 constexpr int st(int section, int channel, int k) { return ST0 + (section * 2 + channel) * 4 + k; }
 
@@ -53,7 +55,7 @@ struct CentsEnv {
 struct VoiceScalar {
     uint16_t id = 0;           // the slot's layer id
     uint8_t slot = 0, sound = 0, channel = 0, key = 60, bus = 0;
-    bool releasing = false, fresh = true, filterMoves = false;
+    bool releasing = false, fresh = true, filterMoves = false, eq = false;  // eq: the element EQ shapes the sound
     bool steady = false, dirty = true;  // steady: control steps change nothing until an event makes it dirty
     // the sample and its loop (virtual, unwrapped positions; see feed())
     const int16_t* data = nullptr;

@@ -103,7 +103,7 @@ X(KeyOnDelayNote, "keyon_delay_note", 0, 21, 0)
 X(HalfDamper, "half_damper", 0, 1, 0)
 X(HalfDamperTime, "half_damper_time", 0, 127, 127)
 // element EQ (raw), measured: with the filter Thru the EQ is bypassed; otherwise Boost6/12/18 are flat
-// gains of +6.02/+12.04/+18.06 dB and 2-band at 0 dB is flat; other settings are reported by notCovered()
+// gains of +6.02/+12.04/+18.06 dB, P.EQ a peak and 2-band two shelves (laws::elementEq)
 X(EqType, "eq_type", 0, 5, 0)
 X(EqQ, "eq_q", 0, 31, 0)
 X(EqFreq1, "eq_freq1", 0, 511, 54)

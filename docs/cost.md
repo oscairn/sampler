@@ -48,6 +48,12 @@ instruction: measured on the device for this core (Cortex-A53, thread CPU mean, 
 pads' plan with the 0.1.0 core: 10.5 us a mono voice and 13.7 us a stereo voice with the 20-tap kernel,
 4.8 and 7.2 us with Hermite, so 0.99 and 0.94 ns an instruction; scalar builds 4-6 times slower).
 
+The element EQ (0.3.0): a voice whose EQ shapes the sound runs one biquad more a channel (a lane runs it only when
+one of its four voices needs it). The pads' element with a peak, a voice from 8 to 32: mono 10,955, stereo 15,633
+instructions a block (the gates: 11,000 and 19,500); without the EQ the gated cases are mono 10,677 and stereo 15,147
+(the lane's check). Memory: nine more per-voice fields (the biquad's five coefficients and four states), 36,864 bytes
+in the core's eight pools (9 x 4 bytes x 128 voices x 8).
+
 ## Shedding
 
 `Core::shed(n)` fades the n quietest element voices out over 16 frames (one control step) and frees

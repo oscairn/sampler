@@ -58,5 +58,100 @@ float kernelCutoff(double r) noexcept
     return static_cast<float>(cut[i - 1] + (cut[i] - cut[i - 1]) * (r - at[i - 1]) / (at[i] - at[i - 1]));
 }
 
+double eqHz(int raw) noexcept
+{
+    // Fitted per take (batches X, Z and S, rounds 3-4; every take within 0.05 dB rms of its model): the peak's
+    // frequency and both shelves' read one table (the peak and the high shelf agree within 0.02 % at every
+    // raw value both were measured at); the raw value's low 8 bits index it (300 plays as 44, 511 as 255)
+    static constexpr double pt[][2] = {
+        { 0, 14.1 }, { 30, 31.3 }, { 44, 47.6 }, { 46, 49.9 }, { 54, 62.2 }, { 62, 79.4 }, { 70, 96.4 }, { 78, 117.7 },
+        { 83, 139.2 }, { 86, 151.9 }, { 91, 173.3 }, { 94, 186.1 }, { 99, 207.4 }, { 100, 211.8 }, { 102, 221.9 },
+        { 107, 264.7 }, { 110, 290.2 }, { 115, 332.9 }, { 118, 358.4 }, { 123, 401.3 }, { 126, 426.7 }, { 131, 502.0 },
+        { 134, 553.1 }, { 139, 638.7 }, { 142, 689.7 }, { 147, 775.4 }, { 150, 826.3 }, { 155, 949.7 }, { 157, 1018.6 }, { 158, 1051.8 },
+        { 163, 1223.7 }, { 166, 1325.6 }, { 171, 1498.1 }, { 174, 1599.7 }, { 179, 1793.5 }, { 182, 1998.1 },
+        { 187, 2345.5 }, { 195, 2901.1 }, { 200, 3245.0 }, { 203, 3461.1 }, { 211, 4527.3 }, { 219, 5695.1 },
+        { 220, 5849.9 }, { 227, 6906.2 }, { 231, 7765.5 }, { 235, 9078.8 }, { 239, 10521.0 }, { 241, 11258.0 }, { 243, 12106.0 },
+        { 247, 13940.0 }, { 251, 16268.0 }, { 255, 19794.6 } };
+    constexpr int n = int(sizeof pt / sizeof pt[0]);
+    const double x = raw & 255;
+    int i = 1;
+    while (i < n - 1 && x > pt[i][0])
+        ++i;
+    const double t = (x - pt[i - 1][0]) / (pt[i][0] - pt[i - 1][0]);
+    return std::exp(std::log(pt[i - 1][1]) + t * (std::log(pt[i][1]) - std::log(pt[i - 1][1])));
+}
+
+double eqPeakQ(int raw) noexcept
+{
+    // raw 0, 8, 20, 31 at 212 Hz, 1 kHz and 5.8 kHz: 0.701, 1.400, 3.945, 10.22 (the law 0.7, 1.4, 3.96, 10.27)
+    return 0.7 * std::exp2(raw / 8.0);
+}
+
+bool elementEq(int type, int q, int f1, int g1, int f2, int g2, double sr, Biquad& out) noexcept
+{
+    out = Biquad{};
+    if ((type != 0 && type != 1) || sr <= 0)
+        return false;
+    constexpr double pi = 3.14159265358979323846;
+    const double G1 = std::pow(10.0, (g1 - 64) * 0.375 / 20.0), G2 = std::pow(10.0, (g2 - 64) * 0.375 / 20.0);
+    // a band's coefficient: 2 sin(pi F / rate) (at the host's rate the same Hz; kept below 2)
+    auto coef = [&](double hz) { return 2.0 * std::sin(pi * std::min(hz, 0.49 * sr) / sr); };
+    double b[3], a[3];
+    if (type == 1) {
+        if (g1 == 64)
+            return false;
+        // the peak (measured: every take of 36 within 0.05 dB rms): the poles of a state-variable section at
+        // f = 2 sin(pi F / rate), damping d = 1 / Q, so a1 = f^2 + f d - 2, a2 = 1 - f d; the zeros make the
+        // response 1 at DC and at the Nyquist frequency with the gain G at the centre: a boost has
+        // b = (1 + f d (G - 1) / 2, a1, 1 - f d (G + 1) / 2) over a = (1, a1, 1 - f d); a cut is the boost of
+        // 1 / G inverted (the same in dB)
+        // near the top of the range the reference replaces the frequency by a lower one that depends on Q
+        // (measured at Q raw 0, 4, 8, 12, 16, 20, 25, 31, frequency raw 187-255 every 4: past a threshold the
+        // peak sits at that Q's own frequency, every raw value alike); between the measured Q values both
+        // log-linear in Q (inferred)
+        static constexpr double qs[8] = { 0, 4, 8, 12, 16, 20, 25, 31 };
+        static constexpr double above[8] = { 3955, 7318, 9773, 11281, 12990, 15061, 17948, 17941 };  // the brackets' geometric middle
+        static constexpr double to[8] = { 3735.6, 6516.1, 8665.2, 10342.0, 11649.7, 12663.3, 13615.0, 14380.5 };
+        int k = 1;
+        while (k < 7 && q > qs[k])
+            ++k;
+        const double u = (std::max(0, std::min(31, q)) - qs[k - 1]) / (qs[k] - qs[k - 1]);
+        const double limit = std::exp(std::log(above[k - 1]) + u * (std::log(above[k]) - std::log(above[k - 1])));
+        const double cap = std::exp(std::log(to[k - 1]) + u * (std::log(to[k]) - std::log(to[k - 1])));
+        double hz = eqHz(f1);
+        if (hz > limit)
+            hz = cap;
+        double f = coef(hz);
+        const double d = 1.0 / eqPeakQ(q);
+        // stability at any rate (the section needs f^2 + 2 f d < 4); the measured settings reach 3.96
+        if (f * f + 2 * f * d > 3.98)
+            f = std::sqrt(d * d + 3.98) - d;
+        const double a1 = f * f + f * d - 2.0;
+        const double G = G1 >= 1 ? G1 : 1.0 / G1;
+        const double n0 = 1.0 + f * d * (G - 1.0) / 2.0, n2 = 1.0 - f * d * (G + 1.0) / 2.0, d2 = 1.0 - f * d;
+        if (G1 >= 1) { b[0] = n0; b[1] = a1; b[2] = n2; a[0] = 1; a[1] = a1; a[2] = d2; }
+        else { b[0] = 1; b[1] = a1; b[2] = d2; a[0] = n0; a[1] = a1; a[2] = n2; }
+    } else {
+        if (g1 == 64 && g2 == 64)
+            return false;
+        // first-order shelves through the bilinear transform at K = 1.006 x 2 sin(pi F / rate) (measured: the
+        // shelves' corners read the peak's table through that factor at every raw value, 0.6 %); the boost's
+        // pole and the cut's zero sit at the corner; the high shelf's frequency stays within raw 131-241
+        auto shelf = [](double K, double G, bool low, double* s) {
+            if (low) { if (G >= 1) { s[0] = 1 + K * G; s[1] = K * G - 1; s[2] = 1 + K; s[3] = K - 1; }
+                       else { s[0] = 1 + K; s[1] = K - 1; s[2] = 1 + K / G; s[3] = K / G - 1; } }
+            else { if (G >= 1) { s[0] = G + K; s[1] = K - G; s[2] = 1 + K; s[3] = K - 1; }
+                   else { s[0] = 1 + K; s[1] = K - 1; s[2] = 1 / G + K; s[3] = K - 1 / G; } }
+        };
+        double lo[4], hi[4];
+        shelf(1.006 * coef(eqHz(f1)), G1, true, lo);
+        shelf(1.006 * coef(eqHz(std::max(131, std::min(241, f2)))), G2, false, hi);
+        b[0] = lo[0] * hi[0]; b[1] = lo[0] * hi[1] + lo[1] * hi[0]; b[2] = lo[1] * hi[1];
+        a[0] = lo[2] * hi[2]; a[1] = lo[2] * hi[3] + lo[3] * hi[2]; a[2] = lo[3] * hi[3];
+    }
+    out.b0 = b[0] / a[0]; out.b1 = b[1] / a[0]; out.b2 = b[2] / a[0]; out.a1 = a[1] / a[0]; out.a2 = a[2] / a[0];
+    return true;
+}
+
 }  // namespace laws
 }  // namespace pcm

@@ -259,7 +259,7 @@ time from the note-off to 30 dB below the level there.
 Measured on the way (recordings `f_*`, `h_*`, `i_*`, `j_*`, `k_*`, `l_*`):
 - Element EQ: with any filter type but Thru, Boost6, Boost12 and Boost18 are flat gains of +6.02,
   +12.04 and +18.06 dB (every octave band within 0.15 dB) and 2-band at 0 dB is flat (0.02-0.1 dB);
-  with the filter Thru the EQ is bypassed (all types equal). Built; P.EQ and 2-band with gain not.
+  with the filter Thru the EQ is bypassed (all types equal). P.EQ and 2-band with gain: (k).
 - Half damper (a sine, release 40): with the switch on and the pedal down, a key-up enters the
   release at the half damper time (103: 4.07 dB/s, 127: 0.61, 64: 121 dB/s, the release table's rates);
   at pedal 64 the index in between in proportion (40 + 63 x 64 / 127 = 72: 60.6 dB/s, table 60.5); pedal
@@ -373,6 +373,38 @@ note's octave bands (0.15-0.45 s after its note-on) are matched against the engi
   level and 2.5 dB in octave bands (76 notes). Where base plus shift falls below index 0 the reference
   keeps going darker but not as the engine's table (which stops at index 0); those notes are 40-140 dB
   below the take's loudest (D15).
+
+## (k) Element EQ against the reference
+
+Recordings `s_*` (run pcm-round3-2026-11-14), `x_*` and `z_*` (run pcm-round4-2026-11-14): white noise through type 0
+wide open, each EQ setting against the EQ thru: the peak (P.EQ) at frequency raw 0-511 (83-251 every 8; 187-255 every 4 at
+Q raw 0, 4, 8, 12, 16, 20, 25, 31), Q 0-31, gains 32-96; the 2-band's low shelf at raw 0-511 (46-182 every 8) and high
+shelf at raw 0-511 (131-241 every 8), gains 32-96, both bands together, and Q with the 2-band. Each take's response
+(1/24-octave bands, 80 Hz-18 kHz) is fitted with a model; every one of the 191 takes within 0.05 dB rms of its model.
+
+- Gains: (raw - 64) x 0.375 dB in both bands, boost and cut symmetric in dB.
+- The peak is a biquad whose poles are those of a state-variable section at f = 2 sin(pi F / 44100), damping d = 1 / Q:
+  a1 = f^2 + f d - 2, a2 = 1 - f d; the zeros keep the response at 1 at DC and at the Nyquist frequency with the gain
+  at the centre (a boost: b = (1 + f d (G - 1) / 2, a1, 1 - f d (G + 1) / 2)); a cut is the boost inverted. With this
+  model one frequency per raw value and one Q per raw Q fit every take (a constant-Q biquad needs the centre and Q to
+  move with each other, by up to 19 %). Q = 0.7 x 2^(raw / 8): measured 0.701, 0.992, 1.400, 1.979, 2.795, 3.945, 6.10,
+  10.22 at raw 0, 4, 8, 12, 16, 20, 25, 31 (the law 0.700, 0.990, 1.400, 1.980, 2.800, 3.960, 6.10, 10.27).
+- One frequency table serves the peak and both shelves (the peak and the high shelf agree within 0.02 % at every raw value
+  both were measured at); 14 Hz at raw 0 to 19.8 kHz at 255, irregular within its octaves (20-34 raw steps an octave);
+  the raw value's low 8 bits index it (300 plays as 44). The high shelf's frequency stays within raw 131-241.
+- The shelves are first order through the bilinear transform at K = 1.006 x 2 sin(pi F / 44100), the boost's pole and the
+  cut's zero at the corner; Q does not change them.
+- Near the top the peak's frequency is replaced by a lower one of its Q's own once the table passes a threshold that also
+  depends on Q (Q raw 0: 3.74 kHz from raw 211 on; 8: 8.67 kHz from 239; 31: 14.4 kHz at 255); between the measured Q values
+  both are interpolated (inferred).
+- Engine against reference (the same takes, the engine's response against its own EQ thru): largest difference in 1/6-octave
+  bands 0.24 dB (round 3 takes), 0.46 dB (round 4 frequency takes; raw 30 at 62 Hz, the analysis's lowest band), 0.37 dB
+  (the top-of-range takes; Q raw 31 at 10 kHz); mean rms 0.03 dB. At other host rates the bands keep their frequencies in
+  Hz (the coefficients at the host's rate; not compared with the reference).
+
+| check | tolerance | result |
+|---|---|---|
+| response, every EQ take, 1/6-octave bands 62.5 Hz-16 kHz | ±0.5 dB | pass (largest 0.46 dB, 224 takes) |
 
 ## Known differences (this engine's register)
 
