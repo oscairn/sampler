@@ -108,6 +108,8 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
         if (dest < 0 || curve < 0 || !src || b[2] == 0) continue;
         out.box[out.boxes++] = {uint8_t(k), uint8_t(b[0]), uint8_t(dest), int8_t(curve), b[2] == 127 ? 128.f : float(b[2]), b[3] ? 512.f : 1024.f};
     }
+    out.select = false;
+    for (uint32_t e = 0; e < d.elements; ++e) out.select |= d.element[e].v[TriggerMode] == 1 || d.element[e].v[TriggerMode] >= 3;
     out.elfoBoxes = false;
     for (uint32_t b = 0; b < out.boxes; ++b) out.elfoBoxes |= out.box[b].dest == laws::BoxElfoPitch || out.box[b].dest == laws::BoxElfoAmp;
     // the part LFO's slots on the destinations the core moves (the others are reported by notCovered)
@@ -786,6 +788,8 @@ void Core::install(uint32_t s, const Compiled* c) {
     for (uint32_t v = 0; v < kMaxVoices; ++v) if (slot_[v].on && slot_[v].sound == s) kill(v);
     sound_[s] = c && c->loaded ? c : nullptr;
     lfoStart_[s] = -1;  // the part LFO starts with the next note
+    for (auto& g : cycle_[s]) g = 0;
+    draw_[s] = 0x2545f491u;
 }
 
 void Core::setGain(uint32_t s, float gain, float pan) {
@@ -818,9 +822,10 @@ void Core::noteOn(uint32_t voice, uint32_t sound, int channel, int key, float ve
         for (uint32_t k = 0; k < kMaxVoices; ++k) held |= k != voice && slot_[k].on && slot_[k].sound == sound && !slot_[k].keyUp;
         if (s->lfo.reset == 2 ? !held : lfoStart_[sound] < 0) lfoStart_[sound] = clock_;
     }
+    const uint32_t plays = s->select ? selectElements(*s, sound, key, vel) : ~0u;
     for (uint32_t i = 0; i < s->regions && sl.layers < kMaxLayers; ++i) {
         const Region& r = s->region[i];
-        if (key < r.loKey || key > r.hiKey || vel < r.loVel || vel > r.hiVel) continue;
+        if (key < r.loKey || key > r.hiKey || vel < r.loVel || vel > r.hiVel || !(plays >> r.element & 1)) continue;
         if (s->element[r.element].v[TriggerMode] == 2) { sl.keyOff = true; continue; }  // sounds from the key's release
         startLayer(voice, *s, i, key, vel, vel2048, channel);
     }
@@ -969,6 +974,54 @@ int32_t Core::noteOnSteps(const Compiled& s, const int16_t* e, uint32_t sound, i
         step += int32_t(o * float(laws::kBoxSpan[dest]) / 8192.0f);
     }
     return std::max<int32_t>(-laws::kBoxSpan[dest], std::min<int32_t>(laws::kBoxSpan[dest], step));
+}
+
+// Which elements a note starts (bit e: element e), by each element's trigger mode and group (the fork's law, measured
+// there: K51): normal elements always; legato ones never (a poly part); switch elements by the part's switches 1 and 2
+// at the note (on from half way); cycle, per group the next element in order that covers the note, from where the group
+// left off (a note no cycle element of the group covers starts it over); random, per group one 8-bit draw r taking the
+// (r n / 255)th of the n covering elements (the draw of 255 takes the part's first element if it is one of them, else none).
+uint32_t Core::selectElements(const Compiled& s, uint32_t sound, int key, int vel) {
+    uint32_t covering = 0, cycle[8] = {}, random[8] = {}, plays = 0;
+    for (uint32_t i = 0; i < s.regions; ++i) {
+        const Region& r = s.region[i];
+        if (key >= r.loKey && key <= r.hiKey && vel >= r.loVel && vel <= r.hiVel) covering |= 1u << r.element;
+    }
+    const bool sw1 = control_[sound][16] >= 0.5f, sw2 = control_[sound][17] >= 0.5f;
+    for (uint32_t e = 0; e < kMaxElements; ++e) {
+        if (!(covering >> e & 1)) continue;
+        const int16_t* v = s.element[e].v;
+        const int g = v[ElementGroup] - 1;
+        switch (v[TriggerMode]) {
+        case 0: case 2: plays |= 1u << e; break;  // key-off elements start at the note's end (startKeyOff)
+        case 3: cycle[g] |= 1u << e; break;
+        case 4: random[g] |= 1u << e; break;
+        case 5: if (!sw1 && !sw2) plays |= 1u << e; break;
+        case 6: if (sw1) plays |= 1u << e; break;
+        case 7: if (sw2) plays |= 1u << e; break;
+        default: break;  // legato: only in a mono part (not built)
+        }
+    }
+    for (int g = 0; g < 8; ++g) {
+        if (!cycle[g]) cycle_[sound][g] = 0;
+        else {
+            uint32_t e = cycle_[sound][g];
+            while (e < kMaxElements && !(cycle[g] >> e & 1)) ++e;
+            if (e == kMaxElements) for (e = 0; !(cycle[g] >> e & 1); ++e) {}
+            plays |= 1u << e;
+            cycle_[sound][g] = uint8_t((e + 1) % kMaxElements);
+        }
+        if (random[g]) {
+            draw_[sound] = draw_[sound] * 1664525u + 1013904223u;
+            uint32_t n = 0;
+            for (uint32_t m = random[g]; m; m &= m - 1) ++n;
+            const uint32_t k = (draw_[sound] >> 24) * n / 255;
+            for (uint32_t e = 0, seen = 0; e < kMaxElements; ++e)
+                if ((random[g] >> e & 1) && seen++ == k) plays |= 1u << e;
+            if (k == n && (random[g] & 1) && s.element[0].v[ElementNumber] == 1) plays |= 1u;
+        }
+    }
+    return plays;
 }
 
 void Core::releaseLayer(Pool& p, uint32_t i, int32_t index) {
@@ -1176,6 +1229,7 @@ void Core::reset() {
     for (auto& d : pedal_) d = 0;
     for (int c = 0; c < 16; ++c) { pressure_[c] = 0; foot_[c] = 1; breath_[c] = 1; }  // the reference's rest values (inferred: the analog engine's)
     for (auto& t : lfoStart_) t = -1;  // the part LFOs start with their next note
+    for (uint32_t s = 0; s < kMaxSounds; ++s) { for (auto& g : cycle_[s]) g = 0; draw_[s] = 0x2545f491u; }  // the cycles and draws start over
 }
 
 void Core::shed(uint32_t n) {

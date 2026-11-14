@@ -124,6 +124,7 @@ struct Compiled {
         float hz = 0, phase = 0;      // cycles a second; the start phase in cycles
         int8_t step[16] = {};         // the user wave's steps (as displayed)
     } lfo;
+    bool select = false;              // an element plays by cycle, at random or by the switches (Core::noteOn)
 };
 // Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
 // region's sample is missing or empty, or a loop lies outside its sample (error says which).
@@ -199,6 +200,7 @@ private:
     float partLfo(Pool&, uint32_t i);
     void releaseLayer(Pool&, uint32_t i, int32_t releaseIndex);
     int32_t noteOnSteps(const Compiled&, const int16_t* element, uint32_t sound, int channel, int dest) const;
+    uint32_t selectElements(const Compiled&, uint32_t sound, int key, int velocity);
     void startKeyOff(uint32_t slot);
     void reap_();
     double sr_ = 48000;
@@ -212,6 +214,8 @@ private:
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
     bool offsetOn_[kMaxSounds] = {};
     int64_t lfoStart_[kMaxSounds] = {};      // the engine clock the sound's part LFO last started (reset) at
+    uint8_t cycle_[kMaxSounds][8] = {};      // each element group's next cycle position (an element index)
+    uint32_t draw_[kMaxSounds] = {};         // the random elements' generator
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];

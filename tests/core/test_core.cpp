@@ -112,10 +112,13 @@ static void coverage() {
     d->element[0].v[ElementConnection] = 2;  // to insertion B: the thru level (measured), covered
     uint32_t n = notCovered(*d, g, 16);
     CHECK(n == 2 && g[0].param == FilType && g[1].param == ElfoMode);
-    d->element[0].v[TriggerMode] = 1;   // legato: not covered
+    d->element[0].v[TriggerMode] = 1;   // legato: covered in a poly part (it never plays), not in a mono one
     d->element[0].v[EqType] = 0; d->element[0].v[EqGain2] = 70;  // a 2-band EQ with gain: covered
     n = notCovered(*d, g, 16);
-    CHECK(n == 3 && g[2].param == TriggerMode);
+    CHECK(n == 2);
+    d->part[PartMono] = 1;
+    n = notCovered(*d, g, 16);
+    CHECK(n == 4 && g[0].param == PartMono && g[3].param == TriggerMode);
 }
 
 // docs/coverage.md agrees with notCovered(): every parameter id is named in a row of the element or
@@ -884,6 +887,58 @@ static void partLfo() {
     }
 }
 
+// Element selection (the fork's law): cycle per group in element order, random per group about evenly, the switch modes by
+// the part's switches 1 and 2, legato never in a poly part. Each element at its own level tells which one played.
+static void elementSelection() {
+    auto sound = [](const std::vector<std::pair<int, int>>& els) {  // (trigger mode, group) per element, levels 127, 100, 70, 40
+        static const int lv[4] = {127, 100, 70, 40};
+        std::string t = "oscairn-pcm-sound/0\nsample s\n";
+        for (size_t e = 0; e < els.size(); ++e)
+            t += "element ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 amp_level=" + std::to_string(lv[e]) + " xa_control=" + std::to_string(els[e].first) +
+                 " element_group=" + std::to_string(els[e].second) + " element_number=" + std::to_string(e + 1) + "\n";
+        for (size_t e = 0; e < els.size(); ++e) t += "region key=0-127 root=60 element=" + std::to_string(e) + " sample=0 loop=0-4410\n";
+        return t;
+    };
+    // which elements a note plays: a bit per element, from the summed level (the levels' gains are far apart)
+    auto played = [](Rig& r, int n) {
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r.run(256);
+        const double got = o[400] / (16384 * kUnit);
+        int best = -1; double err = 1e9;
+        for (int m = 0; m < 1 << n; ++m) {
+            static const int lv[4] = {127, 100, 70, 40};
+            double sum = 0;
+            for (int e = 0; e < n; ++e) if (m >> e & 1) sum += laws::levelGain(lv[e]) * (e ? std::pow(10.0, laws::kThruElementDb / 20) : 1.0);
+            if (std::fabs(sum - got) < err) { err = std::fabs(sum - got); best = m; }
+        }
+        return best;
+    };
+    {   // three cycle elements in group 1 and a normal one in group 2
+        const std::string t = sound({{3, 1}, {3, 1}, {3, 1}, {0, 2}});
+        Rig r(t.c_str(), constant(4410, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        for (int k = 0; k < 7; ++k) CHECK(played(r, 4) == (8 | 1 << (k % 3)));
+    }
+    {   // switch modes: off / switch 1 / switch 2, and a legato element that never plays
+        const std::string t = sound({{5, 1}, {6, 1}, {7, 1}, {1, 1}});
+        Rig r(t.c_str(), constant(4410, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        CHECK(played(r, 4) == 1);
+        r.core->setControl(0, 16, 1.0f);
+        CHECK(played(r, 4) == 2);
+        r.core->setControl(0, 17, 1.0f);
+        CHECK(played(r, 4) == 6);
+    }
+    {   // two random elements: one each note, about evenly
+        const std::string t = sound({{4, 1}, {4, 1}});
+        Rig r(t.c_str(), constant(4410, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        int count[4] = {};
+        for (int k = 0; k < 400; ++k) ++count[played(r, 2)];
+        CHECK(count[3] == 0 && count[1] > 160 && count[2] > 160 && count[0] + count[1] + count[2] == 400);
+    }
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -893,6 +948,7 @@ int main() {
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
+        {"element_selection", elementSelection},
     };
     for (auto& t : tests) {
         const int before = failures;

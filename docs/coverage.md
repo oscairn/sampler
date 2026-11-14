@@ -28,13 +28,13 @@ starting with "no" are reported at every value but the default (any other start:
 | Key Controller Set 3 Switch | Off, On | no | - | - |
 | Key Controller Set 4 Switch | Off, On | no | - | - |
 | Wave Select | 0=Preset, 1=User, 2–17=Library1–16, 18-25=Library17–24 | yes: the region table and its sample references | converter | pads (acceptance a) |
-| Element Group Number | 1–8 | `element_group`: normal only; any other element trigger mode is reported | - | - |
+| Element Group Number | 1–8 | yes: `element_group`, the group a cycle or random element takes turns in | the fork's (K51, measured there) | core test `element_selection` |
 | Wave Number | 1 – 7620 (USR, Library: 1 – 1024) | yes: the region table and its sample references | converter | pads (acceptance a) |
 | Element Pan | L63 – C – R63 | yes: `amp_pan`, summed with the key bank's pan, the balance law | K1; measured here (acceptance c) | acceptance c: pans 1-127, mono, stereo and panned key banks |
 | Random Pan Depth | 0 – 127 | no | - | - |
 | Alternate Pan Depth | L64 – C – R63 | no | - | - |
 | Scaling Pan Depth | −64 – +63 | no | - | - |
-| Element trigger mode | normal, legato, key-off, cycle, random, switch off, switch 1 on, switch 2 on | Normal and Key Off (`xa_control=2`: from the note's end, the key's release or under the sustain pedal the pedal's (measured, acceptance g), released 2.0 s after its start); others reported | K42 (the fork's, BSD) | core test; the probe piano's key-off element in its tails (acceptance g) |
+| Element trigger mode | normal, legato, key-off, cycle, random, switch off, switch 1 on, switch 2 on | yes: `xa_control`. Normal; key off (2: from the note's end, the key's release or under the sustain pedal the pedal's (measured, acceptance g), released 2.0 s after its start); cycle (3: per group the next element in order covering the note, from where the group left off; a note no cycle element of the group covers starts it over); random (4: per group one draw among the covering elements, each alike); switch off / switch 1 on / switch 2 on (5-7: by the part's switches 1 and 2 at the note, on from half way); legato (1) never plays in a poly part (a mono part is reported) | K42 and K51 (the fork's laws, measured there; acceptance q) | core tests `key_off_elements`, `element_selection`; the probe piano's key-off element in its tails (acceptance g) |
 | Note Limit Low | C-2 – G8 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Note Limit High | C-2 – G8 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |
 | Velocity Limit Low | 1 – 127 | yes: clipped into the region table by the converter | converter | pads (acceptance a) |

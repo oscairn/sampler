@@ -422,7 +422,7 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
             add(uint16_t(e), FilType, "filter types other than 0 (two low-pass sections), 4 (low-pass and high-pass sections), 5 (one-pole and high-pass section) and 18 (thru)");
         if (v[ElfoMode] == 1) add(uint16_t(e), ElfoMode, "the element LFO's own settings (settings mode) are not built");
         if (v[ElfoMode] == 0 && v[ElfoAmpRatio] < 0) add(uint16_t(e), ElfoAmpRatio, "a negative element LFO amplitude ratio is not measured");
-        if (v[TriggerMode] && v[TriggerMode] != 2) add(uint16_t(e), TriggerMode, "element trigger modes other than normal and key-off are not built");
+        if (v[TriggerMode] == 1 && d.part[PartMono]) add(uint16_t(e), TriggerMode, "legato elements in a mono part are not built");
         if (v[KeyOnDelay] || v[KeyOnDelayNote]) add(uint16_t(e), v[KeyOnDelay] ? KeyOnDelay : KeyOnDelayNote, "key-on delay is not built");
     }
     return n;

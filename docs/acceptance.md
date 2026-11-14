@@ -561,6 +561,23 @@ resonance destination (its takes clipped), destinations other than the four.
   square's plateaus, the slot switch, level and pan plateaus, each-on and first-on phases); the fuzz sets every part
   LFO setting at random.
 
+## (q) Element selection: the fork's laws
+
+Not re-measured here: the sample-engine fork measured element selection on the reference (its K51; batches of sine
+elements at distinct levels, a note at a time) and this engine carries its rules. Cycle elements take turns per group in
+element order, one position per group shared by every key; a note no cycle element of the group covers starts the group
+over. Random elements: one 8-bit draw per group, each covering element alike; the draw of 255 picks none unless the part's
+first element is among them, then that one. The fork's hold-outs: 120 notes of two random elements, the reference 61 / 59
+against the fork's 62 / 58; 400 notes, 219 / 200 against 211 / 187; with a velocity-limited third element at velocity
+120, 59 / 42 / 49 against 49 / 48 / 53. The sequences differ by design: the reference's generator is shared by the whole
+instrument and runs on across loads; here each sound slot has its own, started again at a load and a reset. The switch
+modes follow the part's switches 1 and 2 at note-on (on from half way, the fork's 64 of 127). Legato elements play only in
+a mono part, which this engine does not build (reported).
+
+- Engine: `xa_control` 3-7 and 1 in a poly part, `element_group`; core test `element_selection` (three cycle elements
+  in turn beside a normal one in another group, the switch modes, 400 notes of two random elements: one a note, each
+  more than 160).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |
