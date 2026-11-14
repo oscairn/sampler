@@ -357,3 +357,44 @@ TEST(one_shot_regions_end_their_voices) {
     for (int n = 0; n < 26; ++n) ok += a.ends(n + 1) == 1;
     CHECK_EQ(ok, 26);
 }
+
+// Pad-shaped voices end by the release rule: the amplitude envelope's release falls in dB at its index's rate (seconds
+// per 60 dB) and the voice ends when the envelope reaches -96.45 dB, from any level (a release entered again keeps its
+// rate from where it stands), so a release at index i lasts at most per60(i) x 96.45 / 60. The longest, index 127, is
+// 105.72 s per 60 dB: 169.95 s. Forward loops, the filter envelope closing in its release, the release index moved by a
+// box or a parameter every block, the destination offsets set every block, the half-damper pedal moved every block:
+// active_voices returns to 0 within that bound (plus a block), not before the unmodulated release's own end, and each
+// note gets one NOTE_END.
+TEST(pad_voices_end_by_the_release_rule) {
+    const double per60_127 = 105.719, per60_110 = 26.4298;  // laws::releaseSecondsPer60dB(127), (110)
+    const long bound127 = long(per60_127 * 96.45 / 60 * kRate) + 256, bound110 = long(per60_110 * 96.45 / 60 * kRate) + 256;
+    const std::string pad = "oscairn-pcm-sound/0\npart box1_src=1 box1_dst=78 box1_ratio=63\nsample sine.wav\n"
+                            "element ampeg_attack=30 ampeg_decay1=127 ampeg_decay2=127 ampeg_release=110 fil_type=0 fil_cutoff=600 fileg_depth=40 "
+                            "fileg_release=100 fileg_release_level=0 half_damper=1 half_damper_time=127\n"
+                            "region key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
+    struct Case { const char* what; int mode; long bound; };
+    const Case cases[] = {{"release 110, still", 0, bound110}, {"the box on the release moved every block (to index 127)", 1, bound127},
+                          {"the release parameter set and modulated every block", 2, bound127}, {"offsets on cutoff and level every block", 3, bound110},
+                          {"the half-damper pedal moved every block", 4, bound127}};
+    for (const Case& c : cases) {
+        Inst a;
+        CHECK(a.load(stateWith(pad)));
+        a.block(128, {midi(0, 0xb0, 1, 0), on(0, 1, 0, 57, 1.0)});
+        a.run(48000);
+        a.block(128, {off(0, 1, 0, 57)});
+        long t = 0, end = -1;
+        for (int b = 0; t < c.bound + 48000; ++b, t += 128) {
+            std::vector<Bytes> ev;
+            switch (c.mode) {
+            case 1: ev.push_back(midi(0, 0xb0, 1, uint8_t(b % 2 ? 127 : 0))); break;
+            case 2: ev.push_back(param(0, 24, b % 2 ? 17 : -40)); ev.push_back(mod(0, 24, b % 3 ? 5 : -5)); break;
+            case 3: ev.push_back(param(0, 14, double(b % 200 - 100))); ev.push_back(mod(0, 16, b % 2 ? 10 : -10)); break;
+            case 4: ev.push_back(midi(0, 0xb0, 64, uint8_t(b * 7 % 128))); break;
+            }
+            a.block(128, ev);
+            if (end < 0 && a.voices() == 0) end = t;
+        }
+        if (!(end >= 0 && end <= c.bound && a.ends(1) == 1)) { ++g_failures; std::printf("  %s: ended at %ld frames (bound %ld), %d NOTE_ENDs\n", c.what, end, c.bound, a.ends(1)); }
+        if (c.mode == 0 && end < bound110 * 9 / 10) { ++g_failures; std::printf("  %s: ended early, at %ld of %ld frames\n", c.what, end, bound110); }
+    }
+}

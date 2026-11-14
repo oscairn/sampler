@@ -187,7 +187,9 @@ void ampEnter(AmpEnv& e, AmpEnv::Stage stage, double sr) {
                                      : laws::decaySecondsPer60dB(index);
         const double floor = release ? laws::kReleaseEndDb : laws::kFloorDb;  // the full-scale segment's span
         e.target = release ? floor : levelDb(stage == AmpEnv::Decay1 ? e.decay1Level : e.decay2Level);
-        e.db = toDb(e.gain);
+        // (a release reads its level down to its own end, below the decays' -90 dB floor: a release entered again from
+        // under -90 dB must not climb back to it, or re-entries every few blocks would hold the voice for ever)
+        e.db = release ? (e.gain > 0.0 ? std::max(20.0 * std::log10(e.gain), laws::kReleaseEndDb) : laws::kReleaseEndDb) : toDb(e.gain);
         // a segment takes the full-scale segment's time; a release entered again keeps the index's rate from
         // where it stands (measured: a half damper element's release when the pedal moves, docs/acceptance.md (g))
         const double span = release && e.again ? std::max(1e-9, e.db - floor) : -floor;

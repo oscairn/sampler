@@ -119,17 +119,19 @@ TEST(fuzz_random_sounds_and_events) {
     CHECK(worstAlloc == 0);
 }
 
-// Every note ends: random sounds (their releases at most index 90, no time shifts, no half damper, so the longest release
-// falls to the voice end within about 7.2 s), random notes, controllers and chokes; then every key up, the pedal up and
+// Every note ends: random sounds (their releases and half damper times at most index 90, no time shifts, so the longest
+// release falls to the voice end within about 7.2 s; the sustain pedal moves at random among the events), random notes, controllers and chokes; then every key up, the pedal up and
 // 12 s: no voice remains and each note-on got exactly one NOTE_END (refused ones included).
 TEST(fuzz_every_note_ends) {
     Rng r{777};
     auto bounded = [](std::string s) {
-        for (const char* id : {" ampeg_release=", " ampeg_veltime=", " ampeg_keytime=", " half_damper="}) {
+        struct { const char* id; int most; } caps[] = {{" ampeg_release=", 90}, {" half_damper_time=", 90}, {" ampeg_veltime=", 0}, {" ampeg_keytime=", 0}};
+        for (const auto& cap : caps) {
+            const char* id = cap.id;
             for (size_t at = s.find(id); at != std::string::npos; at = s.find(id, at + 1)) {
                 const size_t v = at + std::strlen(id), e = s.find_first_of(" \n", v);
                 const int x = std::atoi(s.substr(v, e - v).c_str());
-                const int y = id[7] == 'r' ? std::min(x, 90) : 0;
+                const int y = cap.most ? std::min(x, cap.most) : 0;
                 s.replace(v, e - v, std::to_string(y));
             }
         }
