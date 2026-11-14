@@ -585,6 +585,25 @@ note length at the tempo (`keyon_delay_note`) is reported.
   in turn beside a normal one in another group, the switch modes, 400 notes of two random elements: one a note, each
   more than 160).
 
+## (r) The part's offsets against the reference
+
+Recordings `l_po*` (run pcm-round6-2026-11-14; batch A's `a_po_*` played quiet and were re-recorded): white noise through
+type 0 at cutoff 400 with the part's cutoff offset at -48 to +63, and at 700 with -32, 0, +32; a saw (note 36) through type
+0 at resonance 40 with the resonance offset at -16 to +16. Each matched against the engine's static settings by band
+shape.
+
+| what | measured | engine | tolerance | points |
+|---|---|---|---|---|
+| cutoff offset | 8 index steps a unit, at both base cutoffs (400 + 8 o: 144, 272, 336, 464, 528, 656, 784, 904 read 148, 272, 336, 464, 528, 656, 784, 908; 700 - 256: 444) | `part_cutoff`, 8 a unit, within 0-1023 | within 4 index steps (-48: the noise near the bottom of the table, 40 against 16; 700 + 256: the table's top) | 13 notes |
+| resonance offset | 2 steps a unit (7, 23, 38, 55, 73 against 8, 24, 40, 56, 72) | `part_resonance`, 2 a unit, within 0-127 | within 2 steps | 5 notes |
+
+The offsets act on every element before velocity, scaling, boxes and the part LFO (assumed: the order not measured). The
+amplitude envelope's offsets (attack, decay, sustain, release) and the filter envelope's depth offset are not built: the
+attack and sustain takes suggest 2 steps a unit; the depth's takes are recorded (batch M).
+
+- Engine: `part_cutoff`, `part_resonance` (applied when the sound is compiled: no cost while playing); core test
+  `part_offsets`.
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

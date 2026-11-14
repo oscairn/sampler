@@ -189,3 +189,6 @@ X(PartLfoUserStep14, "plfo_user_step14", -64, 63, 0)
 X(PartLfoUserStep15, "plfo_user_step15", -64, 63, 0)
 X(PartLfoUserStep16, "plfo_user_step16", -64, 63, 0)
 X(PartLfoRandomSpeed, "plfo_random_speed", 0, 127, 0)
+// the part's offsets on its elements (raw, as displayed): the cutoff, 8 index steps a unit, the resonance 2 steps a unit
+X(PartCutoffOffset, "part_cutoff", -64, 63, 0)
+X(PartResonanceOffset, "part_resonance", -64, 63, 0)

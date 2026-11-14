@@ -94,7 +94,13 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     auto fail = [&](const char* fmt, unsigned a, unsigned b) { if (error && cap) std::snprintf(error, cap, fmt, a, b); out.loaded = false; return false; };
     out.loaded = false;
     out.regions = d.regions;
-    for (uint32_t e = 0; e < d.elements; ++e) out.element[e] = d.element[e];
+    for (uint32_t e = 0; e < d.elements; ++e) {
+        out.element[e] = d.element[e];
+        // the part's offsets move each element's value before anything else does (measured: docs/acceptance.md (r))
+        int16_t* v = out.element[e].v;
+        v[FilCutoff] = int16_t(std::max(0, std::min(1023, v[FilCutoff] + 8 * d.part[PartCutoffOffset])));
+        v[FilResonance] = int16_t(std::max(0, std::min(127, v[FilResonance] + 2 * d.part[PartResonanceOffset])));
+    }
     out.bendUp = float(d.part[PartBendUp]);
     out.bendDown = float(d.part[PartBendDown]);
     out.velDepth = d.part[PartVelDepth]; out.velOffset = d.part[PartVelOffset];

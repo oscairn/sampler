@@ -28,7 +28,7 @@ const P kParams[] = {
 std::string randomSound(Rng& r) {
     std::string s = "oscairn-pcm-sound/0\npart bend_up=" + std::to_string(r.in(0, 24)) + " bend_down=" + std::to_string(-r.in(0, 48))
                   + " vel_depth=" + std::to_string(r.in(0, 127)) + " vel_offset=" + std::to_string(r.in(0, 127))
-                  + " split_outputs=" + std::to_string(r.in(0, 1));
+                  + " split_outputs=" + std::to_string(r.in(0, 1)) + " part_cutoff=" + std::to_string(r.in(-64, 63)) + " part_resonance=" + std::to_string(r.in(-64, 63));
     for (int k = 1; k <= 8; ++k) s += " knob" + std::to_string(k) + "=" + std::to_string(r.in(0, 1023));
     // controller boxes: four at random over every part parameter's range, built destinations and sources likelier
     static const int dsts[11] = {85, 86, 60, 67, 68, 87, 79, 64, 65, 75, 78}, srcs[16] = {0, 1, 3, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
