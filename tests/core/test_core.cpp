@@ -136,8 +136,9 @@ static void coverageTable() {
     while (at < doc.size()) {
         size_t end = doc.find('\n', at);
         if (end == std::string::npos) end = doc.size();
-        const std::string line = doc.substr(at, end - at);
+        std::string line = doc.substr(at, end - at);
         at = end + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();  // a CRLF checkout (Windows)
         if (line.rfind("## ", 0) == 0) { table = line.substr(3); continue; }
         if ((table != "Element" && table != "Part") || line.rfind("| ", 0) != 0 || line.rfind("| parameter", 0) == 0) continue;
         // the implemented column: the third cell of the element table, the second of the part table (c: the bar before it)
