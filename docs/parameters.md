@@ -9,9 +9,9 @@ automatable; the box destinations (ids 14-24) are also modulatable (`CLAP_PARAM_
 | 0 | Level | `level` | 0..1 | 1 | the sound's level, linear (1 = the sound's own level) |
 | 1 | Pan | `pan` | -1..1 | 0 | balance |
 | 2 | Polyphony Limit | `polyphony` | 1..64, stepped | 64 | the most voices the sound keeps |
-| 3-10 | Knob 1-8 | `knob1`..`knob8` | 0..1 | the sound's own value (part parameter `knobN` / 1023; its default 512) | the part's assignable knob N as a controller box source (sources 8-15); a box sees round(value x 1023), the top (1023) as 1024 |
+| 3-10 | Knob 1-8 | `knob1`..`knob8` | 0..1 | the sound's own value (part parameter `knobN` / 1023; its default 512) | the part's knob N as a controller box source (sources 8-15); a box sees round(value x 1023), the top (1023) as 1024 |
 | 11 | Ribbon | `ribbon` | 0..1 | 0 | the ribbon as a box source (6); a box sees it as the controller value round(value x 127) |
-| 12, 13 | Switch 1, Switch 2 | `switch1`, `switch2` | 0 or 1, stepped | 0 | assignable switches 1 and 2 as box sources (16, 17): off 0, on 1024 |
+| 12, 13 | Switch 1, Switch 2 | `switch1`, `switch2` | 0 or 1, stepped | 0 | the part's switches 1 and 2 as box sources (16, 17): off 0, on 1024 |
 | 14 | Cutoff | `cutoff` | -1024..1024 | 0 | the box destination cutoff: raw index steps added to every element's |
 | 15 | Resonance | `resonance` | -128..128 | 0 | the box destination resonance, raw steps |
 | 16 | Element Level | `element_level` | -128..128 | 0 | the box destination element level, raw steps |
