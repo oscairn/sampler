@@ -58,7 +58,7 @@ target_compile_definitions(pcbench PRIVATE PCM_DECODE)
 # The tests see only the built .clap, through the CLAP ABI (dlopen); they link no plugin code.
 add_executable(pcm_tests tests/test_main.cpp tests/alloc_guard.cpp tests/test_notes.cpp tests/test_budget.cpp
     tests/test_state.cpp tests/test_contexts.cpp tests/test_alloc.cpp tests/test_threads.cpp tests/test_fuzz.cpp tests/test_controls.cpp
-    tests/test_packs.cpp)
+    tests/test_packs.cpp tests/test_streaming.cpp)
 target_link_libraries(pcm_tests PRIVATE clap_headers samplepack::samplepack ${CMAKE_DL_LIBS})
 if(APPLE)
     # Counts allocations in every image of the process, the plugin's included (alloc_guard.cpp).

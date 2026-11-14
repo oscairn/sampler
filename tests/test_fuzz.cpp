@@ -45,7 +45,9 @@ std::string randomSound(Rng& r) {
     for (int k = 1; k <= 3; ++k)
         s += " plfo_dst" + std::to_string(k) + "=" + std::to_string(r.in(0, 2) ? r.in(64, 68) : r.in(0, 127)) + " plfo_depth" + std::to_string(k) + "=" + std::to_string(r.in(0, 1) ? r.in(0, 127) : 0);
     for (int k = 1; k <= 16; ++k) s += " plfo_user_step" + std::to_string(k) + "=" + std::to_string(r.in(-64, 63));
-    s += "\nsample sine.osp\n";
+    // the looped sine (its loop too long to keep: it streams), or a longer tone, streamed one-shot or looped
+    const int which = r.in(0, 2);
+    s += "\nsample " + (which == 0 ? std::string("sine.osp") : sampleRef(which == 1 ? "mono" : "stereo")) + "\n";
     const int elements = r.in(1, 3);
     for (int e = 0; e < elements; ++e) {
         s += "element";
@@ -144,7 +146,7 @@ TEST(fuzz_every_note_ends) {
         }
         return s;
     };
-    int total = 0; uint32_t sounding = 0, left = 0;
+    int total = 0; uint32_t sounding = 0, left = 0; uint64_t sheds = 0;
     for (int round = 0; round < 8; ++round) {
         Inst a;
         char msg[256] = {};
@@ -156,7 +158,9 @@ TEST(fuzz_every_note_ends) {
         }
         int32_t id = 1;
         uint32_t most = 0;
+        bool stalled = false;
         for (int b = 0; b < 150; ++b) {
+            if (r.in(0, 9) == 0) { stalled = !stalled; a.streaming->stall(a.p, stalled); a.settle = !stalled; }  // the I/O thread stalls at random
             const uint32_t frames = uint32_t(r.in(1, 128));
             std::vector<Bytes> ev;
             for (int k = r.in(0, 4); k > 0; --k) {
@@ -174,14 +178,18 @@ TEST(fuzz_every_note_ends) {
             a.block(frames, ev);
             most = std::max(most, a.voices());
         }
+        a.streaming->stall(a.p, false); a.settle = true;
+        sheds += a.streaming->sheds(a.p);
         const uint32_t held = a.voices();
         std::vector<Bytes> up = {midi(0, 0xb0, 64, 0), midi(0, 0xb1, 64, 0)};
         for (int16_t ch = 0; ch < 2; ++ch) for (int16_t k = 0; k < 128; ++k) up.push_back(off(0, -1, ch, k));
         a.block(128, up);
         a.run(48000 * 12);
         const int notes = id - 1;
+        for (float x : a.L) if (!std::isfinite(x) || std::fabs(x) > 8) { ++g_failures; std::printf("  round %d: output %g\n", round, double(x)); break; }
+        for (int32_t n = 1; n <= notes; ++n) if (a.ends(n) != 1) { ++g_failures; std::printf("  round %d: note %d ended %d times\n", round, n, a.ends(n)); break; }
         if (!(a.voices() == 0 && a.endsTotal() == notes)) { ++g_failures; std::printf("  round %d: %u voices left, %d NOTE_ENDs for %d notes\n", round, a.voices(), a.endsTotal(), notes); }
         total += notes; sounding = std::max(sounding, most); left += held;
     }
-    std::printf("  %d notes, up to %u voices at once, %u sounding at the keys-up, all ended\n", total, sounding, left);
+    std::printf("  %d notes, up to %u voices at once, %u sounding at the keys-up, %llu shed for late streams, all ended\n", total, sounding, left, (unsigned long long)sheds);
 }
