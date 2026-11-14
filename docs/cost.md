@@ -17,28 +17,29 @@ most 200; shedding at most 2,000 a shed voice (the shed block and the next over 
 and no case more than 10 % over `tools/cost/baseline.txt`. It needs valgrind, so it is a documented
 script run in the aarch64 container
 (`docker run --rm -v "$PWD":/src:ro --tmpfs /out:exec IMAGE sh /src/tools/cost/cg.sh /src /out check`),
-not a CTest test. Last run (0.3.0): every gate passes (mono 10,741, stereo 15,211, rest 192, shedding 1,893 and
-1,691 a voice for 16 and 32 voices).
+not a CTest test. Last run (0.4.0): every gate passes (mono 10,557, stereo 15,027, rest 192, shedding 1,857 and
+1,661 a voice for 16 and 32 voices).
 
 ## Instructions per block (aarch64, NEON)
 
 | voices | mono, 20-tap | mono, Hermite | stereo, 20-tap | stereo, Hermite |
 |---|---|---|---|---|
 | 0 (rest) | 192 | 192 | 192 | 192 |
-| 1 | 37,546 | 25,738 | 54,186 | 37,354 |
-| 4 | 48,751 | 36,319 | 66,420 | 48,412 |
-| 8 | 91,477 | 66,725 | 126,761 | 90,745 |
-| 16 | 177,230 | 127,838 | 248,151 | 176,119 |
-| 32 | 349,254 | 250,582 | 491,826 | 347,762 |
-| 64 | 692,670 | 495,438 | 978,044 | 689,916 |
-| **a voice (8 to 32)** | **10,741** | 7,661 | **15,211** | 10,709 |
+| 1 | 37,340 | 25,532 | 53,980 | 37,148 |
+| 4 | 47,993 | 35,561 | 65,662 | 47,654 |
+| 8 | 89,983 | 65,231 | 125,267 | 89,251 |
+| 16 | 174,264 | 124,872 | 245,185 | 173,153 |
+| 32 | 343,344 | 244,672 | 485,916 | 341,852 |
+| 64 | 680,872 | 483,640 | 966,246 | 678,118 |
+| **a voice (8 to 32)** | **10,557** | 7,477 | **15,027** | 10,525 |
 
-(0.2.0: 10,657 / 7,403 / 14,829 / 10,283 a voice; 0.3.0 adds the element EQ's per-lane check and the controller boxes'
+(0.3.0: 10,741 / 7,661 / 15,211 / 10,709 a voice; 0.4.0 lets a voice that nothing can modulate skip the box and element
+LFO work at its control steps, which also takes back what the controller boxes' fields had added.) (0.2.0: 10,657 / 7,403 / 14,829 / 10,283 a voice; 0.3.0 adds the element EQ's per-lane check and the controller boxes'
 fields.) (0.1.0: 10,639 / 7,339 / 14,549 / 10,219 a voice. The 20-tap kernel now comes from a bank of 17 by
 the voice's transposition, which adds a per-voice table offset to each fetch; the bank is 700 KB.)
-Other cases, a voice from 8 to 32, 20-tap (0.3.0): without the filter mono 8,985, stereo 11,600; just released
-(the cutoff redesigned every control step) type 0 mono 12,348, stereo 16,810; type 4 mono 12,502,
-stereo 17,132; type 5 mono 11,709, stereo 15,566; with the element EQ's peak mono 10,977, stereo 15,697. Per block the counts hardly vary (the largest block
+Other cases, a voice from 8 to 32, 20-tap (0.4.0): without the filter mono 8,865, stereo 11,313; just released
+(the cutoff redesigned every control step) type 0 mono 12,160, stereo 16,630; type 4 mono 12,321,
+stereo 16,786; type 5 mono 11,444, stereo 15,384; with the element EQ's peak mono 10,668, stereo 15,013. Per block the counts hardly vary (the largest block
 of every case is within 0.5 % of its mean, the released cases included), so the spread of the
 device's times is not the filter's redesign: the device's p99 well above its mean (1,120 against
 671 us, 64 mono voices) comes from the machine (cache, memory, scheduling), not from work that
@@ -55,12 +56,16 @@ instructions a block (the gates: 11,000 and 19,500). Memory: nine more per-voice
 in the core's eight pools (9 x 4 bytes x 128 voices x 8). The controller boxes add 40 bytes to each voice's scalar side
 (40,960 bytes in the pools), 192 bytes to a compiled sound and 32 bytes to each parsed element (the box switches);
 a box costs nothing while its sources stay still (the voice stays steady) and a few hundred instructions a moved voice
-in the control step when one moves.
+in the control step when one moves. 0.4.0: the sound's own sources and destination offsets add 9,152 bytes to the core
+(`sizeof(pcm::Core)` 1,518,912 against 1,509,760; the pools 8 bytes a voice more), 704 bytes to a compiled sound; the
+plugin's code 423,816 bytes of text on macOS arm64 against 405,780 at 0.3.0 (the interpolation bank, 699,040 bytes,
+unchanged). The destinations read at note-on (filter envelope depth, attack) and at the note-off (release) cost a pass
+over the sound's boxes there, nothing per block.
 
 ## Shedding
 
 `Core::shed(n)` fades the n quietest element voices out over 16 frames (one control step) and frees
-them as they reach silence. Shedding 16 and 32 voices cost 1,893 and 1,691 instructions a shed voice (0.3.0), about 1/8 of a voice-block
+them as they reach silence. Shedding 16 and 32 voices cost 1,857 and 1,661 instructions a shed voice (0.4.0), about 1/8 of a voice-block
 plus the scan for the quietest. The shell's own give-ups (the voice budget's order) fade over the
 SDK's 3 ms choke instead, as in the analog engine.
 
