@@ -59,8 +59,8 @@ To write this format instead of SFZ for element parts:
   `elfo_pitch_ratio` / `elfo_amp_ratio` (today `oscairn_elfo_pitch_oncc1` / `_amp_oncc1`), and the
   selection ones (`xa_control`, `element_group`, `keyon_delay`, `keyon_delay_note`);
 - one `region` per key bank and element: key and velocity ranges clipped to the element's limits, the
-  key bank's root, transpose, tune in cents (with the fine tune: not a cent a step, see
-  `docs/coverage.md`); an element's coarse tune moves its key map, since the reference picks the
+  key bank's root, transpose, tune in cents (with the fine tune s, -64..+63: s x 100 / 64
+  cents truncated toward zero, measured at every step); an element's coarse tune moves its key map, since the reference picks the
   sample by key plus coarse tune (measured): the key bank for keys lo..hi at root r serves keys
   lo - c..hi - c at root r - c (the lowest bank still reaches key 0 and the highest key 127, inferred),
   level in dB (the key bank's own; `volume` today), pan as the SFZ `pan` it writes today (-100..100),
