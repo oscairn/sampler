@@ -56,6 +56,8 @@ static void soundFormat() {
     }
     for (size_t n = 0; n < blob.size(); ++n) accepted += readBlob(blob.data(), n, *c, err, sizeof err);
     CHECK(accepted == 0);
+    // the element EQ's gains take their whole range, -12 to +12 dB (raw 32-96)
+    CHECK(readText("oscairn-pcm-sound/0\nsample s\nelement eq_gain1=32 eq_gain2=96\nregion element=0 sample=0\n", *c, err, sizeof err));
     // a later version is refused with a reason
     std::vector<uint8_t> v = blob; v[4] = 1;
     CHECK(!readBlob(v.data(), v.size(), *c, err, sizeof err) && std::strstr(err, "version"));
