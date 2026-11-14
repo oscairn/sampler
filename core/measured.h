@@ -88,5 +88,18 @@ constexpr int kLiveDests = 6;
 int boxDest(int reference) noexcept;  // -1: not built
 extern const int16_t kBoxSpan[kBoxDests];
 
+// ---- the part LFO ----
+// One oscillator for the sound (measured: docs/acceptance.md (p)). Its destinations the core moves, by the reference's LFO
+// destination number: 64 element level, 65 pitch, 66 cutoff, 67 resonance, 68 pan; a slot's depth moves each by
+// partLfoDepth(destination, depth) x the wave, in raw steps added before the parameter's limits (cents for the pitch).
+enum LfoDest : uint8_t { LfoLevel, LfoPitch, LfoCutoff, LfoResonance, LfoPan, kLfoDests };
+int lfoDest(int reference) noexcept;  // -1: not built
+float partLfoHz(int speed) noexcept;  // cycles a second at a speed (0: no motion)
+constexpr double kPartLfoLag = 0.010;  // seconds the oscillator starts after its note (measured 6-14 ms on four takes)
+float partLfoDepth(int dest, int depth) noexcept;
+// The wave at a phase (cycles from the start): bipolar waves within -1..1, triangle+ and saw up 0..1, saw down -1..0;
+// the sample and hold waves one value a cycle (`seed` picks the sequence); the user wave its steps / 64
+float partLfoWave(int wave, double phase, const int8_t* steps, int cycle, int slope, uint32_t seed) noexcept;
+
 }  // namespace laws
 }  // namespace pcm

@@ -827,6 +827,63 @@ static void oneShotEnds() {
         }
 }
 
+// The part LFO (measured): a square on the pitch at depth 64 swings +-112 cents at speed 40's rate, starting at its note
+// after kPartLfoLag; on the level at depth 32 its low half plays 32 level steps down; on the pan at depth 16 the far side
+// as the balance law at 34 steps; an element's switch for the slot keeps it out; each-on notes run their own oscillators,
+// first-on ones share one.
+static void partLfo() {
+    auto text = [](const std::string& part, const std::string& el) {
+        return "oscairn-pcm-sound/0\npart " + part + "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 " + el +
+               "\nregion key=0-127 root=60 element=0 sample=0 loop=0-44100\n";
+    };
+    const double hz = laws::partLfoHz(40), per = 44100 / hz;  // frames a cycle (about 26,800)
+    NEAR(hz, 1.6459, 0.003);  // measured 1.6459
+    {
+        const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64", "");
+        Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r.run(44100);
+        const int lag = int(laws::kPartLfoLag * 44100);
+        NEAR(sineCents(o, lag + int(0.1 * per), lag + int(0.4 * per), 441, 44100), 112.0, 0.5);
+        NEAR(sineCents(o, lag + int(0.6 * per), lag + int(0.9 * per), 441, 44100), -112.0, 0.5);
+    }
+    {   // the element's switch for slot 1 off: no motion
+        const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64", "plfo_box_sw1=0");
+        Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r.run(44100);
+        NEAR(sineCents(o, int(0.6 * per), int(0.9 * per), 441, 44100), 0.0, 0.2);
+    }
+    {   // level and pan
+        const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=64 plfo_depth1=32 plfo_dst2=68 plfo_depth2=16", "");
+        Rig r(t.c_str(), constant(44100, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r.run(44100);
+        const size_t hi = size_t(0.25 * per), lo = size_t(0.75 * per);
+        float far34 = 0, near34 = 0;
+        laws::balanceGains(64 + 34, far34, near34);
+        NEAR(o[2 * hi] / (16384 * kUnit), far34, 1e-3);         // left, the pan to the right; level up at its top (127)
+        NEAR(o[2 * hi + 1] / (16384 * kUnit), 1.0, 1e-3);
+        NEAR(o[2 * lo + 1] / (16384 * kUnit), laws::levelGain(95) * far34, 1e-3);  // right, the pan to the left, 32 steps down
+    }
+    for (int reset : {1, 2}) {  // a second note half a cycle later: its own phase (each on) or the first note's (first on)
+        const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64 plfo_keyon_reset=" + std::to_string(reset), "");
+        Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        r.run(long(per / 2) / 128 * 128);
+        if (reset == 1) r.core->kill(0);  // (first on: the first note still held, both play the one oscillator)
+        r.core->noteOn(1, 0, 0, 60, 1.0f);
+        const auto o = r.run(22050);
+        const int lag = int(laws::kPartLfoLag * 44100);
+        const double c = sineCents(o, lag + 1000, lag + 4000, 441, 44100);
+        if (reset == 1) NEAR(c, 112.0, 0.5); else NEAR(c, -112.0, 0.5);
+    }
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -835,6 +892,7 @@ int main() {
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
+        {"part_lfo", partLfo},
     };
     for (auto& t : tests) {
         const int before = failures;

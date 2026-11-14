@@ -145,3 +145,12 @@ X(FilScalingOffset1, "fil_scaling_offset1", -128, 127, 0)
 X(FilScalingOffset2, "fil_scaling_offset2", -128, 127, 0)
 X(FilScalingOffset3, "fil_scaling_offset3", -128, 127, 0)
 X(FilScalingOffset4, "fil_scaling_offset4", -128, 127, 0)
+// the part LFO in this element: its phase offset (0, 90, 120, 180, 240, 270 degrees), each destination slot's depth
+// ratio and the element's switch for each slot
+X(PlfoPhaseOffset, "plfo_phase_offset", 0, 5, 0)
+X(PlfoRatio1, "plfo_ratio1", 0, 127, 127)
+X(PlfoRatio2, "plfo_ratio2", 0, 127, 127)
+X(PlfoRatio3, "plfo_ratio3", 0, 127, 127)
+X(PlfoBoxSw1, "plfo_box_sw1", 0, 1, 1)
+X(PlfoBoxSw2, "plfo_box_sw2", 0, 1, 1)
+X(PlfoBoxSw3, "plfo_box_sw3", 0, 1, 1)

@@ -12,7 +12,7 @@ tests and hand-written sounds. Version 0 is the first; a reader refuses any othe
 | 4 | u16 version (0), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
-| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (143 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
+| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (178 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
 | 24 | part parameters, i16 each, in `core/partparams.inc` order |
 | | samples: u8 length, then the reference's bytes (a relative path, no NUL, no `..` segment, no leading `/`) |
 | | elements: u16 count, then count x (u16 parameter index in `core/params.inc` order, i16 value); indices increasing; only values that differ from the default |
@@ -88,4 +88,8 @@ To write this format instead of SFZ for element parts:
   read the shell's parameters of those names (`docs/parameters.md`), which the host's controls drive. A plain box
   (one source, one destination, a curve the host has) may instead become a host control-tree target on the
   destination's parameter (ids 14-19, an offset in raw steps; a full box is the destination's span);
+- the part LFO raw (`plfo_wave`, `plfo_speed`, `plfo_phase`, `plfo_tempo_sync`, `plfo_tempo_speed`, `plfo_delay`, `plfo_fade_in`,
+  `plfo_hold`, `plfo_fade_out`, `plfo_keyon_reset`, `plfo_dst1`-`3` (the reference's LFO destination number),
+  `plfo_depth1`-`3`, `plfo_user_cycle`, `plfo_user_slope`, `plfo_user_step1`-`16` (as displayed, -64..+63),
+  `plfo_random_speed`) and each element's `plfo_box_sw1`-`3`, `plfo_ratio1`-`3` and `plfo_phase_offset` (0-5);
 - the samples as references relative to the base it gives the sound (the asset library's folder).

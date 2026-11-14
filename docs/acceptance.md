@@ -529,6 +529,38 @@ five keys about centres 48, 60 and 72 at four values.
   engine's (`laws::pitchKeyFollowCents`). With an element's coarse tune folded into the key map by the converter, the
   centre is taken against the moved root (not measured together).
 
+## (p) The part LFO against the reference
+
+Recordings (runs pcm-round5-2026-11-14, batch D before its resonance take, and pcm-round6-2026-11-14, batch K): a sine at
+key 60 (velocity 100, filter thru) with the part LFO on its pitch (destination 65), level (64) or pan (68); white noise
+through type 0 at cutoff 512 for the cutoff (66). The pitch tracked by zero crossings, the level and pan by RMS over
+each half of a square's cycle, the cutoff by third-octave band shapes matched against the engine's static cutoffs. Batch
+D's takes after its resonance take play loud and level-modulated (a recorder fault) and are not used; batch K re-recorded
+them.
+
+| what | measured | engine | tolerance | points |
+|---|---|---|---|---|
+| speed (Hz) | 2^(-4.26258 + 0.124591 s) at 2-63 (saw resets over 6-70 s; triangle zero crossings); speed 1 a 565 s cycle; 0 none | the same | within 0.7 % | 19 speeds |
+| pitch depth (cents of the swing) | whole cents every 4 steps: 6 at 4, 23 at 32, 112 at 64, 531 at 96, 2400 at 127 | the table, linear between knots (between them unverified) | within 0.1 cent at the knots | 33 depths |
+| waves | 13 shapes at speed 32: triangle from zero rising, triangle+ 0..1, saw up 0..1, saw down 0..-1, squares of duty 1/4, 1/3, 1/2, 2/3, 3/4, trapezoid (twice the triangle, clipped), S/H 1 uniform within +-1, S/H 2 zero on 28 of 63 cycles, else uniform | the same; S/H by distribution (the sequences differ) | engine against reference pitch: squares rms 0.15 cents, saws 0.6, triangle+ 1.2, triangle and trapezoid 2.0-2.2 (the recorder's onset scatter, about 5 ms, on slopes of up to 740 cents a second) | 13 takes, 213-238 points each; S/H 63 cycles each |
+| start phase | 0, 90, 120, 180, 240, 270 degrees: the wave from that phase | the same | rms 2.8-4.4 cents (speed 40) | 6 takes, 108 points each |
+| start | 6-14 ms after the note | 10 ms (`laws::kPartLfoLag`) | the scatter | 4 takes |
+| user wave | steps x A / 64 (+63 as +64); 2, 3, 4, 6, 8, 12, 16 steps; slope up / down / both: a straight line to the next step where it rises / falls / always, else held | the same | rms 0.03 cents (6 steps), 0.7-2.3 (slopes) | 10 takes |
+| key-on reset | off: one oscillator, started by the first note, not reset later; each on: every note its own from its start (a second note's oscillator from its own start while the first runs on); first on: one, reset at a note while no other key is down | the same | phases within the tracker's resolution | 3 takes, two notes tracked apart |
+| slots | slots 2 and 3 as slot 1; two slots on the pitch add (64 + 64: 224.5 cents; 32 + 96: 555.6 against 554.5); the element's switch for a slot keeps it out | the same | within 1.3 cents | 5 takes |
+| element ratio, phase offset | no effect on the pitch at ratios 0-96 (slots 1, 2) or offsets 1-5 (one element) | no effect; other destinations' ratios and offsets between elements reported | - | 9 takes |
+| level | the low half of a square: depth level steps down from level 127 (the top half held at 127) | levelGain(127 - depth) | within 0.17 dB, rms 0.07 | 15 depths |
+| pan | raw pan steps added, saturating: 34, 50, 57, 61, 62 at depths 16-80 (the balance law's grid), the far side silent from 96 | the table, linear between 16-step knots | within 0.22 dB | 5 depths and 3 silent |
+| cutoff | 8 index steps a depth step | the same | the band-shape fits of engine and reference within 4 index steps | 5 depths, 10 plateaus |
+
+Not built (reported): the delay, fade in, hold and fade out (batch K's takes show a delay of about 0.5 s at 64 and 2.2 s
+at 96, fades growing roughly exponentially; finer takes recorded for the next step), tempo sync, the random speed, the
+resonance destination (its takes clipped), destinations other than the four.
+
+- Engine: `plfo_*` (part), `plfo_box_sw*`, `plfo_ratio*`, `plfo_phase_offset` (element); core test `part_lfo` (the pitch
+  square's plateaus, the slot switch, level and pan plateaus, each-on and first-on phases); the fuzz sets every part
+  LFO setting at random.
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

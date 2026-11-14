@@ -62,6 +62,8 @@ struct VoiceScalar {
     const int16_t* data = nullptr;
     int64_t frames = 0, loopStart = 0, loopEnd = 0, cycEnd = 0, shift = 0;
     bool loop = false, ended = false;
+    uint8_t plfo = 0, lfoSlots = 0;  // the part LFO: bit d, a slot on destination d (laws::LfoDest) reaches it; bit k, slot k does
+    int16_t panRaw = 64;       // the pan before the part LFO (raw)
     AmpEnv amp;
     CentsEnv peg, feg;
     float pegScale = 1;        // pitch EG level scale (depth velocity sensitivity)

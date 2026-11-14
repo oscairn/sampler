@@ -110,6 +110,22 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     }
     out.elfoBoxes = false;
     for (uint32_t b = 0; b < out.boxes; ++b) out.elfoBoxes |= out.box[b].dest == laws::BoxElfoPitch || out.box[b].dest == laws::BoxElfoAmp;
+    // the part LFO's slots on the destinations the core moves (the others are reported by notCovered)
+    Compiled::Lfo& lf = out.lfo;
+    lf = Compiled::Lfo{};
+    const float hz = d.part[PartLfoTempoSync] ? 0.0f : laws::partLfoHz(d.part[PartLfoSpeed]);
+    for (int k = 0; k < 3; ++k) {
+        const int dest = laws::lfoDest(d.part[PartLfoDst1 + 2 * k]), depth = d.part[PartLfoDepth1 + 2 * k];
+        if (dest < 0 || depth == 0 || d.part[PartLfoTempoSync]) continue;
+        lf.slot[lf.slots] = uint8_t(k); lf.dest[lf.slots] = uint8_t(dest); lf.depth[lf.slots] = laws::partLfoDepth(dest, depth); ++lf.slots;
+    }
+    lf.wave = uint8_t(d.part[PartLfoWave]); lf.reset = uint8_t(d.part[PartLfoKeyOnReset]);
+    static const uint8_t kCycles[7] = {2, 3, 4, 6, 8, 12, 16};
+    lf.cycle = kCycles[d.part[PartLfoUserCycle]]; lf.slope = uint8_t(d.part[PartLfoUserSlope]);
+    for (int k = 0; k < 16; ++k) lf.step[k] = int8_t(d.part[PartLfoUserStep1 + k]);
+    static const float kStartPhase[6] = {0.0f, 0.25f, 1.0f / 3.0f, 0.5f, 2.0f / 3.0f, 0.75f};
+    lf.hz = hz; lf.phase = kStartPhase[d.part[PartLfoPhase]];
+    // shortcut: the delay, fade in, hold and fade out are not built (notCovered reports them); the LFO plays at full depth
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
@@ -769,6 +785,7 @@ void Core::install(uint32_t s, const Compiled* c) {
     if (s >= kMaxSounds) return;
     for (uint32_t v = 0; v < kMaxVoices; ++v) if (slot_[v].on && slot_[v].sound == s) kill(v);
     sound_[s] = c && c->loaded ? c : nullptr;
+    lfoStart_[s] = -1;  // the part LFO starts with the next note
 }
 
 void Core::setGain(uint32_t s, float gain, float pan) {
@@ -794,6 +811,13 @@ void Core::noteOn(uint32_t voice, uint32_t sound, int channel, int key, float ve
     sl = Slot{};
     sl.sound = uint8_t(sound);
     sl.key = uint8_t(key); sl.vel = uint8_t(vel); sl.vel2048 = int16_t(vel2048); sl.channel = uint8_t(channel & 15);
+    // the part LFO (measured): reset off, one oscillator from the sound's first note on; first on, one oscillator started
+    // again at a note while no other key of the sound is down; each on, every note its own from its start (the voice's)
+    if (s->lfo.slots && s->lfo.reset != 1) {
+        bool held = false;
+        for (uint32_t k = 0; k < kMaxVoices; ++k) held |= k != voice && slot_[k].on && slot_[k].sound == sound && !slot_[k].keyUp;
+        if (s->lfo.reset == 2 ? !held : lfoStart_[sound] < 0) lfoStart_[sound] = clock_;
+    }
     for (uint32_t i = 0; i < s->regions && sl.layers < kMaxLayers; ++i) {
         const Region& r = s->region[i];
         if (key < r.loKey || key > r.hiKey || vel < r.loVel || vel > r.hiVel) continue;
@@ -859,7 +883,11 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     // pan: the key bank's pan (the region's, -100..100 as raw 1..127) and the element's added in raw
     // steps, then the element's balance law, mono and stereo alike (measured: docs/acceptance.md (c))
     const int bankPan = int(std::lround(float(r.pan) / 10000.0f * 63.0f));
-    laws::balanceGains(std::max(1, std::min(127, e[AmpPan] + bankPan)), v.panL, v.panR);
+    v.panRaw = int16_t(std::max(1, std::min(127, e[AmpPan] + bankPan)));
+    laws::balanceGains(v.panRaw, v.panL, v.panR);
+    // the part LFO's slots here: the element's switch for each (its depth ratios and phase offset measured without effect)
+    for (int j = 0; j < s.lfo.slots; ++j)
+        if (e[PlfoBoxSw1 + s.lfo.slot[j]]) { v.lfoSlots = uint8_t(v.lfoSlots | 1 << j); v.plfo = uint8_t(v.plfo | 1 << s.lfo.dest[j]); }
     v.soundGain = gain_[sl.sound]; v.soundPanL = panL_[sl.sound]; v.soundPanR = panR_[sl.sound];
     // the amplitude envelope with its time shifts
     AmpEnv& a = v.amp;
@@ -1147,6 +1175,7 @@ void Core::reset() {
     for (auto& w : wheel_) w = 0;
     for (auto& d : pedal_) d = 0;
     for (int c = 0; c < 16; ++c) { pressure_[c] = 0; foot_[c] = 1; breath_[c] = 1; }  // the reference's rest values (inferred: the analog engine's)
+    for (auto& t : lfoStart_) t = -1;  // the part LFOs start with their next note
 }
 
 void Core::shed(uint32_t n) {
@@ -1169,6 +1198,27 @@ void Core::shed(uint32_t n) {
         ampFields(v.amp, f, int(bi));
         best->f[LO][bi] = 0;
     }
+}
+
+// The part LFO at this control step (a voice it reaches): the sound's oscillator through the element's slots, in raw steps
+// added to the moved parameters before their limits (the pan's gains to the voice's); returns the pitch's cents.
+PV_NOINLINE float Core::partLfo(Pool& p, uint32_t i) {
+    VoiceScalar& v = p.v[i];
+    const Compiled::Lfo& lf = sound_[v.sound]->lfo;
+    const int64_t start = lf.reset == 1 ? v.start : lfoStart_[v.sound];
+    const double t = std::max(0.0, double(clock_ - start) / sr_ - laws::kPartLfoLag);
+    const float w = laws::partLfoWave(lf.wave, double(lf.phase) + t * double(lf.hz), lf.step, lf.cycle, lf.slope, uint32_t(start) * 2654435761u + v.sound);
+    float x[laws::kLfoDests] = {};
+    for (int j = 0; j < lf.slots; ++j) if (v.lfoSlots >> j & 1) x[lf.dest[j]] += lf.depth[j] * w;
+    auto at = [&](int k, float lfo, float hi) { return std::max(0.0f, std::min(hi, float(v.base[k] + v.moved[k]) + lfo)); };
+    if (p.plan.filter != Filter::Thru && (v.plfo & (1 << laws::LfoCutoff | 1 << laws::LfoResonance))) {
+        p.f[C0][i] = laws::cutoffCents(at(laws::BoxCutoff, x[laws::LfoCutoff], 1023)) + v.keyCents;
+        p.f[DAMP][i] = laws::filterDamping(int32_t(at(laws::BoxResonance, x[laws::LfoResonance], 127)));
+        v.filterMoves = true;
+    }
+    if (v.plfo & 1 << laws::LfoLevel) v.level = v.levelRest * laws::levelGain(int32_t(at(laws::BoxLevel, x[laws::LfoLevel], 127)));
+    if (v.plfo & 1 << laws::LfoPan) laws::balanceGains(int32_t(std::max(1.0f, std::min(127.0f, float(v.panRaw) + x[laws::LfoPan]))), v.panL, v.panR);
+    return x[laws::LfoPitch];
 }
 
 // One voice's control step (`grid`: at a control frame; else the first piece of a voice started
@@ -1246,6 +1296,9 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
                 v.level = v.levelRest * laws::levelGain(at(laws::BoxLevel, 127));
             }
         }
+        // the part LFO: the sound's oscillator at this frame through the element's slots, in raw steps added to the moved
+        // parameters before their limits (cents for the pitch)
+        if (v.plfo) lfoCents += partLfo(p, i);
         if (p.plan.filter != Filter::Thru && fc != v.curCents) {
             v.curCents = fc;
             p.f[CENTS][i] = fc;
@@ -1275,7 +1328,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
             p.f[DGR][i] = (tr - p.f[GR][i]) * (1.0f / kSub);
         }
         // steady: the next control steps would change nothing until an event marks the voice dirty
-        v.steady = grid && v.amp.stage == AmpEnv::Sustain && !v.feg.moving() && !v.peg.moving() && lfoCents == 0 && lfoGain == 1
+        v.steady = grid && v.amp.stage == AmpEnv::Sustain && !v.feg.moving() && !v.peg.moving() && lfoCents == 0 && lfoGain == 1 && !v.plfo
                 && p.f[DGL][i] == 0 && p.f[DGR][i] == 0 && p.dstep[i] == 0;
     }
 }

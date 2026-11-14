@@ -115,6 +115,15 @@ struct Compiled {
     uint8_t boxes = 0;
     Box box[16];
     bool elfoBoxes = false;           // a box drives the element LFO's depth
+    // the part LFO (laws::PartLfo*): one oscillator for the sound, its slots on the destinations the core moves
+    struct Lfo {
+        uint8_t slots = 0;            // slots with a depth on a built destination (0: no part LFO)
+        uint8_t slot[3], dest[3];     // the slot (0-2) and its destination (laws::LfoDest)
+        float depth[3];               // the slot's amplitude in its destination's unit at ratio 127
+        uint8_t wave = 0, reset = 2, cycle = 16, slope = 0;
+        float hz = 0, phase = 0;      // cycles a second; the start phase in cycles
+        int8_t step[16] = {};         // the user wave's steps (as displayed)
+    } lfo;
 };
 // Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
 // region's sample is missing or empty, or a loop lies outside its sample (error says which).
@@ -187,6 +196,7 @@ private:
     void free_(Pool&, uint32_t pos);
     void startLayer(uint32_t slot, const Compiled&, uint32_t region, int key, int velocity, int32_t velocity2048, int channel);
     void control(Pool&, uint32_t i, bool grid);
+    float partLfo(Pool&, uint32_t i);
     void releaseLayer(Pool&, uint32_t i, int32_t releaseIndex);
     int32_t noteOnSteps(const Compiled&, const int16_t* element, uint32_t sound, int channel, int dest) const;
     void startKeyOff(uint32_t slot);
@@ -201,6 +211,7 @@ private:
     float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
     bool offsetOn_[kMaxSounds] = {};
+    int64_t lfoStart_[kMaxSounds] = {};      // the engine clock the sound's part LFO last started (reset) at
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];

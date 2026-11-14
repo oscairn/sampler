@@ -323,5 +323,84 @@ int boxDest(int ref) noexcept
     }
 }
 
+// ---- the part LFO (docs/acceptance.md (p)) ----
+int lfoDest(int ref) noexcept
+{
+    // element level, pitch, cutoff, pan (LfoDest order); the resonance not yet (its takes clipped)
+    return ref >= 64 && ref <= 68 && ref != 67 ? ref - 64 : -1;
+}
+
+float partLfoHz(int speed) noexcept
+{
+    // Measured (round 6, batch K): speeds 2-31 by a saw's resets over 6-70 s takes, 32-63 by a triangle's zero crossings
+    // (round 5, batch D): one exponential, doubling every 8.026 steps, within 0.7 % at 19 speeds; speed 1 a 565 s cycle (a
+    // saw rising 0.199 cents a second over 68 s), speed 0 no motion
+    if (speed <= 0) return 0.0f;
+    if (speed == 1) return 0.00177f;
+    return std::exp2(-4.26258f + 0.124591f * float(speed));
+}
+
+float partLfoDepth(int dest, int depth) noexcept
+{
+    depth = std::max(0, std::min(127, depth));
+    if (dest == LfoPitch) {
+        // cents of the wave's full swing (a bipolar wave +-, a unipolar one 0..): whole cents measured every 4 steps on a
+        // square's plateaus (round 6, batch K: 33 depths, each plateau within 0.1 cent of whole), linear between
+        static const int16_t knot[33] = {0, 6, 7, 9, 10, 13, 16, 19, 23, 29, 35, 42, 51, 62, 76, 92, 112,
+                                         136, 166, 201, 244, 297, 360, 438, 531, 646, 785, 953, 1158, 1406, 1708, 2074, 2400};
+        if (depth >= 124) return 2074.0f + (2400.0f - 2074.0f) * float(depth - 124) / 3.0f;
+        const int k = depth / 4;
+        return float(knot[k]) + float(knot[k + 1] - knot[k]) * float(depth % 4) / 4.0f;
+    }
+    switch (dest) {
+    case LfoLevel: return float(depth);         // level steps (a square at 17 depths: within 0.8 step, the level's grid)
+    case LfoCutoff: return 8.0f * float(depth);  // index steps (a square on white noise at 8 depths: 128, 256, 380 / 364)
+    case LfoPan: {
+        // raw pan steps, saturating: a square's far side at 8 depths on the balance law's grid (within 0.23 dB): 34, 50,
+        // 57, 61, 62 at 16-80, the far side silent from 96; linear between
+        static const int8_t knot[8] = {0, 34, 50, 57, 61, 62, 63, 63};
+        const int k = depth / 16;
+        return k >= 7 ? 63.0f : float(knot[k]) + float(knot[k + 1] - knot[k]) * float(depth % 16) / 16.0f;
+    }
+    default: return 0.0f;  // the resonance: not built (lfoDest)
+    }
+}
+
+float partLfoWave(int wave, double phase, const int8_t* steps, int cycle, int slope, uint32_t seed) noexcept
+{
+    const double fl = std::floor(phase);
+    const float p = float(phase - fl);
+    switch (wave) {
+    case 0: return p < 0.25f ? 4.0f * p : p < 0.75f ? 2.0f - 4.0f * p : 4.0f * p - 4.0f;  // triangle, from zero rising
+    case 1: return p < 0.5f ? 2.0f * p : 2.0f - 2.0f * p;                                  // triangle+: 0..1
+    case 2: return p;                                                                      // saw up: 0..1
+    case 3: return -p;                                                                     // saw down: 0..-1
+    case 4: case 5: case 6: case 7: case 8: {                                              // squares: duty 1/4..3/4
+        static const float duty[5] = {0.25f, 1.0f / 3.0f, 0.5f, 2.0f / 3.0f, 0.75f};
+        return p < duty[wave - 4] ? 1.0f : -1.0f;
+    }
+    case 9: {                                                                              // trapezoid: twice the triangle, clipped
+        const float t = p < 0.25f ? 4.0f * p : p < 0.75f ? 2.0f - 4.0f * p : 4.0f * p - 4.0f;
+        return std::max(-1.0f, std::min(1.0f, 2.0f * t));
+    }
+    case 10: case 11: {  // sample and hold: a value a cycle, uniform within -1..1; S/H 2 holds 0 on about half the cycles
+        uint32_t h = uint32_t(int64_t(fl)) * 0x9e3779b1u ^ seed;
+        h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12; h *= 0x297a2d39u; h ^= h >> 15;
+        if (wave == 11 && (h & 1)) return 0.0f;
+        return float(h >> 8) * (2.0f / 16777216.0f) - 1.0f;
+    }
+    default: {  // user: its steps, each to the next by a straight line where the slope says (up, down or both), else held
+        auto at = [&](int k) { return steps[k] >= 63 ? 1.0f : float(steps[k]) / 64.0f; };  // +63 plays as +64
+        const int n = std::max(1, cycle);
+        const float x = p * float(n);
+        const int k = std::min(n - 1, int(x));
+        const float a = at(k), b = at((k + 1) % n);
+        const bool ramp = slope == 3 || (slope == 1 && b > a) || (slope == 2 && b < a);
+        return ramp ? a + (b - a) * (x - float(k)) : a;
+    }
+    }
+}
+
+
 }  // namespace laws
 }  // namespace pcm

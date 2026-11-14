@@ -393,6 +393,28 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
         else if (laws::boxCurve(b[4], b[5], b[6], b[7]) < 0) add(0, int16_t(base + 5), "a controller box curve not measured", true);
         else if (b[1] == 65 && b[2] < 0) add(0, int16_t(base + 2), "a negative ratio on the element LFO's amplitude depth is not measured", true);
     }
+    // the part LFO: built for the level, pitch, cutoff and pan destinations (laws::lfoDest), every wave, the speeds, start
+    // phases, key-on resets and the slots' element switches; not its delay, fade in, hold, tempo sync or random speed
+    bool lfo = false;
+    for (int k = 0; k < 3; ++k) {
+        const int dst = d.part[PartLfoDst1 + 2 * k];
+        if (!d.part[PartLfoDepth1 + 2 * k]) continue;
+        lfo = true;
+        if (laws::lfoDest(dst) < 0) add(0, int16_t(PartLfoDst1 + 2 * k), "a part LFO destination this engine does not move yet", true);
+        for (uint32_t e = 0; e < d.elements; ++e)
+            if (d.element[e].v[PlfoRatio1 + k] != 127 && dst != 65)
+                add(uint16_t(e), int16_t(PlfoRatio1 + k), "a part LFO depth ratio on a destination other than the pitch is not measured");
+    }
+    if (lfo) {
+        if (d.part[PartLfoTempoSync]) add(0, PartLfoTempoSync, "a part LFO synced to the tempo is not built", true);
+        if (d.part[PartLfoRandomSpeed]) add(0, PartLfoRandomSpeed, "the part LFO's random speed is not built", true);
+        if (d.part[PartLfoDelay]) add(0, PartLfoDelay, "the part LFO's delay is not built", true);
+        if (d.part[PartLfoFadeIn]) add(0, PartLfoFadeIn, "the part LFO's fade in is not built", true);
+        if (d.part[PartLfoHold] != 127) add(0, PartLfoHold, "the part LFO's hold and fade out are not built", true);
+        if (d.elements > 1)
+            for (uint32_t e = 0; e < d.elements; ++e)
+                if (d.element[e].v[PlfoPhaseOffset]) add(uint16_t(e), PlfoPhaseOffset, "the part LFO's phase offset between elements is not measured");
+    }
     for (uint32_t e = 0; e < d.elements; ++e) {
         const int16_t* v = d.element[e].v;
         const int type = v[FilType];
