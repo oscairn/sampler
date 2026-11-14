@@ -78,7 +78,7 @@ std::vector<float> render(const std::string& sound, bool whole, int key, long fr
 // one-shots, every way a loop is kept (in the head, its body whole with the frames before it streamed once, its body
 // whole starting inside the head, too long to keep and streamed), mono and stereo, at the root and transposed up.
 TEST(streamed_audio_equals_whole) {
-    const char* regions[] = {"", " loop=2000-3900", " loop=50000-60000", " loop=1000-9000", " loop=10000-140000", " loop=70000-70100"};
+    const char* regions[] = {"", " loop=2000-3900", " loop=50000-60000", " loop=1000-9000", " loop=10000-140000", " loop=70000-70100", " loop=1000-60000"};
     for (const char* tone : {"mono", "stereo"})
         for (const char* loop : regions)
             for (int key : {60, 79, 96}) {
