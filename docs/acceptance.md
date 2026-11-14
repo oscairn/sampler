@@ -721,6 +721,7 @@ widths 0-127).
 | D19 | Two high-pass sections (type 6) at resonance 88 and above: the reference saturates | its peaks 43-55 dB with harmonics; the engine linear, to 62 dB (t) | open (as type 0, the fork's K24) |
 | D20 | Type 3's section where it passes the top of the table with resonance 56 and above, and at cutoff 512 | up to 22 dB beside the peak at cutoffs 592-688, 17.7 dB at 512 (t) | open: the reference's section above 7290 Hz is not a stable 44.1 kHz section |
 | D21 | Type 10's passband | the engine 0.5-1.2 dB louder at width 64 in three takes (t) | open (the fork's law) |
+| D22 | A released voice ends once its output gain is below -96 dBFS (`docs/design.md`, the quiet end) | the reference plays on to -96.45 dB below the held level; output below -96 dBFS cut | by design (approved departure) |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,
 `refcmp.py`); not in this repository.

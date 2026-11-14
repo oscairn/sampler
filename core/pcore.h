@@ -278,6 +278,7 @@ private:
     void control(Pool&, uint32_t i, bool grid);
     float partLfo(Pool&, uint32_t i);
     void releaseLayer(Pool&, uint32_t i, int32_t releaseIndex);
+    float quietLevel(const Pool&, uint32_t i) const;
     int32_t noteOnSteps(const Compiled&, const int16_t* element, uint32_t sound, int channel, int dest) const;
     uint32_t selectElements(const Compiled&, uint32_t sound, int key, int velocity);
     void startKeyOff(uint32_t slot);

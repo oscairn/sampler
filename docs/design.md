@@ -39,6 +39,30 @@ The pitch and filter envelopes (straight lines in cents) are read at each contro
 which is where the fork updates its filter coefficients. A voice whose control steps would change
 nothing (sustaining, its envelopes still, no gain ramp) skips them until an event marks it.
 
+### The quiet end of a release
+
+A released voice (after its note-off; a note the sustain pedal holds is not released, a half damper element releasing
+under the pedal included) also ends once its output gain is below -96 dBFS, whichever comes first with the envelope's
+own end (-96.45 dB below where its release measures from, (e) in `docs/acceptance.md`) and a one-shot's sample end. It
+is a deliberate departure from the envelope's full span, approved by the project's owner: some sounds store releases of
+over 100 s per 60 dB, and a voice far below audibility would otherwise keep its cost, and its stream ring and the I/O
+thread's decoding, for up to 170 s.
+
+The output gain is a product of the voice's gain terms with its source at full scale (0 dBFS peak), not a signal
+detector (`Core::quietLevel`): the amplitude envelope's level times the element's constant gain (velocity and its
+part sensitivity, level scaling by key, the key bank's level, the staging, the filter gain and the EQ boost types),
+its element level at the top (127) when a controller box or the part LFO moves it (otherwise its index as moved now,
+the part's offset included), the note's volume expression, the sound's level, the louder side of the element's and
+the sound's pans (both at 1 when the part LFO pans), the filter's resonant peak taken as (1 / damping)^2 for any filter
+(two sections at the resonance's damping, the resonance at the top, 127, when a box or the part LFO moves it) and the
+element EQ's two bands' boosts added. The element LFO's amplitude only lowers it and the 20-tap interpolator's
+overshoot is not counted. When a release starts, and again when one of these terms changes (the sound's level, the
+note's volume, a moved level or resonance), the voice stores the envelope level at which the product reaches -96 dBFS;
+the existing end test (after each piece) compares the envelope with it, so it costs one comparison a voice a piece and
+nothing a frame. The voice ends through the usual path (NOTE_END once, its stream and slot freed). A resonant filter
+ringing after its input stops is ignored by this rule, as by the envelope's. A resonance raised after a voice ended
+does not bring it back (only the level boxes and the part LFO are taken at their top).
+
 Events act between pieces on their own frame: a note starts on its frame (its envelopes from the frame
 before it), a note-off enters the releases there, a choke fades in a straight line, a shed fades over
 16 frames. Positions stay within 32-bit frame indices by rebasing within the loop.

@@ -108,15 +108,17 @@ the worst case). Last run (0.8.0, aarch64 container, per element voice from 8 to
 
 | plan | one sound | 5 sounds | 8 sounds |
 |---|---|---|---|
-| mono, 20-tap | 10,728 | 11,984 (+11.7 %) | 11,984 (+11.7 %) |
-| stereo, 20-tap | 15,216 | 16,382 (+7.7 %) | 16,382 (+7.7 %) |
+| mono, 20-tap | 10,744 | 12,000 (+11.7 %) | 12,000 (+11.7 %) |
+| stereo, 20-tap | 15,232 | 16,398 (+7.7 %) | 16,398 (+7.7 %) |
 
-8 voices over 5 sounds: 101,900 instructions a block against 91,374 for the same 8 voices in one sound (+11.5 %; the
-bench's own zeroing and summing of its 11 bus buffers, 4,812 a block measured at rest, taken off). At rest nothing of
-this runs: the core returns before it looks at a bus, 192 instructions a block with 1, 5 or 8 sounds installed. The
+8 voices over 5 sounds: 102,028 instructions a block against 91,502 for the same 8 voices in one sound (+11.5 %; the
+bench's own zeroing and summing of its 11 bus buffers, 4,836 a block measured at rest, taken off). At rest nothing of
+this runs: the core returns before it looks at a bus, 174 instructions a block with 1 sound installed and the same
+core path with 5 or 8 (the bench's buffers aside). The
 shell adds, per process call, a pass over the 16 channels and over the sounds in use (choosing each one's bus), and
-zeroes the ports the host activated; ports never activated are not touched. Gates on the same run: mono 10,728,
-stereo 15,216, streamed mono 10,772, streamed stereo 15,255, rest 192, shedding 1,895 and 1,698 a voice. Memory: the
+zeroes the ports the host activated; ports never activated are not touched. Gates on the same run (with the quiet
+end of a release, `docs/design.md`): mono 10,744, stereo 15,232, streamed mono 10,788, streamed stereo 15,271, rest
+174, shedding 1,935 and 1,721 a voice. Memory: the
 two per-voice routing fields of 0.7 are gone (16,384 bytes less in the pools); the instance estimate
 (`oscairn.memory`) went from 4,762,480 to 4,744,088 shared bytes.
 

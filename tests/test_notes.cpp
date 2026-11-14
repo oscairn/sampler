@@ -396,6 +396,8 @@ TEST(pad_voices_end_by_the_release_rule) {
             if (end < 0 && a.voices() == 0) end = t;
         }
         if (!(end >= 0 && end <= c.bound && a.ends(1) == 1)) { ++g_failures; std::printf("  %s: ended at %ld frames (bound %ld), %d NOTE_ENDs\n", c.what, end, c.bound, a.ends(1)); }
-        if (c.mode == 0 && end < bound110 * 9 / 10) { ++g_failures; std::printf("  %s: ended early, at %ld of %ld frames\n", c.what, end, bound110); }
+        // still: it ends once its output is below -96 dBFS, its envelope at -96 + 9.43 (staging) + 5.45 (fil_gain 230) dB
+        const long quiet110 = long(per60_110 * (96 - 9.43 - 5.45) / 60 * kRate);
+        if (c.mode == 0 && std::labs(end - quiet110) > 512) { ++g_failures; std::printf("  %s: ended at %ld, the quiet end at %ld frames\n", c.what, end, quiet110); }
     }
 }

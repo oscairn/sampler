@@ -89,6 +89,7 @@ struct VoiceScalar {  // 512 bytes (static_assert below): the pools index it by 
     float curPitch = 0;        // the pitch cents the step was set for
     // the controller boxes: the moved values' bases (raw) and the steps they move by now (laws::BoxDest order)
     float levelRest = 0, keyCents = 0, hpfCents = 0;  // the constant gain but the element level's; the cutoff's key and velocity cents
+    float quiet = 0;           // released: the envelope level under which its output stays below -96 dBFS (Core::quietLevel)
     int16_t base[6] = {}, moved[6] = {};
     const int16_t* element = nullptr;  // the element's parameters (in the Compiled sound)
 };

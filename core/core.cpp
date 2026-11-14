@@ -904,7 +904,12 @@ void Core::setGain(uint32_t s, float gain, float pan) {
     gain_[s] = gain;
     panL_[s] = pan > 0 ? 1 - pan : 1;
     panR_[s] = pan < 0 ? 1 + pan : 1;
-    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) { p.v[i].soundGain = gain; p.v[i].soundPanL = panL_[s]; p.v[i].soundPanR = panR_[s]; p.v[i].dirty = true; }
+    for (auto& p : pool_)
+        for (uint32_t i = 0; i < p.n; ++i)
+            if (p.v[i].sound == s) {
+                p.v[i].soundGain = gain; p.v[i].soundPanL = panL_[s]; p.v[i].soundPanR = panR_[s]; p.v[i].dirty = true;
+                if (p.v[i].releasing) p.v[i].quiet = quietLevel(p, i);
+            }
 }
 
 Pool& Core::poolOf(const PlanDesc& d) { return pool_[(d.channels == 2 ? kFilters : 0) + int(d.filter)]; }
@@ -1171,6 +1176,32 @@ void Core::releaseLayer(Pool& p, uint32_t i, int32_t index) {
         }
     v.releasing = true;
     v.steady = false;
+    v.quiet = quietLevel(p, i);
+}
+
+// The quiet end of a release: a released voice ends once its output gain is below -96 dBFS (a departure from the
+// envelope's full span, docs/design.md). The bound on its output with its source at full scale, over the envelope:
+// the element's constant gain (velocity, key scaling, region level, staging, filter gain and EQ boost), its element
+// level (at the top when a box or the part LFO moves it), the note's volume, the sound's level and the louder side of
+// the pans (the top when the part LFO pans), the filter's resonant peak (each section at its damping, the resonance
+// at the top when a box or the part LFO moves it) and the element EQ's two bands' boosts. Returns the envelope level
+// at which that product is -96 dBFS.
+float Core::quietLevel(const Pool& p, uint32_t i) const {
+    const VoiceScalar& v = p.v[i];
+    const Compiled* s = sound_[v.sound];
+    auto reach = [&](int dest, int lfo, int hi) {
+        bool moves = v.plfo >> lfo & 1;
+        for (uint32_t b = 0; s && v.element && b < s->boxes; ++b) moves |= s->box[b].dest == dest && v.element[BoxSw1 + s->box[b].number];
+        return moves ? hi : std::max(0, std::min(hi, v.base[dest] + v.moved[dest]));
+    };
+    double g = double(v.levelRest) * 32768.0 * laws::levelGain(reach(laws::BoxLevel, laws::LfoLevel, 127)) * v.volume * v.soundGain;
+    g *= v.plfo >> laws::LfoPan & 1 ? 1.0 : std::max(v.panL * v.soundPanL, v.panR * v.soundPanR);
+    if (p.plan.filter != Filter::Thru) {
+        const double peak = std::max(1.0, 1.0 / laws::filterDamping(reach(laws::BoxResonance, laws::LfoResonance, 127)));
+        g *= peak * peak;
+    }
+    if (v.eq && v.element) g *= std::pow(10.0, (std::max(0, v.element[EqGain1] - 64) + std::max(0, v.element[EqGain2] - 64)) * 0.375 / 20.0);
+    return g > 0 ? float(std::pow(10.0, -96.0 / 20.0) / g) : 1e30f;
 }
 
 // A half damper element's release under the pedal: its release index moves from its own (pedal up)
@@ -1330,7 +1361,7 @@ void Core::setVolume(uint32_t voice, float g) {
     sl.volume = g;
     for (int k = 0; k < sl.layers; ++k) {
         Pool& p = pool_[sl.pool[k]];
-        for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].id == sl.id[k]) { p.v[i].volume = g; p.v[i].dirty = true; }
+        for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].id == sl.id[k]) { p.v[i].volume = g; p.v[i].dirty = true; if (p.v[i].releasing) p.v[i].quiet = quietLevel(p, i); }
     }
 }
 
@@ -1542,6 +1573,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
                         designHigh(p, i, laws::filterCutoffHz(at(laws::BoxHpf, 1023), v.hpfCents), rate_);
                 }
                 v.level = v.levelRest * laws::levelGain(at(laws::BoxLevel, 127));
+                if (v.releasing) v.quiet = quietLevel(p, i);
             }
         }
         // the part LFO: the sound's oscillator at this frame through the element's slots, in raw steps added to the moved
@@ -1649,7 +1681,7 @@ void Core::reap_() {
         for (uint32_t i = p.n; i-- > 0;) {
             VoiceScalar& v = p.v[i];
             if (v.releaseAt && clock_ >= v.releaseAt && !v.releasing) { v.releaseAt = 0; releaseLayer(p, i, v.releaseBase); }
-            bool gone = v.ended;
+            bool gone = v.ended || (v.releasing && !v.pedalRelease && v.amp.stage == AmpEnv::Release && v.amp.gain < v.quiet);
             if (!gone && (v.amp.stage == AmpEnv::Done || v.amp.stage == AmpEnv::Fade)) {
                 ampAdvance(v.amp, clock_ - 1, sr_);
                 gone = v.amp.stage == AmpEnv::Done;

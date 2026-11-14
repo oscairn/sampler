@@ -410,8 +410,13 @@ static void attackShape() {
     NEAR(out[2 * 9000], unit, 1e-6);
 }
 
+// The envelope level (dB) at which a released voice of output gain `gain` (with its source at full scale, at full
+// envelope) ends: its output at -96 dBFS, or the release's own end, -96.45 dB, whichever comes first.
+static double quietDb(double gain) { return std::max(-96.45, -96.0 - 20 * std::log10(gain)); }
+
 // A release: a straight line in dB at the table's time per 60 dB, falling to -96.45 dB below full
-// scale (the reference's end, measured), whatever its start; the voice ends there.
+// scale (the reference's end, measured), whatever its start; the voice ends there, or once its output is below
+// -96 dBFS (here the staging's 9.43 dB down: at -86.57 dB).
 static void releaseShape() {
     Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 ampeg_release=64", constant(48000, 16384), 1, 48000.f, "100-40000");
     r.core->noteOn(0, 0, 0, 60, 1.0f);
@@ -420,11 +425,65 @@ static void releaseShape() {
     auto rel = r.run(96000);
     const double perSample = -60.0 / (laws::releaseSecondsPer60dB(64) * 48000.0);
     const double g0 = out[2 * 1279];
-    for (int i : {0, 100, 1000, 10000, 20000, 35000}) NEAR(20 * std::log10(rel[size_t(2 * i)] / g0), perSample * (i + 1), 2e-3);
-    const int end = int(-96.45 / perSample);  // the frame the release reaches -96.45 dB
-    NEAR(20 * std::log10(rel[size_t(2 * (end - 200))] / g0), -96.45 + 200 * -perSample, 0.05);  // still sounding below -90 dB
-    CHECK(rel[size_t(2 * (end + 64))] == 0.0f);
+    for (int i : {0, 100, 1000, 10000, 20000, 30000}) NEAR(20 * std::log10(rel[size_t(2 * i)] / g0), perSample * (i + 1), 2e-3);
+    const double endDb = quietDb(kUnit * 32768);
+    const int end = int(endDb / perSample);  // the frame the release reaches it
+    NEAR(20 * std::log10(rel[size_t(2 * (end - 200))] / g0), endDb + 200 * -perSample, 0.05);  // still sounding
+    CHECK(rel[size_t(2 * (end + 32))] == 0.0f);  // ended within two control steps
     CHECK(!r.core->voice(0).sounding);
+}
+
+// The quiet end: a released voice ends when its output gain is below -96 dBFS, its level boxes at their top. A long
+// release (index 127) of a quiet element ends at the frame the release law and its gains predict, long before its
+// envelope's full span; the bound holds with the box on the element level moved to its top just before; a held note
+// at a quieter sustain and a note the pedal holds (a half damper element releasing under it) do not end by it.
+static void quietEnd() {
+    const double per60 = laws::releaseSecondsPer60dB(127), perSample = -60.0 / (per60 * 48000.0);
+    const std::string element = "ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127 amp_level=40";
+    const std::string text = "oscairn-pcm-sound/0\npart box1_src=1 box1_dst=60 box1_ratio=63\nsample s\nelement " + element +
+                             "\nregion key=0-127 root=60 element=0 sample=0 loop=100-40000\n";
+    // the element at level 40, the box able to take it to 127: the bound is the top's (the source at full scale)
+    const double endDb = quietDb(kUnit * 32768 * laws::levelGain(127));
+    const long end = long(endDb / perSample), full = long(-96.45 / perSample);
+    CHECK(end < full * 9 / 10);
+    for (bool wheel : {false, true}) {
+        Rig r(text.c_str(), constant(48000, 16384), 48000.f, 48000);
+        r.core->setGain(0, 1, 0);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        r.run(1280);
+        r.core->noteOff(0);
+        const long upAt = (end - 4800) / 128 * 128;
+        r.run(upAt);
+        if (wheel) r.core->setModWheel(0, 1.0f);  // the element level to its top
+        const auto tail = r.run(9600);
+        long last = -1;
+        double loud = 0;
+        for (long i = 0; i < 9600; ++i) {
+            const double x = std::fabs(tail[size_t(2 * i)]);
+            if (x > 0) last = upAt + i;
+            if (upAt + i > end - 2400) loud = std::max(loud, x * 2);  // the source is at half scale
+        }
+        NEAR(double(last), double(end), 40.0);
+        CHECK(!r.core->voice(0).sounding);
+        if (wheel) CHECK(loud < std::pow(10.0, -96.0 / 20) * 1.01);  // at its top it was still below -96 dBFS before the end
+    }
+    // held at a sustain below -96 dBFS: plays on
+    {
+        Rig r("ampeg_attack=0 ampeg_decay1=0 ampeg_decay1_level=8 ampeg_decay2=0 ampeg_decay2_level=8 amp_level=8", constant(48000, 16384), 1, 48000.f, "100-40000");
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        r.run(96000);
+        CHECK(r.core->voice(0).sounding);
+    }
+    // the key up under the pedal: a half damper element releases, and plays on past the quiet end
+    {
+        Rig r(("half_damper=1 half_damper_time=127 " + element).c_str(), constant(48000, 16384), 1, 48000.f, "100-40000");
+        r.core->setSustain(0, 1.0f);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        r.run(1280);
+        r.core->keyUp(0);
+        r.run(end + 9600);
+        CHECK(r.core->voice(0).sounding);
+    }
 }
 
 // A note starts on its exact frame, wherever the render calls are split; splitting a block does not
@@ -1274,7 +1333,7 @@ static void streaming() {
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
-        {"release_shape", releaseShape}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
+        {"release_shape", releaseShape}, {"quiet_end", quietEnd}, {"starts_and_splits", startsAndSplits}, {"loops", loops}, {"stereo_and_rates", stereoAndRates},
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"filter_types", filterTypes}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
