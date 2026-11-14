@@ -861,7 +861,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     laws::TimeScaling ts{e[AmpEgVelTimeSegments], e[AmpEgVelTime], e[AmpEgKeyTime], e[AmpEgKeyTimeCenter], e[AmpEgKeyTimeRelease]};
     const laws::TimeShifts sh = laws::timeShifts(ts, key, vel);
     auto clampIndex = [](int x) { return std::max(0, std::min(127, x)); };
-    a.attackTime = clampIndex(e[AmpEgAttack] - sh.attack);
+    a.attackTime = clampIndex(e[AmpEgAttack] + noteOnSteps(s, e, sl.sound, channel, laws::BoxAegAttack) - sh.attack);
     a.decay1Time = clampIndex(e[AmpEgDecay1] - sh.decay);
     a.decay2Time = clampIndex(e[AmpEgDecay2] - sh.decay);
     a.releaseTime = clampIndex(e[AmpEgRelease] - sh.release);
@@ -939,6 +939,9 @@ int32_t Core::noteOnSteps(const Compiled& s, const int16_t* e, uint32_t sound, i
 void Core::releaseLayer(Pool& p, uint32_t i, int32_t index) {
     VoiceScalar& v = p.v[i];
     ampAdvance(v.amp, clock_ - 1, sr_);
+    // the release's boxes, read now (measured: the wheel's value at the note-off counts)
+    if (const Compiled* s = sound_[v.sound])
+        if (s->boxes || offsetOn_[v.sound]) index = std::max(0, std::min(127, index + noteOnSteps(*s, v.element, v.sound, v.channel, laws::BoxAegRelease)));
     if (v.amp.stage != AmpEnv::Done && v.amp.stage != AmpEnv::Fade) {
         v.amp.again = v.amp.stage == AmpEnv::Release;
         v.amp.releaseTime = index;

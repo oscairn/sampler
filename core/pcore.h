@@ -197,7 +197,7 @@ private:
     uint16_t nextId_ = 1;
     float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {}, pressure_[16] = {}, foot_[16] = {}, breath_[16] = {};
     float boxSourceOf(uint32_t sound, int channel, int src) const;
-    static constexpr int kControls = 18, kOffsets = 9;
+    static constexpr int kControls = 18, kOffsets = 11;
     float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
     bool offsetOn_[kMaxSounds] = {};

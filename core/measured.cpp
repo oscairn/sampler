@@ -202,7 +202,8 @@ float boxSource(int v) noexcept
 }
 
 // Measured through the fine tune at ratio +63 (round 5, batch A): knob 1 stored at 0, 64, 256, 511, 512, 768, 1000,
-// 1023 and knob 8 at 768 play as c = the raw value (every one within 0.05 cent of the box law); the ribbon by CC 16 at
+// 1023 and knob 8 at 768 play as c = the raw value, but 1023 plays as 1024 (as a ratio of +127 plays +128: a coarse box
+// of +64 at knob 256, 512, 1000, 1022, 1023 gives 600, 1200, 2343, 2395, 2400 cents within 0.05; batch F); the ribbon by CC 16 at
 // 17 values as the controllers' map (within 0.1 cent); switches 1 and 2 by CC 86 / 87 as that map too (0 and 127: off
 // and on, 0 and 1024)
 float controlSource(int src, float x) noexcept
@@ -211,7 +212,8 @@ float controlSource(int src, float x) noexcept
         return boxSource(int(std::lround(x * 127.0f)));
     if (src >= 16)
         return x >= 0.5f ? 1024.0f : 0.0f;
-    return std::round(x * 1023.0f);
+    const float k = std::round(x * 1023.0f);
+    return k >= 1023.0f ? 1024.0f : k;
 }
 
 namespace {
@@ -259,13 +261,17 @@ float boxCurveAt(int curve, float c) noexcept
     return t.y[i - 1] + (t.y[i] - t.y[i - 1]) * u;
 }
 
-// Spans, measured with the mod wheel against static settings (docs/acceptance.md (l)): cutoff 1023 index steps
-// (box = static index within the analysis's 3 steps), resonance and element level 128 (level: 16 boxes at
+// Spans, measured with the mod wheel against static settings (docs/acceptance.md (l), (m)): cutoff 1024 index steps (the
+// wheel at 127 through ratio +8 and at 64 through one and three +1 boxes land on the static index 448, not 447; round 5,
+// batch F), resonance and element level 128 (level: 16 boxes at
 // four element levels, rms 0.32 dB), coarse 2400 cents and fine 100 cents (whole cents, within 0.1 cent),
-// the high-pass cutoff 1023 (one take within 2 steps; inferred from the cutoff's); the filter envelope's depth 64 (raw
+// the high-pass cutoff 1024 (one take within 2 steps; inferred from the cutoff's); the filter envelope's depth 64 (raw
 // depth steps: the wheel at 64 and 127 through a ratio +32 box, a note each, sound as the static depths +16 and +32
 // within 0.01 dB in every octave band; a held note does not follow the box: read at note-on; round 5, batch A)
-const int16_t kBoxSpan[kBoxDests] = { 1023, 128, 128, 2400, 100, 1023, 64, 8192, 8192 };
+// the amplitude envelope's attack and release 128 index steps (a box from knob 1, one note a take: release slopes and
+// attack times equal to the static index's at 12 of 14 settings, the other two analysis failures on the fastest releases;
+// the release read at the note-off (the wheel moved during the hold), the attack at note-on (inferred))
+const int16_t kBoxSpan[kBoxDests] = { 1024, 128, 128, 2400, 100, 1024, 64, 8192, 8192, 128, 128 };
 
 int boxDest(int ref) noexcept
 {
@@ -279,6 +285,8 @@ int boxDest(int ref) noexcept
     case 79: return BoxFegDepth;
     case 64: return BoxElfoPmd;
     case 65: return BoxElfoAmd;
+    case 75: return BoxAegAttack;
+    case 78: return BoxAegRelease;
     default: return -1;
     }
 }

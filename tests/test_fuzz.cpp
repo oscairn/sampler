@@ -31,10 +31,10 @@ std::string randomSound(Rng& r) {
                   + " split_outputs=" + std::to_string(r.in(0, 1));
     for (int k = 1; k <= 8; ++k) s += " knob" + std::to_string(k) + "=" + std::to_string(r.in(0, 1023));
     // controller boxes: four at random over every part parameter's range, built destinations and sources likelier
-    static const int dsts[9] = {85, 86, 60, 67, 68, 87, 79, 64, 65}, srcs[16] = {0, 1, 3, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
+    static const int dsts[11] = {85, 86, 60, 67, 68, 87, 79, 64, 65, 75, 78}, srcs[16] = {0, 1, 3, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
     for (int k = 1; k <= 4; ++k) {
         const std::string b = " box" + std::to_string(k) + "_";
-        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 15)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 8)] : r.in(0, 413))
+        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 15)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 10)] : r.in(0, 413))
            + b + "ratio=" + std::to_string(r.in(-128, 127)) + b + "pol=" + std::to_string(r.in(0, 1)) + b + "bank=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 25))
            + b + "curve=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 31)) + b + "p1=" + std::to_string(r.in(0, 127)) + b + "p2=" + std::to_string(r.in(0, 127));
     }

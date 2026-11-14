@@ -476,8 +476,22 @@ read in cents against the take with the source at 0), the source a knob's stored
   truncated: 2), three of 1.561 play 2.96 (4), two of 1.561 play 2.04 (3), three of 1.562 play 2.96 (4); single boxes
   of 2.344 and 1.561 play 2.04 and 1.02. On this engine's fine tune each box is truncated toward zero before the sum
   (as the round-4 takes `y_fine_sum`: 17 of 17 steps per box, the sum rule misses 6). The analog engine finds the sum
-  truncated once on its cutoff; whether the two reference engines differ or this is particular to the tunings is
-  checked on the element level next.
+  truncated once on its cutoff. Checked on this engine's other destinations (`e_*`, `f_*`, `g_*`, knob boxes of +-1 and
+  +-2, each a fraction of a step): the element level (11 settings against static levels 84-100: per box truncated, all
+  11; summed and truncated 8, floored or rounded 7), the coarse tune (5 settings: 111 / 74 / 37 / -111 / 63 cents, the
+  sum rules give 112, 75, -112, 65), the cutoff (three +1 boxes from knob 700, 10.94 steps each: the static index 448,
+  per box, not 450; three -1: 448, not 446; band-shape distance 0.004 against 0.07). So on this engine every destination
+  measured truncates each box before the sum. Two things found on the way: the cutoff's span is 1024, not 1023 (the
+  wheel at 127 through +8 and at 64 through one or three +1 boxes land on 448, not 447), and a knob stored at 1023 plays
+  as 1024 (a coarse box of +64 at knob 1000 / 1022 / 1023: 2343 / 2395 / 2400 cents), as a ratio of +127 plays +128.
+  The analog engine's three +1 boxes on its cutoff (647, not 645) would fit per-box truncation too if its source there
+  were 1024 rather than 1023 and its span 1024; that is for its own measurement to settle.
+- The amplitude envelope's attack and release boxes (`b_att_*`, `b_rel_*`, `c_*_move*`): span 128 index steps; release
+  slopes and attack times equal the static index's at 12 of 14 settings (the two others are analysis failures on the
+  fastest releases, 20 ms to -50 dB). The release takes the box at the note-off (the wheel moved from 0 to 127 during
+  the hold plays index 72, from 127 to 0 index 40); a wheel moved during the release changes its rate on the reference
+  (1328 dB/s against 1871 for the new index from the start), which the engine does not follow (D18). The attack is read
+  at note-on (inferred: the probe could not tell).
 - Engine: the knobs, ribbon and switches are CLAP parameters (`docs/parameters.md`); ABI test
   `knobs_ribbon_and_switches_drive_their_boxes`; a destination's modulation sounds as the linear box it stands for
   (`modulation_sounds_as_the_equivalent_linear_box`, sample for sample).
@@ -513,6 +527,7 @@ note against the same note at key follow 64, the reference against the engine's 
 | D15 | Cutoff velocity sensitivity where the moved cutoff index falls below 0 | notes 40-140 dB below the loudest differ by up to tens of dB; every note within 40 dB within 2.1 dB (j) | resolved above index 0 (the fork's law verified, j); below it not modeled |
 | D16 | Elements 2-8 with the filter thru | - | resolved: 5.625 dB below element 1 by `element_number` (i); the converter must write the number |
 | D17 | Filter gain 230 with type 0 wide open | the engine 0.21 dB above the reference (i) | open (the fork's law) |
+| D18 | An amplitude envelope release box whose source moves during the release | the reference changes the release's rate; the engine keeps the rate taken at the note-off | open |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,

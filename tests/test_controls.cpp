@@ -17,10 +17,10 @@ std::string filtered(const std::string& part) {
 }  // namespace
 
 // A modulation of a destination by a box's steps sounds as the box, sample for sample: the mod wheel at 127 through a
-// linear box of ratio +8 on the cutoff (1024 x 8 / 8 = 1024 of 8192: 127.875 steps, 127 toward zero), and of ratio
+// linear box of ratio +8 on the cutoff (1024 x 8 / 8 = 1024 of 8192: 128 steps; a modulation of 128.9 too, toward zero), and of ratio
 // +63 on the fine tune (8064 of 8192: 98.4375 cents, 98).
 TEST(modulation_sounds_as_the_equivalent_linear_box) {
-    struct { int dst, ratio; clap_id param; double amount; } cases[] = {{85, 8, kCutoff, 127.875}, {68, 63, kFine, 98.4375}};
+    struct { int dst, ratio; clap_id param; double amount; } cases[] = {{85, 8, kCutoff, 128.9}, {68, 63, kFine, 98.4375}};
     for (auto& c : cases) {
         Inst box, modded, plain;
         CHECK(box.load(stateWith(filtered("box1_src=1 box1_dst=" + std::to_string(c.dst) + " box1_ratio=" + std::to_string(c.ratio)))));

@@ -756,9 +756,9 @@ static void controllerBoxes() {
         r->core->noteOn(0, 0, 0, 60, 1.0f);
         NEAR(sineCents(r->run(22050), 4410, 22050, 441, 44100), 173, 0.6);
     }
-    // a cutoff box lands on the static index: base 300, ratio +32 at wheel 64 -> 300 + trunc(2048 x 1023 / 8192)
+    // a cutoff box lands on the static index: base 300, ratio +32 at wheel 64 -> 300 + 2048 x 1024 / 8192
     {
-        auto a = rig("box1_dst=85 box1_ratio=32", "fil_type=0 fil_cutoff=300 fileg_depth=0"), b = rig("", "fil_type=0 fil_cutoff=555 fileg_depth=0");
+        auto a = rig("box1_dst=85 box1_ratio=32", "fil_type=0 fil_cutoff=300 fileg_depth=0"), b = rig("", "fil_type=0 fil_cutoff=556 fileg_depth=0");
         a->core->setModWheel(0, 64 / 127.f);
         for (auto* x : {a.get(), b.get()}) x->core->noteOn(0, 0, 0, 60, 1.0f);
         CHECK(a->run(8192) == b->run(8192));
@@ -779,6 +779,15 @@ static void controllerBoxes() {
         CHECK(a->run(8192) == b->run(8192));
         a->core->setModWheel(0, 0.0f);
         CHECK(a->run(8192) == b->run(8192));
+    }
+    {   // the amplitude envelope's attack (read at note-on) and release (read at the note-off) boxes, span 128: the wheel at 127
+        // through ratio -16 takes attack 80 to 48, through +16 release 40 to 72
+        auto a = rig("box1_dst=75 box1_ratio=-16 box2_dst=78 box2_ratio=16", "ampeg_attack=80 ampeg_release=40"), b = rig("", "ampeg_attack=48 ampeg_release=72");
+        a->core->setModWheel(0, 1.0f);
+        for (auto* x : {a.get(), b.get()}) x->core->noteOn(0, 0, 0, 60, 1.0f);
+        CHECK(a->run(22050) == b->run(22050));
+        for (auto* x : {a.get(), b.get()}) x->core->noteOff(0);
+        CHECK(a->run(22050) == b->run(22050));
     }
 }
 
