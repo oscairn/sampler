@@ -109,7 +109,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
         out.box[out.boxes++] = {uint8_t(k), uint8_t(b[0]), uint8_t(dest), int8_t(curve), b[2] == 127 ? 128.f : float(b[2]), b[3] ? 512.f : 1024.f};
     }
     out.elfoBoxes = false;
-    for (uint32_t b = 0; b < out.boxes; ++b) out.elfoBoxes |= out.box[b].dest == laws::BoxElfoPmd || out.box[b].dest == laws::BoxElfoAmd;
+    for (uint32_t b = 0; b < out.boxes; ++b) out.elfoBoxes |= out.box[b].dest == laws::BoxElfoPitch || out.box[b].dest == laws::BoxElfoAmp;
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
@@ -1190,7 +1190,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         const float fc = grid ? centsAdvance(v.feg, clock_, sr_) : float(v.feg.cents);
         const float pc = grid ? centsAdvance(v.peg, clock_, sr_) : float(v.peg.cents);
         // the element LFO (reference mode): a triangle at 4.848 Hz from note-on, falling from zero
-        // its depth from the box outputs driving it: the mod wheel's element LFO ratios, E.LFO PMD / AMD boxes, the offsets
+        // its depth from the box outputs driving it: the mod wheel's element LFO ratios, boxes on the element LFO's pitch and amplitude depth, the offsets
         float lfoCents = 0, lfoGain = 1;
         const Compiled* snd = v.mods ? sound_[v.sound] : nullptr;
         float oP = 0, oA = 0;
@@ -1199,12 +1199,12 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
             oP = c * (v.lfoPitchRatio == 127 ? 128.0f : v.lfoPitchRatio); oA = c * (v.lfoAmpRatio == 127 ? 128.0f : v.lfoAmpRatio);
         }
         if (snd && (snd->elfoBoxes || offsetOn_[v.sound])) {
-            oP += float(offset_[v.sound][laws::BoxElfoPmd]); oA += float(offset_[v.sound][laws::BoxElfoAmd]);
+            oP += float(offset_[v.sound][laws::BoxElfoPitch]); oA += float(offset_[v.sound][laws::BoxElfoAmp]);
             for (uint32_t b = 0; b < snd->boxes; ++b) {
                 const Compiled::Box& x = snd->box[b];
-                if ((x.dest != laws::BoxElfoPmd && x.dest != laws::BoxElfoAmd) || !v.element[BoxSw1 + x.number]) continue;
+                if ((x.dest != laws::BoxElfoPitch && x.dest != laws::BoxElfoAmp) || !v.element[BoxSw1 + x.number]) continue;
                 const float o = std::max(-8192.0f, std::min(8192.0f, (laws::boxCurveAt(x.curve, boxSourceOf(v.sound, v.channel, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f));
-                (x.dest == laws::BoxElfoPmd ? oP : oA) += o;
+                (x.dest == laws::BoxElfoPitch ? oP : oA) += o;
             }
         }
         if (snd && (oP > 32 || oA > 0)) {

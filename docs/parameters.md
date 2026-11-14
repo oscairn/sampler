@@ -19,7 +19,7 @@ automatable; the box destinations (ids 14-24) are also modulatable (`CLAP_PARAM_
 | 18 | Fine Tune | `fine` | -100..100 | 0 | the box destination fine tune, cents |
 | 19 | High-Pass Cutoff | `hpf_cutoff` | -1024..1024 | 0 | the box destination high-pass cutoff (filter types 4 and 5), raw index steps |
 | 20 | Filter EG Depth | `feg_depth` | -64..64 | 0 | the box destination filter envelope depth, raw steps; read when a note starts (as the reference reads its box) |
-| 21, 22 | Element LFO Pitch Depth, Element LFO Amp Depth | `elfo_pmd`, `elfo_amd` | -8192..8192 | 0 | the box destinations E.LFO PMD / AMD in box-output units (a full box is 8192), added to the boxes' outputs and the mod wheel's element LFO ratios before the depth law |
+| 21, 22 | Element LFO Pitch Depth, Element LFO Amp Depth | `elfo_pitch_mod`, `elfo_amp_mod` | -8192..8192 | 0 | the box destinations element LFO pitch / amplitude depth in box-output units (a full box is 8192), added to the boxes' outputs and the mod wheel's element LFO ratios before the depth law |
 | 23, 24 | AEG Attack, AEG Release | `attack`, `release` | -128..128 | 0 | the box destinations amplitude envelope attack (read at note-on) and release (read at the note-off), index steps |
 
 A host passes no MIDI controller for the ribbon, the knobs or the switches (only CC 1, 2, 4, 11, 64-67, 120, 123 and

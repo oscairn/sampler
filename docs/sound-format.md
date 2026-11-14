@@ -76,7 +76,7 @@ To write this format instead of SFZ for element parts:
 - the part's controller boxes 1-16 in their order, raw: `boxN_src`, `boxN_dst` (the reference's destination number; 0 or
   a box switched off: none), `boxN_ratio` (-128..+127 as displayed), `boxN_pol`, `boxN_bank`, `boxN_curve`, `boxN_p1`,
   `boxN_p2`, and each element's switch for each box (`box_sw1`..`box_sw16`, on by default); the mod wheel's element LFO
-  pitch and amplitude boxes stay `elfo_pitch_ratio` / `elfo_amp_ratio` (other sources' E.LFO PMD / AMD boxes stay boxes, destinations 64 and 65; the
+  pitch and amplitude boxes stay `elfo_pitch_ratio` / `elfo_amp_ratio` (other sources' boxes on the element LFO's pitch and amplitude depth stay boxes, destinations 64 and 65; the
   depth law is the same, `docs/acceptance.md` (m)); boxes on destinations or from
   sources the engine does not move yet are kept and reported by `notCovered()`;
 - each element's HPF Cutoff Key Follow Sensitivity raw (`fil_hpf_keyfollow`, 0-127, 64 none);

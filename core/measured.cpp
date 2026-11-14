@@ -153,7 +153,7 @@ bool elementEq(int type, int q, int f1, int g1, int f2, int g2, double sr, Biqua
     return true;
 }
 
-// Measured on sines (round 5, batch B): a box from knob 1 on E.LFO PMD / AMD at ratios 8, 16, 32, 63 and stored values
+// Measured on sines (round 5, batch B): a box from knob 1 on the element LFO's pitch or amplitude depth at ratios 8, 16, 32, 63 and stored values
 // 16-1023; the depth is one function of o = c x ratio / 8 whatever the ratio (and the source: the mod wheel at 32, 64,
 // 96, 127 through ratios 16, 32, 63 plays the knob's depth at the same o within 0.3 %); peak to peak by zero crossings
 // (pitch) and the demodulated envelope (amplitude). Between the knots log-linear (pitch), linear (amplitude). The
@@ -315,8 +315,8 @@ int boxDest(int ref) noexcept
     case 68: return BoxFine;
     case 87: return BoxHpf;
     case 79: return BoxFegDepth;
-    case 64: return BoxElfoPmd;
-    case 65: return BoxElfoAmd;
+    case 64: return BoxElfoPitch;
+    case 65: return BoxElfoAmp;
     case 75: return BoxAegAttack;
     case 78: return BoxAegRelease;
     default: return -1;

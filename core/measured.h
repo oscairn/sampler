@@ -81,9 +81,9 @@ float boxCurveAt(int curve, float c) noexcept;
 // The destinations the core moves: the reference's number, the span (raw steps of a full box) in the
 // destination's unit (index, or cents for the tunings). The first kLiveDests move a sounding voice at every control
 // step; the others are read when the note starts (the filter envelope's depth: measured so).
-// The element LFO's pitch and amplitude depth (E.LFO PMD / AMD) take the box output itself (span 8192), summed with the
+// The element LFO's pitch and amplitude depth (destinations 64 and 65) take the box output itself (span 8192), summed with the
 // mod wheel's element LFO ratios, into elfoPitchDepthCents / elfoAmpDepthDb.
-enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, BoxFegDepth, BoxElfoPmd, BoxElfoAmd, BoxAegAttack, BoxAegRelease, kBoxDests };
+enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, BoxFegDepth, BoxElfoPitch, BoxElfoAmp, BoxAegAttack, BoxAegRelease, kBoxDests };
 constexpr int kLiveDests = 6;
 int boxDest(int reference) noexcept;  // -1: not built
 extern const int16_t kBoxSpan[kBoxDests];

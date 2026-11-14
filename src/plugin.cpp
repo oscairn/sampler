@@ -639,7 +639,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         case kDestLevel: h->role = OSCAIRN_ROLE_LEVEL_1; break;
         case kDestCoarse: case kDestFine: case kDestHpf: h->group = 3; break;
         case kDestFegDepth: h->role = OSCAIRN_ROLE_FILTER_ENVELOPE; h->priority = 4; break;
-        case kDestElfoPmd: case kDestElfoAmd: h->group = 4; break;
+        case kDestElfoPitch: case kDestElfoAmp: h->group = 4; break;
         case kDestAttack: h->role = OSCAIRN_ROLE_ATTACK; h->priority = 5; break;
         case kDestRelease: h->role = OSCAIRN_ROLE_RELEASE; h->priority = 6; break;
         default: if (id >= kKnob1 && id <= kKnob8) h->group = 1; break;

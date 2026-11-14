@@ -584,7 +584,7 @@ static void elementLfo() {
     double clo = 1e9, chi = -1e9;
     for (int w = 0; w < 40; ++w) { const double c = sineCents(q, 4410 + w * 882, 4410 + w * 882 + 441, 441, 44100); clo = std::min(clo, c); chi = std::max(chi, c); }
     NEAR(chi - clo, laws::elfoPitchDepthCents(5120), 0.15 * laws::elfoPitchDepthCents(5120));  // 10 ms windows sample the triangle's peaks
-    // the same law from a knob box on E.LFO PMD (knob 768, ratio +32: o 3072, 35.97 cents), and nothing at a negative ratio
+    // the same law from a knob box on the element LFO's pitch depth (knob 768, ratio +32: o 3072, 35.97 cents), and nothing at a negative ratio
     for (int ratio : {32, -32}) {
         const std::string text = "oscairn-pcm-sound/0\npart knob1=768 box1_src=8 box1_dst=64 box1_ratio=" + std::to_string(ratio) +
                                  "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127\nregion key=0-127 root=60 element=0 sample=0 loop=0-44100\n";

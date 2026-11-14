@@ -33,7 +33,7 @@ constexpr uint32_t kContexts = 8;              // sound contexts (slot 0 is the 
 // knob starts at the sound's stored value); from kDest0: the box destinations the core moves, an offset in the
 // destination's raw steps (cents for the tunings) added to its boxes, modulatable. Ids are stable: new ones go last.
 enum Param : uint32_t { kLevel, kPan, kPolyphony, kKnob1, kKnob8 = kKnob1 + 7, kRibbon, kSwitch1, kSwitch2,
-                        kDest0, kDestCutoff = kDest0, kDestResonance, kDestLevel, kDestCoarse, kDestFine, kDestHpf, kDestFegDepth, kDestElfoPmd, kDestElfoAmd, kDestAttack, kDestRelease, kDestLast = kDestRelease,
+                        kDest0, kDestCutoff = kDest0, kDestResonance, kDestLevel, kDestCoarse, kDestFine, kDestHpf, kDestFegDepth, kDestElfoPitch, kDestElfoAmp, kDestAttack, kDestRelease, kDestLast = kDestRelease,
                         kParamCount };
 struct ParamInfo { const char* name; const char* key; double min, max, def; bool stepped; };
 inline constexpr double kKnobDefault = 512.0 / 1023;  // the reference's default knob value
@@ -48,7 +48,7 @@ inline constexpr ParamInfo kParams[kParamCount] = {
     {"Element Level", "element_level", -128, 128, 0, false}, {"Coarse Tune", "coarse", -2400, 2400, 0, false},
     {"Fine Tune", "fine", -100, 100, 0, false}, {"High-Pass Cutoff", "hpf_cutoff", -1024, 1024, 0, false},
     {"Filter EG Depth", "feg_depth", -64, 64, 0, false},
-    {"Element LFO Pitch Depth", "elfo_pmd", -8192, 8192, 0, false}, {"Element LFO Amp Depth", "elfo_amd", -8192, 8192, 0, false},
+    {"Element LFO Pitch Depth", "elfo_pitch_mod", -8192, 8192, 0, false}, {"Element LFO Amp Depth", "elfo_amp_mod", -8192, 8192, 0, false},
     {"AEG Attack", "attack", -128, 128, 0, false}, {"AEG Release", "release", -128, 128, 0, false}};
 
 // A float that can be copied (a Patch is copied) and read by one thread while another writes it.

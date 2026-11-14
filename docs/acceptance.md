@@ -460,8 +460,8 @@ read in cents against the take with the source at 0), the source a knob's stored
   at the top, a note per wheel value through a ratio +32 box): the wheel at 64 and at 127 sound as the static depths
   +16 and +32 within 0.01 dB in every octave band, so its span is 64 raw steps; a held note does not follow the wheel
   (round 3, `v_fegd_*`): the depth is read when the note starts.
-- The element LFO's depth through boxes (`b_pmd_*`, `b_amd_*`, `b_pmdw_*`, `a_pmd_*`, `a_amd_*`): a box from knob 1 on E.LFO PMD
-  and AMD at ratios 8, 16, 32, 63 and -32, stored values 16-1023, and the mod wheel through PMD boxes of 16, 32, 63 at
+- The element LFO's depth through boxes (`b_pmd_*`, `b_amd_*`, `b_pmdw_*`, `a_pmd_*`, `a_amd_*`): a box from knob 1 on the element LFO's
+  pitch and amplitude depth at ratios 8, 16, 32, 63 and -32, stored values 16-1023, and the mod wheel through pitch-depth boxes of 16, 32, 63 at
   wheel 32, 64, 96, 127. The depth is one function of the box output o = c x ratio / 8, whatever the ratio or the source
   (wheel and knob at the same o within 0.3 %): peak-to-peak pitch 0 up to o = 32, 4.61 cents from 64, 9.22 at 1024, then
   doubling about every 1024 to 1047 cents at 8056; amplitude 2.56 dB at 1024, 5.14 at 2048, 12.13 at 4092, 82.5 at 8056.
