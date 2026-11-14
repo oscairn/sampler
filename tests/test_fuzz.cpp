@@ -40,7 +40,8 @@ std::string randomSound(Rng& r) {
     }
     // the part LFO: every setting at random, its built destinations likelier
     s += " plfo_wave=" + std::to_string(r.in(0, 12)) + " plfo_speed=" + std::to_string(r.in(0, 63)) + " plfo_phase=" + std::to_string(r.in(0, 5))
-       + " plfo_keyon_reset=" + std::to_string(r.in(0, 2)) + " plfo_user_cycle=" + std::to_string(r.in(0, 6)) + " plfo_user_slope=" + std::to_string(r.in(0, 3));
+       + " plfo_keyon_reset=" + std::to_string(r.in(0, 2)) + " plfo_delay=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 127)) + " plfo_fade_in=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 127))
+       + " plfo_hold=" + std::to_string(r.in(0, 1) ? 127 : r.in(0, 127)) + " plfo_fade_out=" + std::to_string(r.in(0, 127)) + " plfo_user_cycle=" + std::to_string(r.in(0, 6)) + " plfo_user_slope=" + std::to_string(r.in(0, 3));
     for (int k = 1; k <= 3; ++k)
         s += " plfo_dst" + std::to_string(k) + "=" + std::to_string(r.in(0, 2) ? r.in(64, 68) : r.in(0, 127)) + " plfo_depth" + std::to_string(k) + "=" + std::to_string(r.in(0, 1) ? r.in(0, 127) : 0);
     for (int k = 1; k <= 16; ++k) s += " plfo_user_step" + std::to_string(k) + "=" + std::to_string(r.in(-64, 63));

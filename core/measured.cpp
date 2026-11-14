@@ -364,6 +364,25 @@ float partLfoHz(int speed) noexcept
     return std::exp2(-4.26258f + 0.124591f * float(speed));
 }
 
+float partLfoTime(int raw) noexcept
+{
+    // one law for the delay, fade in, hold and fade out (round 6, batch M: a square at 6.5 Hz; delays and holds every 8 / 16
+    // steps, fades every 16): 0.017476 x 2^(raw / 13.635) s, within 4 % at 40-120 (11 points) and 0.02 s below
+    return raw <= 0 ? 0.0f : 0.017476f * std::exp2(float(raw) / 13.635f);
+}
+
+float partLfoEnvelope(float t, float delay, float fadeIn, float hold, float fadeOut) noexcept
+{
+    constexpr float kFloorDb = -26.0f;
+    if (t < delay) return 0.0f;
+    t -= delay;
+    if (t < fadeIn) return std::pow(10.0f, kFloorDb * (1.0f - t / fadeIn) / 20.0f);
+    t -= fadeIn;
+    if (hold < 0.0f || t < hold) return 1.0f;
+    t -= hold;
+    return t < fadeOut ? std::pow(10.0f, kFloorDb * (t / fadeOut) / 20.0f) : 0.0f;
+}
+
 float partLfoDepth(int dest, int depth) noexcept
 {
     depth = std::max(0, std::min(127, depth));

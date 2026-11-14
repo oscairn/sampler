@@ -122,6 +122,7 @@ struct Compiled {
         float depth[3];               // the slot's amplitude in its destination's unit at ratio 127
         uint8_t wave = 0, reset = 2, cycle = 16, slope = 0;
         float hz = 0, phase = 0;      // cycles a second; the start phase in cycles
+        float delay = 0, fadeIn = 0, hold = -1, fadeOut = 0;  // the envelope's seconds (hold < 0: for ever)
         int8_t step[16] = {};         // the user wave's steps (as displayed)
     } lfo;
     bool select = false;              // an element plays by cycle, at random or by the switches (Core::noteOn)

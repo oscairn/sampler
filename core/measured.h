@@ -107,7 +107,11 @@ extern const int16_t kBoxSpan[kBoxDests];
 enum LfoDest : uint8_t { LfoLevel, LfoPitch, LfoCutoff, LfoResonance, LfoPan, kLfoDests };
 int lfoDest(int reference) noexcept;  // -1: not built
 float partLfoHz(int speed) noexcept;  // cycles a second at a speed (0: no motion)
-constexpr double kPartLfoLag = 0.010;  // seconds the oscillator starts after its note (measured 6-14 ms on four takes)
+constexpr double kPartLfoLag = 0.010;
+// The LFO's envelope from its start (seconds), 0..1: nothing for the delay; the fade in a straight line in dB from -26 dB
+// to full; the hold (127: for ever); the fade out a straight line in dB to -26 dB, then nothing. Times by partLfoTime.
+float partLfoEnvelope(float seconds, float delay, float fadeIn, float hold, float fadeOut) noexcept;
+float partLfoTime(int raw) noexcept;  // seconds of a delay, fade or hold time (0: none)  // seconds the oscillator starts after its note (measured 6-14 ms on four takes)
 float partLfoDepth(int dest, int depth) noexcept;
 // The wave at a phase (cycles from the start): bipolar waves within -1..1, triangle+ and saw up 0..1, saw down -1..0;
 // the sample and hold waves one value a cycle (`seed` picks the sequence); the user wave its steps / 64

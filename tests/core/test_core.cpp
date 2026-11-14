@@ -872,6 +872,19 @@ static void partLfo() {
         NEAR(o[2 * hi + 1] / (16384 * kUnit), 1.0, 1e-3);
         NEAR(o[2 * lo + 1] / (16384 * kUnit), laws::levelGain(95) * far34, 1e-3);  // right, the pan to the left, 32 steps down
     }
+    {   // the envelope: nothing during a delay of 64 (0.45 s); with a hold of 48 (0.20 s) and no fade out, nothing after it
+        for (const char* env : {"plfo_delay=64", "plfo_hold=48 plfo_fade_out=0"}) {
+            const std::string t = text(std::string("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64 ") + env, "");
+            Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+            r.core->setGain(0, 1, 0);
+            r.core->noteOn(0, 0, 0, 60, 1.0f);
+            const auto o = r.run(44100);
+            const bool delay = env[5] == 'd';
+            NEAR(laws::partLfoTime(64), 0.452, 0.002);
+            NEAR(sineCents(o, int((delay ? 0.06 : 0.62) * 44100), int((delay ? 0.24 : 0.80) * 44100), 441, 44100), 0.0, 0.2);
+            if (delay) NEAR(sineCents(o, int(0.47 * 44100), int(0.60 * 44100), 441, 44100), -112.0, 0.5);  // past it: from the start's phase
+        }
+    }
     for (int reset : {1, 2}) {  // a second note half a cycle later: its own phase (each on) or the first note's (first on)
         const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64 plfo_keyon_reset=" + std::to_string(reset), "");
         Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);

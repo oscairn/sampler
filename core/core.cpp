@@ -133,7 +133,8 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     for (int k = 0; k < 16; ++k) lf.step[k] = int8_t(d.part[PartLfoUserStep1 + k]);
     static const float kStartPhase[6] = {0.0f, 0.25f, 1.0f / 3.0f, 0.5f, 2.0f / 3.0f, 0.75f};
     lf.hz = hz; lf.phase = kStartPhase[d.part[PartLfoPhase]];
-    // shortcut: the delay, fade in, hold and fade out are not built (notCovered reports them); the LFO plays at full depth
+    lf.delay = laws::partLfoTime(d.part[PartLfoDelay]); lf.fadeIn = laws::partLfoTime(d.part[PartLfoFadeIn]);
+    lf.hold = d.part[PartLfoHold] >= 127 ? -1.0f : laws::partLfoTime(d.part[PartLfoHold]); lf.fadeOut = laws::partLfoTime(d.part[PartLfoFadeOut]);
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
@@ -1306,7 +1307,8 @@ PV_NOINLINE float Core::partLfo(Pool& p, uint32_t i) {
     const Compiled::Lfo& lf = sound_[v.sound]->lfo;
     const int64_t start = lf.reset == 1 ? v.start : lfoStart_[v.sound];
     const double t = std::max(0.0, double(clock_ - start) / sr_ - laws::kPartLfoLag);
-    const float w = laws::partLfoWave(lf.wave, double(lf.phase) + t * double(lf.hz), lf.step, lf.cycle, lf.slope, uint32_t(start) * 2654435761u + v.sound);
+    const float env = laws::partLfoEnvelope(float(t), lf.delay, lf.fadeIn, lf.hold, lf.fadeOut);
+    const float w = env * laws::partLfoWave(lf.wave, double(lf.phase) + t * double(lf.hz), lf.step, lf.cycle, lf.slope, uint32_t(start) * 2654435761u + v.sound);
     float x[laws::kLfoDests] = {};
     for (int j = 0; j < lf.slots; ++j) if (v.lfoSlots >> j & 1) x[lf.dest[j]] += lf.depth[j] * w;
     auto at = [&](int k, float lfo, float hi) { return std::max(0.0f, std::min(hi, float(v.base[k] + v.moved[k]) + lfo)); };

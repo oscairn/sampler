@@ -545,6 +545,7 @@ them.
 | waves | 13 shapes at speed 32: triangle from zero rising, triangle+ 0..1, saw up 0..1, saw down 0..-1, squares of duty 1/4, 1/3, 1/2, 2/3, 3/4, trapezoid (twice the triangle, clipped), S/H 1 uniform within +-1, S/H 2 zero on 28 of 63 cycles, else uniform | the same; S/H by distribution (the sequences differ) | engine against reference pitch: squares rms 0.15 cents, saws 0.6, triangle+ 1.2, triangle and trapezoid 2.0-2.2 (the recorder's onset scatter, about 5 ms, on slopes of up to 740 cents a second) | 13 takes, 213-238 points each; S/H 63 cycles each |
 | start phase | 0, 90, 120, 180, 240, 270 degrees: the wave from that phase | the same | rms 2.8-4.4 cents (speed 40) | 6 takes, 108 points each |
 | start | 6-14 ms after the note | 10 ms (`laws::kPartLfoLag`) | the scatter | 4 takes |
+| envelope | delay, fade in (dB line from -26 dB), hold, fade out (dB line to -26 dB): 0.017476 x 2^(raw / 13.635) s | the same | rms 0.3-1.5 dB of the swing | 15 takes |
 | user wave | steps x A / 64 (+63 as +64); 2, 3, 4, 6, 8, 12, 16 steps; slope up / down / both: a straight line to the next step where it rises / falls / always, else held | the same | rms 0.03 cents (6 steps), 0.7-2.3 (slopes) | 10 takes |
 | key-on reset | off: one oscillator, started by the first note, not reset later; each on: every note its own from its start (a second note's oscillator from its own start while the first runs on); first on: one, reset at a note while no other key is down | the same | phases within the tracker's resolution | 3 takes, two notes tracked apart |
 | slots | slots 2 and 3 as slot 1; two slots on the pitch add (64 + 64: 224.5 cents; 32 + 96: 555.6 against 554.5); the element's switch for a slot keeps it out | the same | within 1.3 cents | 5 takes |
@@ -553,9 +554,15 @@ them.
 | pan | raw pan steps added, saturating: 34, 50, 57, 61, 62 at depths 16-80 (the balance law's grid), the far side silent from 96 | the table, linear between 16-step knots | within 0.22 dB | 5 depths and 3 silent |
 | cutoff | 8 index steps a depth step | the same | the band-shape fits of engine and reference within 4 index steps | 5 depths, 10 plateaus |
 
-Not built (reported): the delay, fade in, hold and fade out (batch K's takes show a delay of about 0.5 s at 64 and 2.2 s
-at 96, fades growing roughly exponentially; finer takes recorded for the next step), tempo sync, the random speed, the
-resonance destination (its takes clipped), destinations other than the four.
+The envelope (batch M, `m_delay*`, `m_fade*`, `m_hold*`, `m_fout*`, `m_dfh`: a square at speed 56 on the pitch, the
+swing's size over time): the delay, fade in, hold and fade out take one time law, 0.017476 x 2^(raw / 13.635) s (0.20 s at
+48, 0.45 at 64, 2.3 at 96, 5.2 at 112; within 4 % at 40-120 over 11 settings, within 0.02 s below); the fade in rises
+along a straight line in dB from -26 dB to full, the fade out falls along one to -26 dB and then stops; a hold of 127 holds
+for ever; they follow each other (delay, fade in, hold, fade out: `m_dfh`). Engine against reference over 15 takes: rms
+0.3-1.5 dB of the swing's size (floored at -30 dB), the worst points at the segments' edges.
+
+Not built (reported): tempo sync, the random speed, the resonance destination (its takes clipped), destinations other than
+the four.
 
 - Engine: `plfo_*` (part), `plfo_box_sw*`, `plfo_ratio*`, `plfo_phase_offset` (element); core test `part_lfo` (the pitch
   square's plateaus, the slot switch, level and pan plateaus, each-on and first-on phases); the fuzz sets every part
