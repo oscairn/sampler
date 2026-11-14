@@ -38,6 +38,8 @@ bool sampleId(const char* ref, uint8_t id[SP_SAMPLE_ID_BYTES]);
 // The record of sample `id` at `offset` of the pack at `path`, from the pack's trailer, or from `length` and `preload`
 // when the host gave them (non-zero). Nothing of the record is read yet: checkRecord does that.
 bool findRecord(const std::string& path, uint64_t offset, const uint8_t* id, uint64_t length, uint64_t preload, Record& out, std::string& error);
+// The pack at `path`, mapped (or the mapping this process already holds): its trailer's entries are in index.
+std::shared_ptr<const Pack> openPack(const std::string& path, std::string& error);
 // The one live record of a one-record pack (what a path reference names).
 bool onlyRecord(const std::string& path, Record& out, std::string& error);
 // Reads and checks a found record's header (samplepack: checksum, every field, agreement with the entry).

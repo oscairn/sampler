@@ -117,6 +117,8 @@ bool findRecord(const std::string& path, uint64_t offset, const uint8_t* id, uin
     return false;
 }
 
+std::shared_ptr<const Pack> openPack(const std::string& path, std::string& error) { return mapPack(path, 0, error); }
+
 bool onlyRecord(const std::string& path, Record& r, std::string& error) {
     if (!(r.pack = mapPack(path, 0, error))) return false;
     if (r.pack->index.size() != 1) { error = path + " is not a one-sample pack"; return false; }

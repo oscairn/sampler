@@ -32,8 +32,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 This builds `build/oscairn-pcm.clap`, `build/pcm_tests`, `build/pcmcore_tests` (the core's own
-tests, linked directly) and `build/pcbench` (bench, render, noise test, coverage:
-`tools/pcbench.cpp`). The instruction-cost gate is `tools/cost/cg.sh` (callgrind, aarch64;
+tests, linked directly) and `build/pcbench` (bench, render, noise test, coverage; render and coverage
+read sounds of format v0 or v1 with their packs and waveforms from a store folder: `tools/pcbench.cpp`). The instruction-cost gate is `tools/cost/cg.sh` (callgrind, aarch64;
 `docs/cost.md`). The tests load the built `.clap` and drive it only through the CLAP ABI and the
 Oscairn extension structs (`tests/host.h`); they link no plugin code, and their samples come from a
 "test" asset library the harness writes. Heap allocations inside `process()` are counted by

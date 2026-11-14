@@ -50,10 +50,9 @@ if(WIN32)
     return()  # shortcut: the ABI tests (dlopen) and the bench (POSIX clocks) are not ported; on Windows only the core's tests build
 endif()
 # The bench, cost and render driver (tools/pcbench.cpp; tools/cost/cg.sh runs it under callgrind).
-add_executable(pcbench tools/pcbench.cpp src/samples.cpp)
-target_link_libraries(pcbench PRIVATE pcmcore)
-target_include_directories(pcbench PRIVATE third_party/dr_libs)
-target_compile_definitions(pcbench PRIVATE PCM_DECODE)
+add_executable(pcbench tools/pcbench.cpp src/loader.cpp src/packs.cpp src/streamer.cpp)
+target_link_libraries(pcbench PRIVATE pcmcore samplepack::samplepack Threads::Threads)
+target_compile_definitions(pcbench PRIVATE PCM_PACKS)
 
 # The tests see only the built .clap, through the CLAP ABI (dlopen); they link no plugin code.
 add_executable(pcm_tests tests/test_main.cpp tests/alloc_guard.cpp tests/test_notes.cpp tests/test_budget.cpp
@@ -73,4 +72,6 @@ add_custom_target(samplepack_cli ${SAMPLEPACK_CARGO} build --release --locked --
 add_dependencies(samplepack_cli samplepack_build)  # one cargo at a time: a first run installs the pinned toolchain
 add_dependencies(pcm_tests samplepack_cli)
 target_compile_definitions(pcm_tests PRIVATE "SAMPLEPACK_CLI=\"${SAMPLEPACK_CLI}\"")
+add_dependencies(pcm_tests pcbench)
+target_compile_definitions(pcm_tests PRIVATE "PCBENCH=\"$<TARGET_FILE:pcbench>\"")  # the tests run its render and coverage
 add_test(NAME abi COMMAND pcm_tests $<TARGET_FILE:oscairn_pcm>)

@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bench, cost and render driver for the DSP core (core/), 128-frame blocks.
-//   pcbench render SOUND LIBDIR RATE SECONDS OUT.f32 INTERP EVENT...   stereo interleaved float32; events
+//   pcbench render SOUND STORE RATE SECONDS OUT.f32 INTERP EVENT...   stereo interleaved float32; events
 //                         on@t:key:vel(1-127) off@t:key cc@t:64:value (the sustain pedal), on their
 //                         exact frame; INTERP sinc | herm;
-//                         SOUND a sound text file, its sample references resolved as LIBDIR/reference
+//                         SOUND a sound text file (format v0 or v1); STORE a folder, searched with its subfolders:
+//                         "sample:<id>" is the record of that id in any .osp pack there, "waveform:<id>" the file
+//                         <id>.owf, a path reference the one-record pack STORE/reference; every region decoded whole
 //   pcbench rawq INTERP SEMITONES IN.s16 OUT.f32   a mono 16-bit 44.1 kHz file played (thru filter,
 //                         flat envelope) SEMITONES from its root at 48 kHz, mono float32 (the noise test)
 //   pcbench cg CASE PLAN INTERP WARM MEAS TSV      one callgrind dump per measured block (PC_WHOLE=1: one for all)
 //   pcbench time [CPU]    thread-CPU and wall time per block for every case
 //   pcbench check         NaN/Inf/subnormal check over random notes (exit 1 on failure)
-//   pcbench coverage SOUND   what the sound uses that the core does not cover, one line each:
+//   pcbench coverage SOUND [STORE]   what the sound uses that the core does not cover (a sound with waveforms needs
+//                         STORE, as render, to expand them), one line each:
 //                         "not covered: element E ID=VALUE: why", "not covered: part ID=VALUE: why" (exit 1 if any)
 // CASE: rest | held N | shed N (N held voices shed in one block) | release N (N held voices released,
 // their filter envelopes moving the cutoff every control step); PLAN: mono | stereo (the pads'
@@ -36,8 +39,10 @@
 #endif
 #include "../core/pcore.h"
 #include "../core/vsimd.h"
-#ifdef PCM_DECODE
-#include "../src/samples.h"
+#ifdef PCM_PACKS
+#include <filesystem>
+#include <map>
+#include "../src/loader.h"
 #endif
 #ifndef PC_FLAGS
 #define PC_FLAGS "?"
@@ -86,10 +91,10 @@ struct Host {
     bool pedalHeld[kMaxVoices] = {};
     int pedal = 0;
     Host(double sr, Interp in) { core->prepare(sr); core->setInterp(in); std::fill(keyOf, keyOf + kMaxVoices, -1); }
-    bool load(const SampleView* sampleViews) {  // one a sample reference
+    bool load(const SampleView* sampleViews, bool perRegion = false) {  // one a sample reference (or one a region)
         char err[256];
         std::vector<SampleView> views(data->regions);
-        for (uint32_t i = 0; i < data->regions; ++i) views[i] = sampleViews[data->region[i].sample];
+        for (uint32_t i = 0; i < data->regions; ++i) views[i] = sampleViews[perRegion ? i : data->region[i].sample];
         if (!compile(*data, views.data(), *sound, err, sizeof err)) { fprintf(stderr, "compile: %s\n", err); return false; }
         core->install(0, sound.get()); core->setGain(0, 1, 0);
         return true;
@@ -141,20 +146,63 @@ static std::string slurp(const char* path) {
 
 static Interp interpOf(const char* s) { return !strcmp(s, "herm") ? Interp::Hermite : Interp::Sinc; }
 
-#ifdef PCM_DECODE
+#ifdef PCM_PACKS
+// A store folder (see the head): the packs' records by sample id and the waveform files by id.
+struct Store {
+    std::string root;
+    std::map<std::string, std::pair<std::string, sp_index_entry>> records;
+    std::map<std::string, std::string> waveforms;
+    explicit Store(const std::string& dir) : root(dir) {
+        std::error_code ec;
+        for (auto it = std::filesystem::recursive_directory_iterator(dir, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+            const auto& p = it->path();
+            if (p.extension() == ".owf") waveforms[p.stem().string()] = p.string();
+            if (p.extension() != ".osp") continue;
+            std::string err;
+            if (auto pack = pcmshell::openPack(p.string(), err))
+                for (const auto& e : pack->index) {
+                    char h[65];
+                    for (int k = 0; k < 32; ++k) snprintf(h + 2 * k, 3, "%02x", e.id[k]);
+                    records.emplace(h, std::make_pair(p.string(), e));
+                }
+        }
+    }
+    bool sample(const char* ref, pcmshell::Record& r, std::string& error) const {
+        uint8_t id[SP_SAMPLE_ID_BYTES];
+        if (!pcmshell::sampleId(ref, id)) return pcmshell::onlyRecord(root + "/" + ref, r, error);
+        const auto it = records.find(ref + 7);
+        if (it == records.end()) { error = "no pack in the store holds it"; return false; }
+        const sp_index_entry& e = it->second.second;
+        return pcmshell::findRecord(it->second.first, e.offset, id, e.length, e.preload, r, error);
+    }
+    bool waveform(const char* ref, std::string& path, std::string& error) const {
+        const auto it = waveforms.find(ref + 9);
+        if (it == waveforms.end()) { error = "not in the store"; return false; }
+        path = it->second;
+        return true;
+    }
+};
+// The sound at `path` as it plays: parsed, its waveforms expanded from the store (none needed without waveforms).
+static bool loadSound(const char* path, const char* store, SoundData& d) {
+    std::unique_ptr<SoundData> parsed(new SoundData);
+    if (!parseSound(slurp(path), *parsed)) return false;
+    if (!parsed->waveforms) { d = *parsed; return true; }
+    if (!store) { fprintf(stderr, "the sound plays waveforms: give the store\n"); return false; }
+    const Store s(store);
+    std::string err;
+    if (!pcmshell::expandWaveforms(*parsed, [&](const char* ref, std::string& p, std::string& e) { return s.waveform(ref, p, e); }, d, err)) { fprintf(stderr, "%s\n", err.c_str()); return false; }
+    return true;
+}
 static int render(int argc, char** argv) {
     if (argc < 8) return 2;
     const double sr = atof(argv[4]), secs = atof(argv[5]);
     Host h(sr, interpOf(argv[7]));
-    if (!parseSound(slurp(argv[2]), *h.data)) return 2;
-    std::vector<pcmshell::SampleBuffer> bufs(h.data->samples);
-    std::vector<SampleView> views(h.data->samples);
-    for (uint32_t i = 0; i < h.data->samples; ++i) {
-        std::string err;
-        if (!pcmshell::decodeFile(std::string(argv[3]) + "/" + h.data->ref[i], bufs[i], err)) { fprintf(stderr, "%s: %s\n", h.data->ref[i], err.c_str()); return 2; }
-        views[i] = bufs[i].view();
-    }
-    if (!h.load(views.data())) return 2;
+    if (!loadSound(argv[2], argv[3], *h.data)) return 2;
+    const Store store(argv[3]);
+    std::string err;
+    const auto samples = pcmshell::loadSamples(*h.data, [&](const char* ref, pcmshell::Record& r, std::string& e) { return store.sample(ref, r, e); }, true, err);
+    if (!samples) { fprintf(stderr, "%s\n", err.c_str()); return 2; }
+    if (!h.load(samples->views.data(), true)) return 2;
     std::vector<Ev> evs;
     for (int i = 8; i < argc; ++i) {
         double t; int k, v = 0;
@@ -318,7 +366,7 @@ static int check() {
 
 int main(int argc, char** argv) {
     const std::string m = argc > 1 ? argv[1] : "";
-#ifdef PCM_DECODE
+#ifdef PCM_PACKS
     if (m == "render") return render(argc, argv);
 #endif
     if (m == "rawq") return rawq(argc, argv);
@@ -327,7 +375,11 @@ int main(int argc, char** argv) {
     if (m == "check") return check();
     if (m == "coverage" && argc > 2) {
         std::unique_ptr<SoundData> d(new SoundData);
+#ifdef PCM_PACKS
+        if (!loadSound(argv[2], argc > 3 ? argv[3] : nullptr, *d)) return 2;
+#else
         if (!parseSound(slurp(argv[2]), *d)) return 2;
+#endif
         Gap g[256];
         const uint32_t n = notCovered(*d, g, 256);
         for (uint32_t i = 0; i < n && i < 256; ++i)

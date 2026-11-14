@@ -232,3 +232,25 @@ TEST(waveform_heads_shared_between_sounds) {
     CHECK(bytes() > one);
     std::remove((g_assetDir + "/" + wf + ".owf").c_str());
 }
+
+// pcbench (the converter's renderer) reads the same store: a v1 sound renders exactly as its v0 equivalent, and its
+// coverage report expands the waveform.
+TEST(pcbench_renders_waveform_sounds) {
+    const std::string wf = writeWaveform({bank(0, 59, 1, 127, 48, 0), bank(60, 127, 1, 127, 72, 1, 0, 0, -300, 2500)}, {"mono", "stereo"});
+    const std::string dir = g_assetDir;
+    auto put = [&](const char* name, const std::string& text) { FILE* f = std::fopen((dir + "/" + name).c_str(), "wb"); std::fputs(text.c_str(), f); std::fclose(f); };
+    put("v1.txt", "oscairn-pcm-sound/1\nwaveform " + wf + "\nelement waveform=1 coarse=2 fine=10 key_lo=30\n");
+    put("v0.txt", "oscairn-pcm-sound/0\nsample " + sampleRef("mono") + "\nsample " + sampleRef("stereo") + "\nelement\n"
+                  "region key=30-57 root=48 transpose=2 tune=15 element=0 sample=0\nregion key=58-127 root=72 transpose=2 tune=15 level=-3 pan=25 element=0 sample=1\n");
+    auto run = [&](const std::string& args) { return std::system(("\"" PCBENCH "\" " + args + " > /dev/null 2>&1").c_str()); };
+    const std::string ev = " 48000 1.5 ", notes = " sinc on@0:40:100 on@0.1:70:60 off@0.5:40 off@0.9:70";
+    CHECK_EQ(run("render \"" + dir + "/v1.txt\" \"" + dir + "\"" + ev + "\"" + dir + "/v1.f32\"" + notes), 0);
+    CHECK_EQ(run("render \"" + dir + "/v0.txt\" \"" + dir + "\"" + ev + "\"" + dir + "/v0.f32\"" + notes), 0);
+    auto slurp = [](const std::string& p) { std::string s; if (FILE* f = std::fopen(p.c_str(), "rb")) { char b[65536]; size_t n; while ((n = std::fread(b, 1, sizeof b, f)) > 0) s.append(b, n); std::fclose(f); } return s; };
+    const std::string a = slurp(dir + "/v1.f32"), b = slurp(dir + "/v0.f32");
+    CHECK(a.size() > 100000 && a == b);
+    CHECK_EQ(run("coverage \"" + dir + "/v1.txt\" \"" + dir + "\""), 0);
+    CHECK(run("coverage \"" + dir + "/v1.txt\"") != 0);  // its waveform needs the store
+    for (const char* f : {"v1.txt", "v0.txt", "v1.f32", "v0.f32"}) std::remove((dir + "/" + f).c_str());
+    std::remove((dir + "/" + wf + ".owf").c_str());
+}
