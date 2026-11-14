@@ -161,6 +161,19 @@ float boxSource(int v) noexcept
     return v <= 64 ? 8.0f * v : 512.0f + (v - 64) * 512.0f / 63.0f;
 }
 
+// Measured through the fine tune at ratio +63 (round 5, batch A): knob 1 stored at 0, 64, 256, 511, 512, 768, 1000,
+// 1023 and knob 8 at 768 play as c = the raw value (every one within 0.05 cent of the box law); the ribbon by CC 16 at
+// 17 values as the controllers' map (within 0.1 cent); switches 1 and 2 by CC 86 / 87 as that map too (0 and 127: off
+// and on, 0 and 1024)
+float controlSource(int src, float x) noexcept
+{
+    if (src == 6)
+        return boxSource(int(std::lround(x * 127.0f)));
+    if (src >= 16)
+        return x >= 0.5f ? 1024.0f : 0.0f;
+    return std::round(x * 1023.0f);
+}
+
 namespace {
 struct Curve { uint8_t bank, type, p1, p2; float s[17], y[17]; };
 // c at the measured wheel values 0, 8, ..., 120, 127 (this engine's map) and at the analog engine's (VA) knots

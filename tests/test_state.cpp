@@ -6,7 +6,7 @@
 TEST(parameter_metadata) {
     Inst a(false);
     const uint32_t n = a.params->count(a.p);
-    CHECK_EQ(n, 3u);
+    CHECK_EQ(n, 20u);
     std::vector<clap_id> seen;
     for (uint32_t i = 0; i < n; ++i) {
         clap_param_info_t info{};
@@ -37,7 +37,7 @@ TEST(parameter_events_change_values_and_sound) {
     CHECK(soft < 0.2f * loud);
     CHECK(peak(a.L, a.L.size() - 1000) < 1e-5f);  // panned hard right: no left
     CHECK(peak(a.R, a.R.size() - 1000) > 0.f);
-    a.block(128, {param(0, 0, 7.0), param(0, 5, 1.0), param(0, 1, NAN)});  // clamped, unknown id, non-finite: ignored
+    a.block(128, {param(0, 0, 7.0), param(0, 99, 1.0), param(0, 1, NAN)});  // clamped, unknown id, non-finite: ignored
     CHECK(a.value(0) == 1.0 && a.value(1) == 1.0);
 }
 
@@ -45,7 +45,7 @@ TEST(state_round_trip_is_byte_identical) {
     Inst a;
     a.block(128, {param(0, 0, 0.3), param(0, 1, -0.5), param(0, 2, 10)});
     const std::string s = a.save();
-    CHECK(s.rfind("oscairn-pcm-state 1\n", 0) == 0);
+    CHECK(s.rfind("oscairn-pcm-state 2\n", 0) == 0);
     Inst b;
     CHECK(b.load(s));
     CHECK_EQ(b.save() == s, true);
@@ -90,7 +90,7 @@ TEST(sound_context_snapshot_round_trip) {
     a.block(128);
     Stream s;
     CHECK(a.contexts->state->save(a.p, &s.out));
-    CHECK(s.data.rfind("oscairn-pcm-contexts/1\n", 0) == 0);
+    CHECK(s.data.rfind("oscairn-pcm-contexts/2\n", 0) == 0);
     Inst c;
     Stream in; in.data = s.data;
     CHECK(c.contexts->state->load(c.p, &in.in));
@@ -101,7 +101,7 @@ TEST(sound_context_snapshot_round_trip) {
     oscairn_sound_context_info_t info{};
     CHECK(c.contexts->get(c.p, 1, &info) && !std::strcmp(info.name, "bright \"b\"") && (info.selected_channels == 4));
     // a snapshot that is wrong changes nothing
-    const char* bad[] = {"", "oscairn-pcm-contexts/1\n", "oscairn-pcm-contexts/1\n0\n", "oscairn-pcm-contexts/0\n1 \"Default\" 0.5 0 8 \"\" \"\" -\n"};
+    const char* bad[] = {"", "oscairn-pcm-contexts/2\n", "oscairn-pcm-contexts/2\n0\n", "oscairn-pcm-contexts/1\n1 \"Default\" 0.5 0 8 \"\" \"\" -\n"};
     for (auto* t : bad) { Stream x; x.data = t; CHECK(!c.contexts->state->load(c.p, &x.in)); }
     Stream s3;
     CHECK(c.contexts->state->save(c.p, &s3.out) && s3.data == s.data);

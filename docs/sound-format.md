@@ -12,7 +12,7 @@ tests and hand-written sounds. Version 0 is the first; a reader refuses any othe
 | 4 | u16 version (0), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
-| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (135 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
+| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (143 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
 | 24 | part parameters, i16 each, in `core/partparams.inc` order |
 | | samples: u8 length, then the reference's bytes (a relative path, no NUL, no `..` segment, no leading `/`) |
 | | elements: u16 count, then count x (u16 parameter index in `core/params.inc` order, i16 value); indices increasing; only values that differ from the default |
@@ -78,4 +78,9 @@ To write this format instead of SFZ for element parts:
   `boxN_p2`, and each element's switch for each box (`box_sw1`..`box_sw16`, on by default); the mod wheel's element LFO
   pitch and amplitude boxes stay `elfo_pitch_ratio` / `elfo_amp_ratio` (not boxes); boxes on destinations or from
   sources the engine does not move yet are kept and reported by `notCovered()`;
+- the part's assignable knob values (`knob1`..`knob8`, raw 0-1023 as stored; default 512): the shell's knob parameters
+  start there, and boxes from the knobs (sources 8-15) read them; boxes from the ribbon (6) and switches 1-2 (16, 17)
+  read the shell's parameters of those names (`docs/parameters.md`), which the host's controls drive. A plain box
+  (one source, one destination, a curve the host has) may instead become a host control-tree target on the
+  destination's parameter (ids 14-19, an offset in raw steps; a full box is the destination's span);
 - the samples as references relative to the base it gives the sound (the asset library's folder).

@@ -435,13 +435,30 @@ element level (sines at element levels 127, 100, 64, 32), the source stepped thr
 - Curves of type 0: parameter 5 is linear; 0, 2 and 8 measured at 17 points (whole cents: +-5 of 1024); 6, 9, 10 and two
   of type 2 are the analog engine's measurements of the same boxes, not repeated here.
 - Not measured or not built: the boxes on the envelope times and depths (the filter envelope's depth did not move while
-  a note held: read at note-on, not verified), the element LFO, pan, the part LFO; channel pressure's map; the knobs,
-  ribbon and switches (host parameters, a later round).
+  a note held: read at note-on, not verified), the element LFO, pan, the part LFO; channel pressure's map. The knobs,
+  ribbon and switches: (m).
 - Engine: core test `controller_boxes` (the fine tune at five wheel values, the sum and clamp, a bipolar box, coarse,
   the element's switch, a curve, the bend as a source; cutoff and level boxes equal to their static settings) and the
   ABI test `box_sources_drive_their_boxes`. Found on the way: a box made the reference's thru-filter sine probes of one
   recording batch play 6-40 dB quieter; the same jobs recorded again played at the normal level (a recorder-state
   artefact; only levels within one take are used).
+
+## (m) The part's own box sources against the reference
+
+Recordings `a_knob*`, `a_ribbon`, `a_sw1`, `a_sw2` (run pcm-round5-2026-11-14): one box on the fine tune (ratio +63,
+read in cents against the take with the source at 0), the source a knob's stored part value (knob 1 at 0, 64, 256, 511,
+512, 768, 1000, 1023; knob 8 at 768), the ribbon by its controller (CC 16) at 17 values, switches 1 and 2 by theirs
+(CC 86, 87) at 0, 1, 63, 64, 65, 127.
+
+- A stored knob value K enters the box as c = K: every one within 0.05 cent of trunc(K x 63 / 8 x 100 / 8192) (512 and
+  511 both 49 cents, 1023 98). Knob 8 plays as knob 1. The knob's own controller (CC 17) did not move it in these
+  probes.
+- The ribbon by CC 16 follows the controllers' map (8 v up to 64, then 512 / 63 a step) at all 17 values within 0.1 cent.
+- The switches by CC 86 / 87 also follow that map (63 plays 48 cents, 64 and 65 49): a continuous source; the switch
+  itself sends 0 and 127, so the parameter is off (0) or on (1024).
+- Engine: the knobs, ribbon and switches are CLAP parameters (`docs/parameters.md`); ABI test
+  `knobs_ribbon_and_switches_drive_their_boxes`; a destination's modulation sounds as the linear box it stands for
+  (`modulation_sounds_as_the_equivalent_linear_box`, sample for sample).
 
 ## Known differences (this engine's register)
 

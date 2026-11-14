@@ -29,7 +29,7 @@ TEST(prepare_select_discard_lifecycle) {
     CHECK_EQ(prepare(a, "x", "oscairn-pcm-sound/0\nsample none.wav\nelement\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);
     CHECK(std::strstr(msg, "none.wav") != nullptr);
     CHECK_EQ(a.contexts->prepare(a.p, "x", nullptr, 0, kSound, nullptr, msg, sizeof msg), CLAP_INVALID_ID);
-    oscairn_sound_parameter_t bad{9, 1};
+    oscairn_sound_parameter_t bad{99, 1};
     CHECK_EQ(a.contexts->prepare(a.p, "x", &bad, 1, nullptr, nullptr, msg, sizeof msg), CLAP_INVALID_ID);
     CHECK_EQ(prepare(a, std::string(64, 'n').c_str(), nullptr, msg, sizeof msg), CLAP_INVALID_ID);
     const uint32_t b = prepare(a, "b", patchWith("level=0.5").c_str());

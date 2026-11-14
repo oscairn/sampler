@@ -56,6 +56,9 @@ double eqPeakQ(int raw) noexcept;
 // The source maps: a controller value v (0-127) is 8 v up to 64, then 512 + (v - 64) x 512 / 63 (1024 at 127); the
 // pitch bend its 14-bit value / 16.
 float boxSource(int v127) noexcept;
+// The part's own sources at x (0..1, the shell's parameters): the ribbon (6) as its controller, CC 16 at round(127 x);
+// knobs 1-8 (8-15) at the raw knob value round(1023 x); switches 1-2 (16, 17) off or on.
+float controlSource(int source, float x) noexcept;
 // The measured curves (bank 0, type 0, parameter p1): their value at c, 0..1024; -1 for one not measured.
 int boxCurve(int bank, int type, int p1, int p2) noexcept;
 float boxCurveAt(int curve, float c) noexcept;

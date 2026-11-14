@@ -85,6 +85,12 @@ inline Bytes param(uint32_t t, clap_id id, double v, int16_t ch = -1) {
     e.param_id = id; e.note_id = -1; e.port_index = -1; e.channel = ch; e.key = -1; e.value = v;
     return bytes(e);
 }
+inline Bytes mod(uint32_t t, clap_id id, double amount, int16_t ch = -1, int32_t note = -1, int16_t key = -1) {
+    clap_event_param_mod_t e{};
+    e.header = {sizeof e, t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_MOD, 0};
+    e.param_id = id; e.note_id = note; e.port_index = -1; e.channel = ch; e.key = key; e.amount = amount;
+    return bytes(e);
+}
 inline Bytes volume(uint32_t t, int32_t id, int16_t ch, int16_t key, double v) {
     clap_event_note_expression_t e{};
     e.header = {sizeof e, t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0};

@@ -104,7 +104,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     for (int k = 0; k < 16; ++k) {
         const int16_t* b = d.part + PartBox1Src + 8 * k;
         const int dest = laws::boxDest(b[1]), curve = laws::boxCurve(b[4], b[5], b[6], b[7]);
-        const bool src = b[0] == 0 || b[0] == 1 || b[0] == 2 || b[0] == 3 || b[0] == 4 || b[0] == 7;
+        const bool src = (b[0] >= 0 && b[0] <= 4) || (b[0] >= 6 && b[0] <= 17);  // controllers, ribbon, knobs, switches
         if (dest < 0 || curve < 0 || !src || b[2] == 0) continue;
         out.box[out.boxes++] = {uint8_t(k), uint8_t(b[0]), uint8_t(dest), int8_t(curve), b[2] == 127 ? 128.f : float(b[2]), b[3] ? 512.f : 1024.f};
     }
@@ -731,7 +731,11 @@ Core::Core() {
             for (int i = 0; i < kTaps; ++i)
                 tab[ph * 2 * kTaps + coefAt(i) + 4] = ph < kPhases ? tab[(ph + 1) * 2 * kTaps + coefAt(i)] - tab[ph * 2 * kTaps + coefAt(i)] : 0.0f;
     }
-    for (uint32_t s = 0; s < kMaxSounds; ++s) gain_[s] = panL_[s] = panR_[s] = 1;
+    for (uint32_t s = 0; s < kMaxSounds; ++s) {
+        gain_[s] = panL_[s] = panR_[s] = 1;
+        for (int k = 0; k < kControls; ++k) control_[s][k] = k >= 8 && k <= 15 ? 512.0f / 1023.0f : 0.0f;  // knobs at the reference's default
+        for (int k = 0; k < kOffsets; ++k) offset_[s][k] = 0;
+    }
     for (int k = 0; k < 2 * kFilters; ++k) {
         Pool& p = pool_[k];
         p.plan = {uint8_t(k / kFilters + 1), Interp::Sinc, Filter(k % kFilters)};
@@ -1077,7 +1081,23 @@ void Core::setSource(int ch, int src, float x) {
     if (src == 2) pressure_[ch] = x; else if (src == 3) foot_[ch] = x; else if (src == 7) breath_[ch] = x; else return;
     for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].channel == ch) p.v[i].dirty = true;
 }
-float Core::boxSourceOf(int ch, int src) const {
+void Core::setControl(uint32_t s, int src, float x) {
+    if (s >= kMaxSounds || src < 0 || src >= kControls || !(x == x)) return;
+    control_[s][src] = std::max(0.0f, std::min(1.0f, x));
+    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) p.v[i].dirty = true;
+}
+void Core::setOffset(uint32_t s, int dest, float steps) {
+    static_assert(kOffsets == laws::kBoxDests, "one offset a box destination");
+    if (s >= kMaxSounds || dest < 0 || dest >= kOffsets || !(steps == steps)) return;
+    const float span = float(laws::kBoxSpan[dest]);
+    offset_[s][dest] = int32_t(std::max(-span, std::min(span, steps)));  // toward zero, as a box's steps
+    bool on = false;
+    for (int k = 0; k < kOffsets; ++k) on |= offset_[s][k] != 0;
+    offsetOn_[s] = on;
+    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) p.v[i].dirty = true;
+}
+float Core::boxSourceOf(uint32_t s, int ch, int src) const {
+    if (src == 6 || (src >= 8 && src < kControls)) return laws::controlSource(src, control_[s][src]);
     switch (src) {
     case 0: return std::min(16383.0f, 8192.0f + bend_[ch] * 8192.0f) / 16.0f;  // the 14-bit bend / 16 (measured)
     case 1: return laws::boxSource(int(std::lround(wheel_[ch] * 127.0f)));
@@ -1155,13 +1175,15 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         }
         // the controller boxes (the element's switch for each), in raw steps or cents from the bases
         const Compiled* snd = sound_[v.sound];
-        if (snd && snd->boxes) {
-            int32_t step[laws::kBoxDests] = {};
+        // (a voice moved before its sound's offsets went back to zero is put back too)
+        if (snd && (snd->boxes || offsetOn_[v.sound] || (v.moved[0] | v.moved[1] | v.moved[2] | v.moved[3] | v.moved[4] | v.moved[5]))) {
+            int32_t step[laws::kBoxDests];
+            for (int k = 0; k < laws::kBoxDests; ++k) step[k] = offset_[v.sound][k];
             const int16_t* e = v.element;
             for (uint32_t b = 0; b < snd->boxes; ++b) {
                 const Compiled::Box& x = snd->box[b];
                 if (!e[BoxSw1 + x.number]) continue;
-                float o = (laws::boxCurveAt(x.curve, boxSourceOf(v.channel, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f;
+                float o = (laws::boxCurveAt(x.curve, boxSourceOf(v.sound, v.channel, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f;
                 o = std::max(-8192.0f, std::min(8192.0f, o));
                 step[x.dest] += int32_t(o * float(laws::kBoxSpan[x.dest]) / 8192.0f);  // each box toward zero
             }

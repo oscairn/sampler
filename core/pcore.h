@@ -158,6 +158,11 @@ public:
     void setModWheel(int channel, float value);       // 0..1
     // A controller box source of the channel, 0..1: 2 channel pressure, 3 foot controller 1 (CC 11), 7 breath (CC 2)
     void setSource(int channel, int source, float value);
+    // A box source of the sound's own (the shell's parameters), 0..1: 6 the ribbon, 8-15 knobs 1-8, 16 and 17 switches 1 and 2
+    void setControl(uint32_t sound, int source, float value);
+    // A box destination moved from outside the boxes (the shell's parameter plus its modulation) in the destination's raw
+    // steps (cents for the tunings): added to its boxes' steps toward zero, the sum within +-span (laws::BoxDest order)
+    void setOffset(uint32_t sound, int dest, float steps);
     void reset();                                     // every voice off, controllers to rest
     // Adds every voice into left/right for `frames` frames that start `from` frames into the host's
     // block. Control steps (envelopes, filter coefficients) fall every kSub frames from the block's
@@ -189,7 +194,11 @@ private:
     Interp interp_ = Interp::Sinc;
     uint16_t nextId_ = 1;
     float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {}, pressure_[16] = {}, foot_[16] = {}, breath_[16] = {};
-    float boxSourceOf(int channel, int src) const;
+    float boxSourceOf(uint32_t sound, int channel, int src) const;
+    static constexpr int kControls = 18, kOffsets = 6;
+    float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
+    int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
+    bool offsetOn_[kMaxSounds] = {};
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];

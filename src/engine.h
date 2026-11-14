@@ -28,12 +28,25 @@ namespace pcmshell {
 constexpr uint32_t kVoices = pcm::kMaxVoices;  // the pool: the most notes the core can sound at once
 constexpr uint32_t kContexts = 8;              // sound contexts (slot 0 is the default sound)
 
-// The parameters, per sound. level: linear, 1 = the sound's own level; polyphony: the most voices
-// this sound may keep (1..kVoices).
-enum Param : uint32_t { kLevel, kPan, kPolyphony, kParamCount };
-struct ParamInfo { const char* name; double min, max, def; bool stepped; };
+// The parameters, per sound (docs/parameters.md). level: linear, 1 = the sound's own level; polyphony: the most voices
+// this sound may keep (1..kVoices); the knobs, ribbon and switches: the part's own controller box sources, 0..1 (a
+// knob starts at the sound's stored value); from kDest0: the box destinations the core moves, an offset in the
+// destination's raw steps (cents for the tunings) added to its boxes, modulatable. Ids are stable: new ones go last.
+enum Param : uint32_t { kLevel, kPan, kPolyphony, kKnob1, kKnob8 = kKnob1 + 7, kRibbon, kSwitch1, kSwitch2,
+                        kDest0, kDestCutoff = kDest0, kDestResonance, kDestLevel, kDestCoarse, kDestFine, kDestHpf, kDestLast = kDestHpf,
+                        kParamCount };
+struct ParamInfo { const char* name; const char* key; double min, max, def; bool stepped; };
+inline constexpr double kKnobDefault = 512.0 / 1023;  // the reference's default knob value
 inline constexpr ParamInfo kParams[kParamCount] = {
-    {"Level", 0, 1, 1, false}, {"Pan", -1, 1, 0, false}, {"Polyphony Limit", 1, kVoices, kVoices, true}};
+    {"Level", "level", 0, 1, 1, false}, {"Pan", "pan", -1, 1, 0, false}, {"Polyphony Limit", "polyphony", 1, kVoices, kVoices, true},
+    {"Knob 1", "knob1", 0, 1, kKnobDefault, false}, {"Knob 2", "knob2", 0, 1, kKnobDefault, false},
+    {"Knob 3", "knob3", 0, 1, kKnobDefault, false}, {"Knob 4", "knob4", 0, 1, kKnobDefault, false},
+    {"Knob 5", "knob5", 0, 1, kKnobDefault, false}, {"Knob 6", "knob6", 0, 1, kKnobDefault, false},
+    {"Knob 7", "knob7", 0, 1, kKnobDefault, false}, {"Knob 8", "knob8", 0, 1, kKnobDefault, false},
+    {"Ribbon", "ribbon", 0, 1, 0, false}, {"Switch 1", "switch1", 0, 1, 0, true}, {"Switch 2", "switch2", 0, 1, 0, true},
+    {"Cutoff", "cutoff", -1023, 1023, 0, false}, {"Resonance", "resonance", -128, 128, 0, false},
+    {"Element Level", "element_level", -128, 128, 0, false}, {"Coarse Tune", "coarse", -2400, 2400, 0, false},
+    {"Fine Tune", "fine", -100, 100, 0, false}, {"High-Pass Cutoff", "hpf_cutoff", -1023, 1023, 0, false}};
 
 // A float that can be copied (a Patch is copied) and read by one thread while another writes it.
 struct Cell {
@@ -96,6 +109,8 @@ public:
     virtual void kill(uint32_t voice) = 0;                          // free the slot now; no-op if free
     virtual void setVolume(uint32_t voice, double gain) = 0;        // the note's volume expression, linear 0..4
     virtual void setParam(uint32_t context, Param, double value) = 0;
+    // A destination's modulation (kDest0..kDestLast), in its raw steps: added to the parameter's value, never saved
+    virtual void modParam(uint32_t context, Param, double amount) = 0;
     virtual void setPitchBend(int16_t channel, double value) = 0;   // -1..1 of the sound's range
     virtual void setModWheel(int16_t channel, double value) = 0;    // 0..1
     virtual void setSource(int16_t channel, int source, double value) = 0;  // a box source, 0..1: 2 pressure, 3 CC 11, 7 CC 2

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Fuzz through the ABI: random sounds over the full raw range of every element parameter (covered or
-// not) and of the part's (bend range, velocity sensitivity, controller boxes), random regions, notes, controllers (mod
-// wheel, breath, foot, sustain pedal, channel pressure, pitch bend), note volume and chokes, random block sizes, thousands of blocks. The output must stay finite and bounded, and
+// not) and of the part's (bend range, velocity sensitivity, controller boxes, knob values), random regions, notes, controllers (mod
+// wheel, breath, foot, sustain pedal, channel pressure, pitch bend), note volume and chokes, every shell parameter's value
+// (knobs, ribbon, switches, box destinations) and the destinations' modulation, random block sizes, thousands of blocks. The output must stay finite and bounded, and
 // process() must not allocate. (Run on each build: NEON, SSE2, scalar; see docs/cost.md.)
 #include <algorithm>
 #include <cmath>
@@ -27,11 +28,12 @@ std::string randomSound(Rng& r) {
     std::string s = "oscairn-pcm-sound/0\npart bend_up=" + std::to_string(r.in(0, 24)) + " bend_down=" + std::to_string(-r.in(0, 48))
                   + " vel_depth=" + std::to_string(r.in(0, 127)) + " vel_offset=" + std::to_string(r.in(0, 127))
                   + " split_outputs=" + std::to_string(r.in(0, 1));
+    for (int k = 1; k <= 8; ++k) s += " knob" + std::to_string(k) + "=" + std::to_string(r.in(0, 1023));
     // controller boxes: four at random over every part parameter's range, built destinations and sources likelier
-    static const int dsts[6] = {85, 86, 60, 67, 68, 87}, srcs[5] = {0, 1, 3, 4, 7};
+    static const int dsts[6] = {85, 86, 60, 67, 68, 87}, srcs[16] = {0, 1, 3, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
     for (int k = 1; k <= 4; ++k) {
         const std::string b = " box" + std::to_string(k) + "_";
-        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 4)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 5)] : r.in(0, 413))
+        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 15)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 5)] : r.in(0, 413))
            + b + "ratio=" + std::to_string(r.in(-128, 127)) + b + "pol=" + std::to_string(r.in(0, 1)) + b + "bank=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 25))
            + b + "curve=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 31)) + b + "p1=" + std::to_string(r.in(0, 127)) + b + "p2=" + std::to_string(r.in(0, 127));
     }
@@ -80,7 +82,7 @@ TEST(fuzz_random_sounds_and_events) {
             for (int k = 0; k < n; ++k) {
                 const uint32_t t = uint32_t(r.in(0, int(frames) - 1));
                 const int16_t ch = int16_t(r.in(0, 1)), key = int16_t(r.in(0, 127));
-                switch (r.in(0, 8)) {
+                switch (r.in(0, 10)) {
                 case 0: case 1: case 2: ev.push_back(on(t, r.in(1, 1000), ch, key, r.unit())); ++notesStarted; break;
                 case 3: case 4: ev.push_back(off(t, -1, ch, key)); break;
                 case 5: { static const uint8_t ccs[5] = {1, 64, 2, 11, 4};
@@ -88,6 +90,12 @@ TEST(fuzz_random_sounds_and_events) {
                           else ev.push_back(midi(t, uint8_t(0xd0 | ch), uint8_t(r.in(0, 127)), 0)); } break;
                 case 6: ev.push_back(midi(t, uint8_t(0xe0 | ch), uint8_t(r.in(0, 127)), uint8_t(r.in(0, 127)))); break;
                 case 7: ev.push_back(volume(t, -1, ch, key, 4 * r.unit())); break;
+                case 9: { clap_param_info_t info{}; const clap_id id = clap_id(r.in(3, 19));  // a shell value over its range, a little beyond
+                          a.params->get_info(a.p, id, &info);
+                          ev.push_back(param(t, id, info.min_value + (info.max_value - info.min_value) * (1.2 * r.unit() - 0.1), r.in(0, 2) ? ch : -1)); } break;
+                case 10: { clap_param_info_t info{}; const clap_id id = clap_id(r.in(14, 19));  // a destination's modulation, to twice its span
+                           a.params->get_info(a.p, id, &info);
+                           ev.push_back(mod(t, id, info.max_value * (4 * r.unit() - 2), r.in(0, 2) ? ch : -1)); } break;
                 default: ev.push_back(choke(t, -1, ch, key)); break;
                 }
             }

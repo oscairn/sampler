@@ -39,7 +39,7 @@ public:
         Staged& s = staged_[c];
         Entry& e = s.buf[s.back];
         e.sound = p.sound;
-        e.level = p.p[kLevel].get(); e.pan = p.p[kPan].get();
+        for (uint32_t i = 0; i < kParamCount; ++i) e.value[i] = p.p[i].get();
         const double voice = p.sound && p.sound->compiled ? p.sound->compiled->noteCost : 0;
         const double rest = pcm::estimateCost({1, pcm::Interp::Sinc, pcm::Filter::Thru}).rest;
         cost_[c].voice.store(voice * kNanosPerInstruction * 1e-3 * maxBlock_ / 128, std::memory_order_relaxed);
@@ -60,12 +60,16 @@ public:
     void kill(uint32_t v) override { core_->kill(v); }
     void setVolume(uint32_t v, double g) override { core_->setVolume(v, float(g)); }
     void setParam(uint32_t c, Param p, double x) override {
-        if (c >= kContexts) return;
+        if (c >= kContexts || p >= kParamCount) return;
         sync();  // a sound published before this event is installed first, so the event is not undone
-        if (p == kLevel) level_[c] = float(x);
-        else if (p == kPan) pan_[c] = float(x);
-        else return;
-        core_->setGain(c, level_[c], pan_[c]);
+        value_[c][p] = float(x);
+        apply(c, p);
+    }
+    void modParam(uint32_t c, Param p, double a) override {
+        if (c >= kContexts || p < kDest0 || p > kDestLast) return;
+        sync();
+        mod_[c][p - kDest0] = float(a);
+        apply(c, p);
     }
     void setPitchBend(int16_t ch, double x) override { core_->setPitchBend(ch, float(x)); }
     void setModWheel(int16_t ch, double x) override { core_->setModWheel(ch, float(x)); }
@@ -87,7 +91,15 @@ public:
 
 private:
     static constexpr uint32_t kDirty = 4;
-    struct Entry { std::shared_ptr<const Sound> sound; float level = 1, pan = 0; };
+    struct Entry { std::shared_ptr<const Sound> sound; float value[kParamCount] = {}; };
+    // a value (and a destination's modulation) to the core: the level and pan, a box source, a destination's steps
+    void apply(uint32_t c, Param p) {
+        if (p == kLevel || p == kPan) core_->setGain(c, value_[c][kLevel], value_[c][kPan]);
+        else if (p >= kKnob1 && p <= kKnob8) core_->setControl(c, 8 + int(p - kKnob1), value_[c][p]);
+        else if (p == kRibbon) core_->setControl(c, 6, value_[c][p]);
+        else if (p == kSwitch1 || p == kSwitch2) core_->setControl(c, 16 + int(p - kSwitch1), value_[c][p]);
+        else if (p >= kDest0 && p <= kDestLast) core_->setOffset(c, int(p - kDest0), value_[c][p] + mod_[c][p - kDest0]);
+    }
     struct Staged {  // triple buffer: the writer owns `back`, the reader `front`, `middle` is exchanged
         Entry buf[3];
         std::atomic<uint32_t> middle{1};
@@ -102,15 +114,15 @@ private:
             const Entry& e = s.buf[s.front];
             installed_[c] = e.sound && e.sound->compiled && e.sound->compiled->loaded ? e.sound->compiled.get() : nullptr;
             core_->install(c, installed_[c]);
-            level_[c] = e.level; pan_[c] = e.pan;
-            core_->setGain(c, level_[c], pan_[c]);
+            for (uint32_t i = 0; i < kParamCount; ++i) { value_[c][i] = e.value[i]; apply(c, Param(i)); }
         }
     }
     std::unique_ptr<pcm::Core> core_;
     Staged staged_[kContexts];
     const pcm::Compiled* installed_[kContexts] = {};
     struct { std::atomic<double> voice{0}, rest{0}; } cost_[kContexts];
-    float level_[kContexts] = {}, pan_[kContexts] = {};
+    float value_[kContexts][kParamCount] = {};
+    float mod_[kContexts][kDestLast - kDest0 + 1] = {};  // the host's modulation, kept with the context across sounds
     uint32_t maxBlock_ = 128;
     std::mutex write_;  // main-thread writers only
 };

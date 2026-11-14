@@ -12,6 +12,7 @@
 // stores the blob and the base, never a local path.
 #include <oscairn-clap/memory.h>
 #include <oscairn-clap/sound-contexts-plugin.hpp>
+#include <oscairn-clap/ui.h>
 
 #include <algorithm>
 #include <cmath>
@@ -30,8 +31,9 @@
 namespace pcmshell {
 namespace {
 
-constexpr const char* kStateHeader = "oscairn-pcm-state 1";      // the CLAP state: the default sound
-constexpr const char* kSnapshotHeader = "oscairn-pcm-contexts/1"; // the sound-contexts snapshot (one token)
+constexpr const char* kStateHeader = "oscairn-pcm-state 2";      // the CLAP state: the default sound (state 1, with the
+constexpr const char* kStateHeader1 = "oscairn-pcm-state 1";     // first three values only, still reads)
+constexpr const char* kSnapshotHeader = "oscairn-pcm-contexts/2"; // the sound-contexts snapshot (one token)
 constexpr const char* kBlobHeader = "oscairn-pcm-blob/0";         // patch text: a blob in base64
 constexpr size_t kMaxStateBytes = 1 << 22;  // eight sounds' blobs in base64
 constexpr uint32_t kMaxDeviceVoices = kVoices, kMaxDeviceVoicesPerSound = kVoices;
@@ -364,6 +366,12 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
     }
     void applyParam(const clap_event_header_t* h) {
+        if (h->type == CLAP_EVENT_PARAM_MOD) {  // a destination's modulation, raw steps; not saved, not shown as its value
+            const auto* e = reinterpret_cast<const clap_event_param_mod_t*>(h);
+            if (e->param_id < kDest0 || e->param_id > kDestLast || !std::isfinite(e->amount) || e->note_id >= 0 || e->key >= 0) return;  // global only
+            forTargets(e->channel, [&](uint32_t slot) { core->modParam(slot, Param(e->param_id), e->amount); });
+            return;
+        }
         if (h->type != CLAP_EVENT_PARAM_VALUE) return;
         const auto* e = reinterpret_cast<const clap_event_param_value_t*>(h);
         if (e->param_id >= kParamCount || !std::isfinite(e->value)) return;
@@ -397,9 +405,15 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         else out << ' ' << std::quoted(p.sound->library) << ' ' << std::quoted(p.sound->path) << ' ' << base64(p.sound->blob);
         return bool(out);
     }
-    bool readPatch(std::istream& in, Patch& p) {
+    // The knobs a patch does not set start at its sound's stored values.
+    static void knobsFromSound(Patch& p, const bool* given) {
+        for (int k = 0; k < 8; ++k)
+            if (!given[kKnob1 + k]) p.p[kKnob1 + k].set(p.sound && p.sound->data ? float(p.sound->data->part[pcm::PartKnob1 + k]) / 1023.f : float(kKnobDefault));
+    }
+    bool readPatch(std::istream& in, Patch& p, uint32_t count = kParamCount) {  // count: the values a state 1 holds (3)
         double x[kParamCount];
-        for (uint32_t i = 0; i < kParamCount; ++i) if (!(in >> x[i]) || !validValue(Param(i), x[i])) return false;
+        for (uint32_t i = 0; i < kParamCount; ++i) x[i] = kParams[i].def;
+        for (uint32_t i = 0; i < count; ++i) if (!(in >> x[i]) || !validValue(Param(i), x[i])) return false;
         std::string library, path, b64;
         if (!(in >> std::quoted(library) >> std::quoted(path) >> b64)) return false;
         std::shared_ptr<const Sound> sound;
@@ -416,6 +430,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
         for (uint32_t i = 0; i < kParamCount; ++i) p.p[i].set(clampParam(Param(i), x[i]));
         p.sound = sound;
+        bool given[kParamCount];
+        for (uint32_t i = 0; i < kParamCount; ++i) given[i] = i < count;
+        knobsFromSound(p, given);
         return true;
     }
     void loadAll() { for (uint32_t i = 0; i < kContexts; ++i) if (contexts[i].prepared) core->loadPatch(i, contexts[i].patch); }
@@ -450,9 +467,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
         std::istringstream in(data); in.imbue(std::locale::classic());
         std::string line;
-        if (!std::getline(in, line) || line != kStateHeader) return false;
+        if (!std::getline(in, line) || (line != kStateHeader && line != kStateHeader1)) return false;
         Patch patch;
-        if (!s.readPatch(in, patch)) return false;
+        if (!s.readPatch(in, patch, line == kStateHeader ? kParamCount : kKnob1)) return false;
         in >> std::ws;
         if (!in.eof()) return false;
         for (uint32_t i = 0; i < kParamCount; ++i) {
@@ -468,11 +485,12 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     // Patch text, line by line: an optional "shell" line of the shell's values (level=, pan=,
     // polyphony=), then the sound: its text form (core/sound.cpp) or "oscairn-pcm-blob/0 <base64>".
     // Sample references resolve from `base` through the host's oscairn.assets.
+    bool givenShell[kParamCount] = {};  // parsePatchText's: the values its shell line named
     std::shared_ptr<const Sound> parsePatchText(const char* text, const oscairn_asset_ref_t* base, Patch& patch, std::string& error) {
         std::istringstream in(text); in.imbue(std::locale::classic());
         std::string line, sound;
         int n = 0, shellLine = 0;
-        static const char* const names[] = {"level", "pan", "polyphony"};
+        bool given[kParamCount] = {};
         while (std::getline(in, line)) {
             ++n;
             std::istringstream ls(line); std::string first;
@@ -482,14 +500,16 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             while (ls >> tok) {
                 const auto eq = tok.find('=');
                 uint32_t id = kParamCount;
-                for (uint32_t i = 0; i < kParamCount; ++i) if (tok.compare(0, eq, names[i]) == 0 && eq == std::strlen(names[i])) id = i;
+                for (uint32_t i = 0; i < kParamCount; ++i) if (tok.compare(0, eq, kParams[i].key) == 0 && eq == std::strlen(kParams[i].key)) id = i;
                 if (id == kParamCount || eq == std::string::npos) { error = "line " + std::to_string(n) + ": unknown or malformed '" + tok + "'"; return nullptr; }
                 char* end = nullptr; const double x = std::strtod(tok.c_str() + eq + 1, &end);
                 if (*end || end == tok.c_str() + eq + 1 || !validValue(Param(id), x)) { error = "line " + std::to_string(n) + ": bad value in '" + tok + "'"; return nullptr; }
                 patch.p[id].set(clampParam(Param(id), x));
+                given[id] = true;
             }
         }
         (void)shellLine;
+        std::copy(given, given + kParamCount, givenShell);
         if (sound.find_first_not_of(" \t\r\n") == std::string::npos) return nullptr;  // no sound: plays nothing
         std::vector<uint8_t> blob;
         std::istringstream ss(sound); std::string head, b64;
@@ -513,14 +533,18 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!name || std::strlen(name) > 63) return fail("invalid sound name");
         auto& s = self(p);
         Patch patch; std::string error;
+        bool given[kParamCount] = {};
         if (text) {
             patch.sound = s.parsePatchText(text, base, patch, error);
             if (!error.empty()) return fail(error);
+            std::copy(s.givenShell, s.givenShell + kParamCount, given);
         }
         for (uint32_t i = 0; i < count; ++i) {
             if (!values || values[i].id >= kParamCount || !validValue(Param(values[i].id), values[i].value)) return fail("invalid parameter");
             patch.p[values[i].id].set(clampParam(Param(values[i].id), values[i].value));
+            given[values[i].id] = true;
         }
+        knobsFromSound(patch, given);
         auto* c = s.freeSlot();
         if (!c) return fail("no free sound context");
         c->patch = patch;
@@ -573,7 +597,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (i >= kParamCount) return false;
         *info = {};
         info->id = i;
-        info->flags = CLAP_PARAM_IS_AUTOMATABLE | (kParams[i].stepped ? CLAP_PARAM_IS_STEPPED : 0);
+        info->flags = CLAP_PARAM_IS_AUTOMATABLE | (kParams[i].stepped ? CLAP_PARAM_IS_STEPPED : 0) | (i >= kDest0 ? CLAP_PARAM_IS_MODULATABLE : 0);
         std::snprintf(info->name, sizeof info->name, "%s", kParams[i].name);
         info->min_value = kParams[i].min; info->max_value = kParams[i].max; info->default_value = kParams[i].def;
         return true;
@@ -596,6 +620,27 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static void paramFlush(const clap_plugin_t* p, const clap_input_events_t* in, const clap_output_events_t*) {
         auto& s = self(p);
         for (uint32_t i = 0, n = in->size(in); i < n; ++i) s.applyParam(in->get(in, i));
+    }
+
+    // oscairn.ui: every parameter has a hint. Roles for the role banks (level, pan, cutoff, resonance, element level 1);
+    // the knobs are one group, the ribbon and the switches another (the switches as switches), the tunings and the
+    // high-pass cutoff a third.
+    static bool paramHint(const clap_plugin_t*, clap_id id, oscairn_param_hint_t* h) {
+        if (id >= kParamCount || !h) return false;
+        *h = {};
+        h->range_high = CLAP_INVALID_ID;
+        switch (id) {
+        case kLevel: h->role = OSCAIRN_ROLE_LEVEL; h->priority = 1; break;
+        case kPan: h->role = OSCAIRN_ROLE_PAN; break;
+        case kSwitch1: case kSwitch2: h->widget = OSCAIRN_WIDGET_SWITCH; h->group = 2; break;
+        case kRibbon: h->group = 2; break;
+        case kDestCutoff: h->role = OSCAIRN_ROLE_CUTOFF; h->priority = 2; break;
+        case kDestResonance: h->role = OSCAIRN_ROLE_RESONANCE; h->priority = 3; break;
+        case kDestLevel: h->role = OSCAIRN_ROLE_LEVEL_1; break;
+        case kDestCoarse: case kDestFine: case kDestHpf: h->group = 3; break;
+        default: if (id >= kKnob1 && id <= kKnob8) h->group = 1; break;
+        }
+        return true;
     }
 
     static bool memoryEstimate(const clap_plugin_t* p, double rate, uint32_t frames, oscairn_memory_t* out) {
@@ -637,6 +682,7 @@ const oscairn_plugin_sound_contexts_t kSoundContexts = {Plugin::capacity, Plugin
 const oscairn_plugin_voice_budget_t kVoiceBudget = {Plugin::honorsVolume, Plugin::setLimits, Plugin::activeVoices, Plugin::voiceNotes};
 const oscairn_plugin_memory_t kMemory = {Plugin::memoryEstimate, Plugin::memoryCurrent};
 const oscairn_plugin_asset_dependencies_t kDependencies = {Plugin::dependencyCount, Plugin::dependencyGet, nullptr};
+const oscairn_plugin_ui_t kUi = {Plugin::paramHint, nullptr, nullptr};
 
 const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &kAudioPorts;
@@ -646,6 +692,7 @@ const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, OSCAIRN_EXT_SOUND_CONTEXTS)) return &kSoundContexts;
     if (!std::strcmp(id, OSCAIRN_EXT_VOICE_BUDGET)) return &kVoiceBudget;
     if (!std::strcmp(id, OSCAIRN_EXT_MEMORY)) return &kMemory;
+    if (!std::strcmp(id, OSCAIRN_EXT_UI) || !std::strcmp(id, OSCAIRN_EXT_UI_DRAFT_4)) return &kUi;
     if (!std::strcmp(id, OSCAIRN_EXT_ASSET_DEPENDENCIES) || !std::strcmp(id, OSCAIRN_EXT_ASSET_DEPENDENCIES_DRAFT_1)) return &kDependencies;
     return nullptr;
 }

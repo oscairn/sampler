@@ -18,7 +18,8 @@ The shell does CLAP, parameters, state, sample assets (`oscairn.assets`, listed 
 `oscairn.asset-dependencies`) and the Oscairn instrument contract (`oscairn.sound-contexts`,
 `oscairn.voice-budget`, `oscairn.memory`), using the Oscairn SDK's helpers.
 
-A sound's patch text (sound contexts' `prepare`): an optional `shell level= pan= polyphony=` line,
+A sound's patch text (sound contexts' `prepare`): an optional `shell` line of the shell's values by their
+keys (`level= pan= polyphony= knob1= ... cutoff=`; `docs/parameters.md` lists every parameter and its key),
 then the sound in its text form or as `oscairn-pcm-blob/0 <base64>`; sample references are paths
 relative to the base asset reference `prepare` is given, resolved through the host.
 
