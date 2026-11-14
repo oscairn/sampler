@@ -265,7 +265,14 @@ Measured on the way (recordings `f_*`, `h_*`, `i_*`, `j_*`, `k_*`, `l_*`):
   at pedal 64 the index in between in proportion (40 + 63 x 64 / 127 = 72: 60.6 dB/s, table 60.5); pedal
   up: the element's own release; switch off: the pedal holds the note. On the piano, whose envelope is
   still in its decays at the key-up, the note plays on under the pedal exactly as held: the engine
-  starts the half damper's release only at the sustain (inferred from these two cases).
+  starts the half damper's release only at the sustain. Round 3 takes `w_*` (run pcm-round3-2026-11-14) confirm
+  it and add: a sine still decaying toward a sustain of 80 at the key-up decays on under the pedal as held; half
+  pedal before the key-up releases at the index in between (60 dB/s at 64); the pedal moved during the release
+  (127, 64, 127, 32, 0) changes the rate each time; the pedal pressed only after the key-up (during the
+  element's own release) slows the release to the half damper time. A release entered again keeps the new
+  index's rate from where it stands (4.25 dB/s from -35 dB at time 103; the table 4.07), it does not take the
+  full-scale segment's time. Engine against reference on the four takes: every rate within 0.1 dB per 0.2 s,
+  the transitions within the recorder's timing (50 ms).
 - Filter gain 200-255 against the fork's law (relative to 230): within 0.44 dB (245: +5.66 measured,
   +5.22 the law).
 
@@ -421,7 +428,7 @@ shelf at raw 0-511 (131-241 every 8), gains 32-96, both bands together, and Q wi
 | D10 | Part Velocity Sensitivity Depth / Offset | - | resolved: measured and built (`vel_depth`, `vel_offset`; (h)); the converter must write them |
 | D11 | Probe sound C, the bass (two layers an octave apart) | - | resolved: the converter's (an element's sample is picked by key plus coarse tune, (g)); the first 0.5 s 0.6-1.6 dB low above 2 kHz, open |
 | D12 | The release after the sustain pedal goes up | - | resolved: key-off elements start at the pedal's release (g) |
-| D13 | A half damper element under the pedal releases only from its sustain | inferred from two cases (g) | unverified beyond them |
+| D13 | A half damper element under the pedal releases only from its sustain | - | resolved: six cases measured (g), including the pedal pressed after the key-up and moved during the release |
 | D14 | Key-off elements release 2.0 s after their start whatever their settings | the fork's K42, measured once | as the fork |
 | D15 | Cutoff velocity sensitivity where the moved cutoff index falls below 0 | notes 40-140 dB below the loudest differ by up to tens of dB; every note within 40 dB within 2.1 dB (j) | resolved above index 0 (the fork's law verified, j); below it not modeled |
 | D16 | Elements 2-8 with the filter thru | - | resolved: 5.625 dB below element 1 by `element_number` (i); the converter must write the number |

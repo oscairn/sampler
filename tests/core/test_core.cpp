@@ -505,7 +505,7 @@ static void halfDamper() {
         return 20 * std::log10(x[x.size() - 2] / x[2 * 128]) / ((n - 129) / 44100.0);
     };
     struct { float pedal; bool up; int index; double tol; } cases[] = {{1.0f, true, 103, 0.05}, {64.0f / 127.0f, true, 72, 0.3}, {0.0f, false, 40, 15.0}};
-    for (auto& c : cases) {  // each from the full level (a re-entered release takes the full-scale time)
+    for (auto& c : cases) {  // each from the full level
         r.core->setSustain(0, c.pedal);
         r.core->noteOn(0, 0, 0, 60, 1.0f);
         r.run(4096);
@@ -524,6 +524,15 @@ static void halfDamper() {
         const auto a = d.run(44100), b = h.run(44100);
         CHECK(a == b);
     }
+    // the pedal pressed only after the key went up: the release slows to the half damper time (measured)
+    r.core->setSustain(0, 0.0f);
+    r.core->noteOn(0, 0, 0, 60, 1.0f);
+    r.run(4096);
+    r.core->noteOff(0);
+    r.run(256);
+    r.core->setSustain(0, 1.0f);
+    NEAR(slope(22050), -60.0 / laws::releaseSecondsPer60dB(103), 0.05);
+    r.core->kill(0);
     // the pedal let go: the release goes on at the element's own index
     r.core->setSustain(0, 1.0f);
     r.core->noteOn(0, 0, 0, 60, 1.0f);

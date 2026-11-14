@@ -175,9 +175,12 @@ void ampEnter(AmpEnv& e, AmpEnv::Stage stage, double sr) {
         const double per60 = release ? (e.releaseOverride > 0.0 ? e.releaseOverride : laws::releaseSecondsPer60dB(index))
                                      : laws::decaySecondsPer60dB(index);
         const double floor = release ? laws::kReleaseEndDb : laws::kFloorDb;  // the full-scale segment's span
-        const double samples = std::max(1.0, per60 * (-floor / 60.0) * sr);
         e.target = release ? floor : levelDb(stage == AmpEnv::Decay1 ? e.decay1Level : e.decay2Level);
         e.db = toDb(e.gain);
+        // a segment takes the full-scale segment's time; a release entered again keeps the index's rate from
+        // where it stands (measured: a half damper element's release when the pedal moves, docs/acceptance.md (g))
+        const double span = release && e.again ? std::max(1e-9, e.db - floor) : -floor;
+        const double samples = std::max(1.0, per60 * (span / 60.0) * sr);
         if (e.gain <= 0.0 && e.target > e.db) e.gain = std::pow(10.0, e.db / 20.0);  // from level 0 a rise starts at the floor
         e.step = (e.target - e.db) / samples;
         e.ratio = std::pow(10.0, e.step / 20.0);
@@ -903,6 +906,7 @@ void Core::releaseLayer(Pool& p, uint32_t i, int32_t index) {
     VoiceScalar& v = p.v[i];
     ampAdvance(v.amp, clock_ - 1, sr_);
     if (v.amp.stage != AmpEnv::Done && v.amp.stage != AmpEnv::Fade) {
+        v.amp.again = v.amp.stage == AmpEnv::Release;
         v.amp.releaseTime = index;
         ampEnter(v.amp, AmpEnv::Release, sr_);
     }
@@ -986,7 +990,10 @@ void Core::setSustain(int ch, float x) {
     pedal_[ch] = 127.0f * std::max(0.0f, std::min(1.0f, x));
     for (auto& p : pool_)
         for (uint32_t i = 0; i < p.n; ++i)
-            if (p.v[i].channel == ch && p.v[i].pedalRelease && p.v[i].releasing) releaseLayer(p, i, pedalIndex(p.v[i], pedal_[ch]));
+            // a half damper element in its release follows the pedal, also when the pedal comes down only after
+            // the key went up (measured: docs/acceptance.md (g))
+            if (p.v[i].channel == ch && p.v[i].halfDamper && p.v[i].releasing && p.v[i].amp.stage == AmpEnv::Release)
+                releaseLayer(p, i, pedalIndex(p.v[i], pedal_[ch]));
 }
 
 void Core::choke(uint32_t voice, uint32_t frames) {

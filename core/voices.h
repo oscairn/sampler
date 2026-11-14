@@ -33,6 +33,7 @@ struct AmpEnv {
     double ratio = 1, ratio16 = 1;  // dB segments: gain factor per sample and per kSub samples
     double target = 0;        // amplitude (ramp) or dB
     double releaseOverride = 0;  // seconds per 60 dB, 0 for the index's time
+    bool again = false;       // a release entered again (a new index while releasing): it keeps the index's rate
     int64_t last = -1;        // the engine clock of the last sample `gain` includes
     int32_t attackTime = 0, decay1Time = 0, decay2Time = 0, releaseTime = 0;  // shifted indices
     int32_t initialLevel = 0, attackLevel = 127, decay1Level = 127, decay2Level = 127;
