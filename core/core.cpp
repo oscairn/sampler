@@ -122,11 +122,13 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     Compiled::Lfo& lf = out.lfo;
     lf = Compiled::Lfo{};
     const float hz = d.part[PartLfoTempoSync] ? 0.0f : laws::partLfoHz(d.part[PartLfoSpeed]);
+    for (uint32_t b = 0; b < out.boxes; ++b) lf.box1 |= out.box[b].dest == laws::BoxLfoDepth1;
     for (int k = 0; k < 3; ++k) {
         const int dest = laws::lfoDest(d.part[PartLfoDst1 + 2 * k]), depth = d.part[PartLfoDepth1 + 2 * k];
-        if (dest < 0 || depth == 0 || d.part[PartLfoTempoSync]) continue;
+        if (dest < 0 || (depth == 0 && !(k == 0 && lf.box1)) || d.part[PartLfoTempoSync]) continue;
         lf.slot[lf.slots] = uint8_t(k); lf.dest[lf.slots] = uint8_t(dest); lf.depth[lf.slots] = laws::partLfoDepth(dest, depth); ++lf.slots;
     }
+    lf.depth1 = uint8_t(d.part[PartLfoDepth1]);
     lf.wave = uint8_t(d.part[PartLfoWave]); lf.reset = uint8_t(d.part[PartLfoKeyOnReset]);
     static const uint8_t kCycles[7] = {2, 3, 4, 6, 8, 12, 16};
     lf.cycle = kCycles[d.part[PartLfoUserCycle]]; lf.slope = uint8_t(d.part[PartLfoUserSlope]);
@@ -1310,7 +1312,13 @@ PV_NOINLINE float Core::partLfo(Pool& p, uint32_t i) {
     const float env = laws::partLfoEnvelope(float(t), lf.delay, lf.fadeIn, lf.hold, lf.fadeOut);
     const float w = env * laws::partLfoWave(lf.wave, double(lf.phase) + t * double(lf.hz), lf.step, lf.cycle, lf.slope, uint32_t(start) * 2654435761u + v.sound);
     float x[laws::kLfoDests] = {};
-    for (int j = 0; j < lf.slots; ++j) if (v.lfoSlots >> j & 1) x[lf.dest[j]] += lf.depth[j] * w;
+    for (int j = 0; j < lf.slots; ++j) {
+        if (!(v.lfoSlots >> j & 1)) continue;
+        float amp = lf.depth[j];
+        if (lf.box1 && lf.slot[j] == 0)  // slot 1's depth moved by its boxes (the element's switches): raw steps, within 0-127
+            amp = laws::partLfoDepth(lf.dest[j], std::max(0, std::min(127, lf.depth1 + noteOnSteps(*sound_[v.sound], v.element, v.sound, v.channel, laws::BoxLfoDepth1))));
+        x[lf.dest[j]] += amp * w;
+    }
     auto at = [&](int k, float lfo, float hi) { return std::max(0.0f, std::min(hi, float(v.base[k] + v.moved[k]) + lfo)); };
     if (p.plan.filter != Filter::Thru && (v.plfo & (1 << laws::LfoCutoff | 1 << laws::LfoResonance))) {
         p.f[C0][i] = laws::cutoffCents(at(laws::BoxCutoff, x[laws::LfoCutoff], 1023)) + v.keyCents;

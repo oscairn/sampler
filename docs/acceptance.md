@@ -551,6 +551,7 @@ them.
 | envelope | delay, fade in (dB line from -26 dB), hold, fade out (dB line to -26 dB): 0.017476 x 2^(raw / 13.635) s | the same | rms 0.3-1.5 dB of the swing | 15 takes |
 | user wave | steps x A / 64 (+63 as +64); 2, 3, 4, 6, 8, 12, 16 steps; slope up / down / both: a straight line to the next step where it rises / falls / always, else held | the same | rms 0.03 cents (6 steps), 0.7-2.3 (slopes) | 10 takes |
 | key-on reset | off: one oscillator, started by the first note, not reset later; each on: every note its own from its start (a second note's oscillator from its own start while the first runs on); first on: one, reset at a note while no other key is down | the same | phases within the tracker's resolution | 3 takes, two notes tracked apart |
+| box on slot 1's depth (57) | trunc(output x 128 / 8192) depth steps, within 0-127 | the same | every step the law's depth | 45 wheel steps |
 | slots | slots 2 and 3 as slot 1; two slots on the pitch add (64 + 64: 224.5 cents; 32 + 96: 555.6 against 554.5); the element's switch for a slot keeps it out | the same | within 1.3 cents | 5 takes |
 | element ratio, phase offset | no effect on the pitch at ratios 0-96 (slots 1, 2) or offsets 1-5 (one element) | no effect; other destinations' ratios and offsets between elements reported | - | 9 takes |
 | level | the low half of a square: depth level steps down from level 127 (the top half held at 127) | levelGain(127 - depth) | within 0.17 dB, rms 0.07 | 15 depths |
@@ -566,6 +567,11 @@ for ever; they follow each other (delay, fade in, hold, fade out: `m_dfh`). Engi
 
 Not built (reported): tempo sync, the random speed, the resonance destination (its takes clipped), destinations other than
 the four.
+
+A box on slot 1's depth (destination 57; batch N, `n_b57_*`: the wheel stepped 0-127 through ratios +32, +63, +127 at depth
+0, +63 at depth 32 and -32 at depth 96, a square on the pitch): the depth moves by trunc(output x 128 / 8192) raw steps
+within 0-127, read continuously; every one of 45 wheel steps plays the law's depth (swings within 0.5 %, and 0.1 cent at
+the small ones). Slots 2 and 3's depth destinations (58, 59) are not measured (reported).
 
 - Engine: `plfo_*` (part), `plfo_box_sw*`, `plfo_ratio*`, `plfo_phase_offset` (element); core test `part_lfo` (the pitch
   square's plateaus, the slot switch, level and pan plateaus, each-on and first-on phases); the fuzz sets every part

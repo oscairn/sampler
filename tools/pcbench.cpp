@@ -93,6 +93,7 @@ struct Host {
         return true;
     }
     void apply(const Ev& e) {
+        if (e.key == -2) { core->setModWheel(0, float(e.vel) / 127.f); return; }  // the mod wheel (CC 1)
         if (e.key < 0) {  // the sustain pedal (CC 64), as the shell: notes released under it wait for it
             pedal = e.vel;
             core->setSustain(0, float(e.vel) / 127.f);
@@ -158,6 +159,7 @@ static int render(int argc, char** argv) {
         if (sscanf(argv[i], "on@%lf:%d:%d", &t, &k, &v) == 3) evs.push_back({long(std::lround(t * sr)), true, k, v});
         else if (sscanf(argv[i], "off@%lf:%d", &t, &k) == 2) evs.push_back({long(std::lround(t * sr)), false, k, 0});
         else if (sscanf(argv[i], "cc@%lf:64:%d", &t, &v) == 2) evs.push_back({long(std::lround(t * sr)), false, -1, v});
+        else if (sscanf(argv[i], "cc@%lf:1:%d", &t, &v) == 2) evs.push_back({long(std::lround(t * sr)), false, -2, v});
         else { fprintf(stderr, "bad event %s\n", argv[i]); return 2; }
     }
     std::stable_sort(evs.begin(), evs.end(), [](const Ev& a, const Ev& b) { return a.frame < b.frame; });

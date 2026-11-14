@@ -395,10 +395,11 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
     }
     // the part LFO: built for the level, pitch, cutoff and pan destinations (laws::lfoDest), every wave, the speeds, start
     // phases, key-on resets, delay, fade in, hold, fade out and the slots' element switches; not its tempo sync or random speed
-    bool lfo = false;
+    bool lfo = false, box57 = false;  // (a box on slot 1's depth, destination 57, makes the slot move)
+    for (int k = 0; k < 16; ++k) box57 |= d.part[PartBox1Dst + 8 * k] == 57 && d.part[PartBox1Ratio + 8 * k] != 0;
     for (int k = 0; k < 3; ++k) {
         const int dst = d.part[PartLfoDst1 + 2 * k];
-        if (!d.part[PartLfoDepth1 + 2 * k]) continue;
+        if (!d.part[PartLfoDepth1 + 2 * k] && !(k == 0 && box57)) continue;
         lfo = true;
         if (laws::lfoDest(dst) < 0) add(0, int16_t(PartLfoDst1 + 2 * k), "a part LFO destination this engine does not move yet", true);
         for (uint32_t e = 0; e < d.elements; ++e)

@@ -329,7 +329,9 @@ float boxCurveAt(int curve, float c) noexcept
 // the amplitude envelope's attack and release 128 index steps (a box from knob 1, one note a take: release slopes and
 // attack times equal to the static index's at 12 of 14 settings, the other two analysis failures on the fastest releases;
 // the release read at the note-off (the wheel moved during the hold), the attack at note-on (inferred))
-const int16_t kBoxSpan[kBoxDests] = { 1024, 128, 128, 2400, 100, 1024, 64, 8192, 8192, 128, 128 };
+// the part LFO's slot 1 depth 128 depth steps (the wheel through boxes of +32, +63, +127 and -32 at depths 0, 32 and 96:
+// each box truncated toward zero, 45 wheel steps within 0.1 depth step of the law; round 6, batch N)
+const int16_t kBoxSpan[kBoxDests] = { 1024, 128, 128, 2400, 100, 1024, 64, 8192, 8192, 128, 128, 128 };
 
 int boxDest(int ref) noexcept
 {
@@ -345,6 +347,7 @@ int boxDest(int ref) noexcept
     case 65: return BoxElfoAmp;
     case 75: return BoxAegAttack;
     case 78: return BoxAegRelease;
+    case 57: return BoxLfoDepth1;
     default: return -1;
     }
 }

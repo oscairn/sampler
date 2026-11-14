@@ -886,6 +886,16 @@ static void partLfo() {
             if (delay) NEAR(sineCents(o, int(0.47 * 44100), int(0.60 * 44100), 441, 44100), -112.0, 0.5);  // past it: from the start's phase
         }
     }
+    {   // a box on slot 1's depth (destination 57): the wheel at 32 through ratio +127 makes depth 64 of depth 0
+        const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=0 box1_src=1 box1_dst=57 box1_ratio=127", "");
+        Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
+        r.core->setGain(0, 1, 0);
+        r.core->setModWheel(0, 32 / 127.f);
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r.run(44100);
+        const int lag = int(laws::kPartLfoLag * 44100);
+        NEAR(sineCents(o, lag + int(0.6 * per), lag + int(0.9 * per), 441, 44100), -112.0, 0.5);
+    }
     for (int reset : {1, 2}) {  // a second note half a cycle later: its own phase (each on) or the first note's (first on)
         const std::string t = text("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64 plfo_keyon_reset=" + std::to_string(reset), "");
         Rig r(t.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);

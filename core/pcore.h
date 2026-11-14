@@ -119,7 +119,9 @@ struct Compiled {
     struct Lfo {
         uint8_t slots = 0;            // slots with a depth on a built destination (0: no part LFO)
         uint8_t slot[3], dest[3];     // the slot (0-2) and its destination (laws::LfoDest)
-        float depth[3];               // the slot's amplitude in its destination's unit at ratio 127
+        float depth[3];               // the slot's amplitude in its destination's unit
+        bool box1 = false;            // a box moves slot 1's depth (destination 57): its amplitude at every control step
+        uint8_t depth1 = 0;           // slot 1's raw depth
         uint8_t wave = 0, reset = 2, cycle = 16, slope = 0;
         float hz = 0, phase = 0;      // cycles a second; the start phase in cycles
         float delay = 0, fadeIn = 0, hold = -1, fadeOut = 0;  // the envelope's seconds (hold < 0: for ever)
@@ -213,7 +215,7 @@ private:
     uint16_t nextId_ = 1;
     float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {}, pressure_[16] = {}, foot_[16] = {}, breath_[16] = {};
     float boxSourceOf(uint32_t sound, int channel, int src) const;
-    static constexpr int kControls = 18, kOffsets = 11;
+    static constexpr int kControls = 18, kOffsets = 12;
     float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
     bool offsetOn_[kMaxSounds] = {};
