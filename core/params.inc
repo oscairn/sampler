@@ -133,6 +133,9 @@ X(BoxSw15, "box_sw15", 0, 1, 1)
 X(BoxSw16, "box_sw16", 0, 1, 1)
 // the high-pass cutoff's key follow (types 4 and 5): raw, 64 none
 X(FilHpfKeyFollow, "fil_hpf_keyfollow", 0, 127, 64)
+// pitch key follow: cents a key about the centre note (raw, 96 = 100 cents, 64 = none) and the centre note
+X(PitchKeyFollow, "pitch_keyfollow", 0, 127, 96)
+X(PitchKeyFollowCenter, "pitch_keyfollow_center", 0, 127, 60)
 // filter cutoff scaling: four break points (keys) and their offsets (raw - 128 as displayed)
 X(FilScalingKey1, "fil_scaling_key1", 0, 127, 36)
 X(FilScalingKey2, "fil_scaling_key2", 0, 127, 48)

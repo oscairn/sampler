@@ -75,8 +75,8 @@ starting with "no" are reported at every value but the default (any other start:
 | Fine Tune | −64 – +63 | yes: folded into the region's tune by the converter: s x 100 / 64 cents, truncated toward zero (whole cents) | measured here (round 3, takes `m_fine*`, `r_fine_*`: every step, rms 0.047 cents, at most 0.18; rounding or flooring miss by a cent on half the steps) | pads (fine 0) |
 | Pitch Velocity Sensitivity | −64 – +63 | no (100 cents a key) | - | - |
 | Random Pitch Depth | 0 – 127 | no (100 cents a key) | - | - |
-| Pitch Key Follow Sensitivity | −200% – +200% | no (100 cents a key) | - | - |
-| Pitch Key Follow Sensitivity Center Note | C-2 – G8 | no (100 cents a key) | - | - |
+| Pitch Key Follow Sensitivity | −200% – +200% | yes: `pitch_keyfollow`, `pitch_keyfollow_center`: the centre note at its pitch, every key from it at the measured cents a key | measured here at every raw value (acceptance o): whole cents within 0.013 | core test `pitch_key_follow` |
+| Pitch Key Follow Sensitivity Center Note | C-2 – G8 | yes: `pitch_keyfollow_center` (with `pitch_keyfollow`) | measured here (acceptance o): centres 48, 60, 72 within 1 cent | core test `pitch_key_follow` |
 | Fine Tune Key Follow Scaling Sensitivity | −64 – +63 | no (100 cents a key) | - | - |
 | PEG Hold Time | 0 – 127 | yes: `pitcheg_*`, read once a control step, the pitch ramped across it | K11-K13 | pads (levels neutral); moving pitch: core test `moving_pitch_envelope` |
 | PEG Attack Time | 0 – 127 | yes: `pitcheg_*`, read once a control step, the pitch ramped across it | K11-K13 | pads (levels neutral); moving pitch: core test `moving_pitch_envelope` |

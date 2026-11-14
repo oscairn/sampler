@@ -59,6 +59,9 @@ float elfoAmpDepthDb(float o) noexcept;
 // Index steps added to the cutoff at a key: the offset at the key (linear between the break points, flat beyond) x 3.125.
 float cutoffScalingSteps(const int16_t* keys, const int16_t* offsets, int key) noexcept;
 
+// ---- pitch key follow ----
+float pitchKeyFollowCents(int raw) noexcept;  // cents a key at a raw sensitivity (96: 100, 64: 0)
+
 // ---- high-pass key follow ----
 float hpfKeyCents(int keyFollow, int key) noexcept;  // cents the high-pass cutoff moves at a key
 

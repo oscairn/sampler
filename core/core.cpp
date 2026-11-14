@@ -823,7 +823,10 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     v.loop = r.loop != 0; v.loopStart = r.loopStart; v.loopEnd = r.loopEnd;
     v.cycEnd = v.loop ? v.loopEnd : (int64_t(1) << 62); v.shift = 0;
     // pitch: the fork's float arithmetic (keytrack 100 cents, the region's tune and transpose)
-    const float cents = 100.0f * (float(key) - float(r.root)) + float(r.tune) / 100.0f + 100.0f * float(r.transpose);
+    // (pitch key follow: the centre note at its pitch, every key from it at the measured cents a key)
+    const float pitchKey = e[PitchKeyFollow] == 96 ? 100.0f * (float(key) - float(r.root))
+        : 100.0f * float(e[PitchKeyFollowCenter] - r.root) + laws::pitchKeyFollowCents(e[PitchKeyFollow]) * float(key - e[PitchKeyFollowCenter]);
+    const float cents = pitchKey + float(r.tune) / 100.0f + 100.0f * float(r.transpose);
     const float ratio = std::pow(2.0f, cents / 1200.0f) * float(double(sv.rate) / sr_);
     v.baseStep = std::min<double>(ratio, kMaxStep);
     p.pos[i] = 0;

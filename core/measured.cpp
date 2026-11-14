@@ -200,6 +200,24 @@ float cutoffScalingSteps(const int16_t* k, const int16_t* o, int key) noexcept
     return 3.125f * off;
 }
 
+// Measured at every raw value (round 5, batches I and J: a sine an octave below and above centre 60, cents a key from the
+// pitches): whole cents within 0.013, up and down alike within 0.022; the centre note keeps its pitch (also checked at
+// centres 48 and 72, keys 36-84, within 1 cent at 3,840 cents).
+float pitchKeyFollowCents(int raw) noexcept
+{
+    static const int16_t t[128] = {
+        -200, -199, -198, -197, -196, -195, -194, -193, -192, -191, -190, -185, -180, -175, -170, -165,
+        -160, -155, -150, -145, -140, -135, -130, -125, -120, -115, -110, -105, -104, -103, -102, -101,
+        -100, -99, -98, -97, -96, -95, -90, -85, -80, -75, -70, -65, -60, -55, -50, -45,
+        -40, -35, -30, -25, -20, -15, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1,
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35,
+        40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 96, 97, 98, 99,
+        100, 101, 102, 103, 104, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155,
+        160, 165, 170, 175, 180, 185, 190, 192, 193, 194, 195, 196, 197, 198, 199, 200,
+    };
+    return float(t[raw < 0 ? 0 : raw > 127 ? 127 : raw]);
+}
+
 float hpfKeyCents(int kf, int key) noexcept
 {
     // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,

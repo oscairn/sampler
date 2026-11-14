@@ -507,7 +507,7 @@ note against the same note at key follow 64, the reference against the engine's 
 - Engine: `fil_hpf_keyfollow`; core test `filter_types_4_5` (key follow 0 at key 84 lets a 110 Hz tone through a
   440 Hz high-pass; without the law it falls 24 dB).
 
-## (o) Filter cutoff scaling against the reference
+## (o) Filter cutoff scaling and pitch key follow against the reference
 
 Cutoff scaling (`a_cs_*`, run pcm-round5-2026-11-14): white noise through type 0 at cutoff 512 (key follow 0), break
 points and offsets set three ways (all offsets +64; -64 / +64 / -32 / +127 at 36 / 48 / 60 / 72; +100 / -100 / 0 / +50 at
@@ -519,6 +519,15 @@ increments by its third-octave band shape.
   and 108, where the transposed noise is too narrow to match, left out). A law in cents (37 cents a unit) fits no better
   (rms 78 against 94 cents). How scaling combines with boxes on the cutoff is not measured (the engine adds the scaling
   to the base the boxes move).
+
+Pitch key follow (`i_pkf*`, `j_pkf*`, `a_pkf*`): a sine at keys 48 and 72 about centre 60 at every raw value 0-127, and
+five keys about centres 48, 60 and 72 at four values.
+
+- The centre note keeps its pitch; every key from it moves by a fixed number of cents a key: whole cents at every raw
+  value (within 0.013), 0 at 64, 100 at 96, 200 at 127 and -200 at 0, in runs of 1 and 5 cents a step (64-74: 1, 74-90:
+  5, ...); up and down alike within 0.022 cent. Centres 48 and 72: within 1 cent at 3,840 cents. The table is the
+  engine's (`laws::pitchKeyFollowCents`). With an element's coarse tune folded into the key map by the converter, the
+  centre is taken against the moved root (not measured together).
 
 ## Known differences (this engine's register)
 

@@ -81,7 +81,8 @@ To write this format instead of SFZ for element parts:
   sources the engine does not move yet are kept and reported by `notCovered()`;
 - each element's HPF Cutoff Key Follow Sensitivity raw (`fil_hpf_keyfollow`, 0-127, 64 none);
 - each element's filter cutoff scaling raw (`fil_scaling_key1`-`4`, MIDI notes; `fil_scaling_offset1`-`4`, raw - 128 as
-  displayed);
+  displayed) and pitch key follow raw (`pitch_keyfollow`, 0-127, 96 = 100 cents a key; `pitch_keyfollow_center`, the
+  note); the region table keeps 100 cents a key from its roots, the engine applies the key follow about the centre;
 - the part's assignable knob values (`knob1`..`knob8`, raw 0-1023 as stored; default 512): the shell's knob parameters
   start there, and boxes from the knobs (sources 8-15) read them; boxes from the ribbon (6) and switches 1-2 (16, 17)
   read the shell's parameters of those names (`docs/parameters.md`), which the host's controls drive. A plain box

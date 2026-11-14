@@ -598,6 +598,17 @@ static void elementLfo() {
         if (ratio > 0) NEAR(hi2 - lo2, 35.97, 0.15 * 35.97); else NEAR(hi2 - lo2, 0.0, 0.05);
     }
 }
+// Pitch key follow (measured at every raw value): raw 80 is 40 cents a key, 112 is 160, about the centre note.
+static void pitchKeyFollow() {
+    struct { int kf, center, key; double cents; } cases[] = {{80, 60, 72, 480}, {80, 60, 48, -480}, {112, 72, 60, 1200 - 1920}, {64, 60, 84, 0}, {96, 60, 61, 100}};
+    for (auto& c : cases) {
+        Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 pitch_keyfollow=" + std::to_string(c.kf) + " pitch_keyfollow_center=" + std::to_string(c.center),
+              sine(44100, 441, 44100, 16384), 1, 44100.f, "0-44100", 44100);
+        r.core->noteOn(0, 0, 0, c.key, 1.0f);
+        const double got = sineCents(r.run(22050), 4410, 22050, 441, 44100);
+        if (std::fabs(got - c.cents) > 0.6) { ++failures; std::printf("  key follow %d centre %d key %d: %.2f cents, want %.0f\n", c.kf, c.center, c.key, got, c.cents); }
+    }
+}
 // A moving pitch envelope: the hold level's pitch at the start, the attack level's after the attack.
 static void movingPitchEnvelope() {
     Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 pitcheg_depth=32 pitcheg_hold=16 pitcheg_hold_level=160 pitcheg_attack=20",
@@ -823,7 +834,7 @@ int main() {
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
-        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds},
+        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
     };
     for (auto& t : tests) {
         const int before = failures;
