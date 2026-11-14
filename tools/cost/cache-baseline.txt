@@ -1,0 +1,11 @@
+# First-level and last-level data read misses per voice-block (D1mr, DLmr; mean over the measured blocks), held voices
+# at mixed pitches (keys 48-72), the device's caches, from tools/cost/cache.sh on aarch64 Linux (g++ 13.3 -O3
+# -mcpu=cortex-a53, NEON). `cache.sh SRC OUT check` fails when a case is more than 25 % + 2 over its line here.
+mono-sinc-1 59.9 1.8
+mono-sinc-8 23.3 0.3
+mono-sinc-32 136.5 0.2
+mono-sinc-64 163.2 0.1
+stereo-sinc-1 73.6 3.3
+stereo-sinc-8 31.7 0.6
+stereo-sinc-32 128.8 0.4
+stereo-sinc-64 161.7 0.2

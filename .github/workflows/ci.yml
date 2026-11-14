@@ -64,6 +64,20 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure -C Release
 
+  # The instruction and data-cache gates (docs/cost.md) on aarch64, as the device runs: callgrind and valgrind's cache
+  # simulator, the core and tools/pcbench.cpp only (no submodules).
+  cost:
+    name: cost-gates
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++ valgrind
+      - name: Instruction gate
+        run: sh tools/cost/cg.sh "$PWD" "$RUNNER_TEMP/cost" check
+      - name: Cache gate
+        run: sh tools/cost/cache.sh "$PWD" "$RUNNER_TEMP/cost" check
+
   sanitizers:
     strategy:
       fail-fast: false

@@ -172,6 +172,81 @@ The stream pool is part of the core (`sizeof(pcm::Core)` 3,638,336 bytes on macO
 (`pcm::SoundData`, 314,364 bytes each, two for a sound with waveforms) are main-thread memory freed
 with the sound and not reported.
 
+## Data cache misses (0.9.0)
+
+The device's audio path is bound by memory as much as by instructions: its four cores share one 512 KB second-level
+cache, each has a 32 KB first-level data cache. `tools/cost/cache.sh` runs the held cases under valgrind's cache
+simulator (cachegrind's, through callgrind for one dump a block) set to those caches (`--D1=32768,4,64
+--LL=524288,16,64`) and reports the first-level and last-level data read misses a block and per voice-block for 1, 8,
+32 and 64 voices at mixed pitches (keys 48-72, so up to 13 different kernels). **Gate** (`cache.sh SRC OUT check`, run
+in CI on aarch64 beside the instruction gate): no case's misses per voice-block more than 25 % + 2 over
+`tools/cost/cache-baseline.txt`. The simulator is LRU and has the cache to itself: it counts what the core's own data
+does, not what other cores evict.
+
+| voices | mono, 20-tap (0.8.0) D1 / LL | mono, 8-tap (0.9.0) D1 / LL | stereo, 20-tap D1 / LL | stereo, 8-tap D1 / LL | mono, Hermite D1 / LL |
+|---|---|---|---|---|---|
+| 1 | 361.5 / 1.8 | 59.9 / 1.8 | 125.0 / 3.3 | 73.6 / 3.3 | 2.8 / 1.8 |
+| 8 | 241.7 / 0.3 | 23.3 / 0.3 | 267.6 / 0.6 | 31.7 / 0.6 | 8.5 / 0.3 |
+| 16 | 391.3 / 0.3 | 36.2 / 0.3 | 364.9 / 0.5 | 49.8 / 0.5 | - |
+| 32 | 438.6 / 0.7 | 136.5 / 0.2 | 431.1 / 1.9 | 128.8 / 0.4 | 28.4 / 0.2 |
+| 64 | 451.9 / 0.7 | 163.2 / 0.1 | 434.7 / 1.4 | 161.7 / 0.2 | 87.0 / 0.1 |
+
+(Misses per voice-block. Data reads a block, 32 voices: mono 112,365 with the 20-tap bank, 67,645 with the 8-tap.)
+
+**Table and state bytes touched per voice per block** (computed from the layout, a 128-frame block):
+
+| | 20-tap bank (0.8.0) | 8-tap bank (0.9.0) |
+|---|---|---|
+| kernel row | 160 bytes (20 taps and their 20 differences), 2-3 cache lines | 32 bytes (8 taps; the next row gives the slope), one row pair 64 bytes |
+| a ratio whose fraction stays put (the root at the source's rate, an exact octave) | 160 bytes | 64 bytes |
+| an exact octave down (two fractions) | 320 bytes | 128 bytes |
+| any other ratio (a 44.1 kHz source at a 48 kHz host is one, at the root too) | 128 of the kernel's 257 rows: 20,480 bytes (the whole 41,120-byte kernel over two blocks) | the kernel's 65 rows: 2,080 bytes (33 lines) |
+| a pitch sweep (the kernel picked anew each 16-frame control step) | up to 8 kernels' rows: 8 x 16 rows x 160 = 20,480 bytes | up to 8 x 17 rows x 32 = 4,352 bytes |
+| the whole bank | 699,040 bytes, built on the heap in each instance | 42,240 bytes of constant data, one copy for every process that maps the binary |
+| kernels the cost cases touch at 16 / 32 voices | 5 / 10: 205,600 / 411,200 bytes | 4 / 13: 8,448 / 27,456 bytes |
+| the voice's vector fields (59 floats), position, step, ramp, kernel offset | 264 bytes | 264 bytes |
+| its scalar side (read at the control steps) | up to 512 bytes | up to 512 bytes |
+| sample frames read (16-bit, about 128 x the step + the taps) | mono about 275 bytes at a 48 kHz host's root, stereo 550 | mono about 250, stereo 500 |
+| **a voice at an ordinary ratio, mono** | **about 21.5 KB** | **about 3.1 KB** |
+
+**Device, before** (0.8.0, `pcbench-time-neon` on the target, 4 x Cortex-A53, one 512 KB second-level cache shared by
+the four cores; per-voice slope from 8 to 32 held voices, microseconds per 128-frame block; the instrument's own engine at
+rest / playing / stopped):
+
+| case | at rest | playing | stopped |
+|---|---|---|---|
+| mono, 20-tap | 24.9 | 31.3 | 14.0 |
+| stereo, 20-tap | 26.2 | 31.3 | 17.5 |
+| mono, Hermite | 4.9 | 5.0 | 4.5 |
+| stereo, Hermite | 7.4 | 7.6 | 6.7 |
+
+The first voice costs about 36 us; with the engine stopped 16 voices take 184 us and 32 take 420 us; hosted, one note
+of a pad (two mono regions) about 67 us. Against callgrind (10.6 k instructions a mono voice, about 11 us if every load
+hit) the 20-tap voice ran at 1.3 to 3 times its instruction time while Hermite stayed within its own: the bank missed in cache
+on nearly every voice. Why: a voice at any ordinary ratio (every note of a 44.1 kHz sample at a 48 kHz host) reads 128
+rows of 160 bytes a block from its 41 KB kernel and the rest of it the next block, so even one voice cycles more than
+the 32 KB first-level cache through it (the simulator's 362 misses a block for one voice); voices at different pitches
+use different kernels, and the cost cases' 32 voices touch 10 of them, 411 KB, which with the samples (120 KB mono,
+240 KB stereo) and the pools no longer fits the 512 KB second-level cache the four cores share. The simulator, LRU and
+alone in the cache, shows few last-level misses even there (0.7 a voice-block): the step between 16 and 32 voices on the
+device (5 kernels, 206 KB, against 10) is that shared cache's eviction (inferred, not simulated). The first voice's 36 us
+is mostly instructions: a lane computes four voices' slots whether or not they hold voices (37,340 instructions for one
+voice against 47,993 for four), plus its cold misses.
+
+**Device, after** (0.9.0; to be filled from the target with the binaries of this round, timed the same way):
+
+| case | at rest | playing | stopped |
+|---|---|---|---|
+| mono, 8-tap | | | |
+| stereo, 8-tap | | | |
+| mono, Hermite | | | |
+| stereo, Hermite | | | |
+| first voice; 16 / 32 voices stopped; one pad note hosted | | | |
+
+Expected from the counts (not measured): 9,272 and 12,166 instructions a mono and stereo voice-block, at the 0.1.0
+core's measured 0.99 and 0.94 ns an instruction about 9 and 11 us a voice, with the table no longer the cause of misses
+(2 KB a voice, 27 KB for the cost cases' 13 kernels).
+
 ## Time on this Mac (Apple silicon, thread CPU per block, `pcbench time`; the 0.1.0 core, not rerun)
 
 | voices | mono, 20-tap | mono, Hermite | stereo, 20-tap | stereo, Hermite |
