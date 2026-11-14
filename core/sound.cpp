@@ -21,6 +21,7 @@
 //   element ampeg_attack=30 fil_type=0 ...            (numbered in order from 0)
 //   region key=0-33 vel=1-127 root=30 tune=9.38 level=-7.12 pan=-100 element=0 sample=0 loop=544-93904
 #include "pcore.h"
+#include "measured.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -380,6 +381,17 @@ uint32_t notCovered(const SoundData& d, Gap* out, uint32_t cap) {
     auto add = [&](uint16_t el, int16_t param, const char* why, bool part = false) { if (n < cap && out) out[n] = {el, param, why, part}; ++n; };
     if (d.part[PartMono]) add(0, PartMono, "mono part: element selection and legato are not built", true);
     if (d.part[PartPortamento]) add(0, PartPortamento, "portamento is not built", true);
+    // controller boxes: the destinations, sources and curves measured (laws::boxDest, boxCurve); the knobs, ribbon,
+    // switches and sequenced sources are not built yet
+    for (int k = 0; k < 16; ++k) {
+        const int16_t* b = d.part + PartBox1Src + 8 * k;
+        if (!b[1] || !b[2]) continue;
+        const int base = PartBox1Src + 8 * k;
+        if (laws::boxDest(b[1]) < 0) add(0, int16_t(base + 1), "a controller box destination this engine does not move yet", true);
+        else if (!(b[0] == 0 || b[0] == 1 || b[0] == 2 || b[0] == 3 || b[0] == 4 || b[0] == 7)) add(0, int16_t(base), "a controller box source not built (knobs, ribbon, switches, sequenced)", true);
+        else if (b[0] == 2) add(0, int16_t(base), "channel pressure as a box source: its map is not measured", true);
+        else if (laws::boxCurve(b[4], b[5], b[6], b[7]) < 0) add(0, int16_t(base + 5), "a controller box curve not measured", true);
+    }
     for (uint32_t e = 0; e < d.elements; ++e) {
         const int16_t* v = d.element[e].v;
         const int type = v[FilType];

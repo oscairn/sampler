@@ -413,6 +413,36 @@ shelf at raw 0-511 (131-241 every 8), gains 32-96, both bands together, and Q wi
 |---|---|---|
 | response, every EQ take, 1/6-octave bands 62.5 Hz-16 kHz | ±0.5 dB | pass (largest 0.46 dB, 224 takes) |
 
+## (l) Controller boxes against the reference
+
+Recordings `v_*` (run pcm-round3-2026-11-14), `y_*` and `l_*` (run pcm-round4-2026-11-14): one or two boxes from the mod
+wheel (and foot controller 1, breath, foot controller 2, the pitch bend) to the fine and coarse tune (sines, read in cents),
+the cutoff, resonance and high-pass cutoff (saws and noise, read as the static setting whose octave bands match) and the
+element level (sines at element levels 127, 100, 64, 32), the source stepped through 6 or 17 values while a note holds.
+
+- A controller value v (0-127) enters a box as c = 8 v up to 64, then 512 + (v - 64) x 512 / 63 (1024 at 127): the wheel
+  at 64 is 512, not 516 (the coarse tune at ratio +63: 1181 cents, not 1190). Foot controller 1 (CC 11) and breath (CC 2)
+  map alike; foot controller 2 stays at the top (CC 4 does not move it); the pitch bend enters as its 14-bit value / 16
+  (and bends the pitch as well). Every one of 68 fine-tune steps within 0.1 cent of the law.
+- A box's output is (curve(c) + o - 1024) x ratio / 8 within +-8192 (o 1024 unipolar, 512 bipolar; ratio +127 plays as
+  +128). Each box moves its destination by trunc(output x span / 8192), toward zero, before the boxes on one
+  destination are summed (two boxes of +64: 24 cents at wheel 16, where the sum truncated once would give 25); the sum
+  stays within +-span (two +64 boxes stop at 100 cents from wheel 64 on).
+- Spans: fine tune 100 cents and coarse tune 2400 cents (whole cents, not tune steps); cutoff 1023 index steps (a box
+  lands on the static index: base 300 + 255 at ratio +32, wheel 64, within the analysis's 3 steps); resonance 128 (within
+  one step); element level 128 steps of the level law (16 boxes at four levels: rms 0.32 dB, the largest errors below
+  -30 dB); high-pass cutoff 1023 (one take within 2 steps at 6080; inferred from the cutoff).
+- Curves of type 0: parameter 5 is linear; 0, 2 and 8 measured at 17 points (whole cents: +-5 of 1024); 6, 9, 10 and two
+  of type 2 are the analog engine's measurements of the same boxes, not repeated here.
+- Not measured or not built: the boxes on the envelope times and depths (the filter envelope's depth did not move while
+  a note held: read at note-on, not verified), the element LFO, pan, the part LFO; channel pressure's map; the knobs,
+  ribbon and switches (host parameters, a later round).
+- Engine: core test `controller_boxes` (the fine tune at five wheel values, the sum and clamp, a bipolar box, coarse,
+  the element's switch, a curve, the bend as a source; cutoff and level boxes equal to their static settings) and the
+  ABI test `box_sources_drive_their_boxes`. Found on the way: a box made the reference's thru-filter sine probes of one
+  recording batch play 6-40 dB quieter; the same jobs recorded again played at the normal level (a recorder-state
+  artefact; only levels within one take are used).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

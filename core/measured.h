@@ -49,5 +49,21 @@ bool elementEq(int type, int q, int freq1, int gain1, int freq2, int gain2, doub
 double eqHz(int raw) noexcept;
 double eqPeakQ(int raw) noexcept;
 
+// ---- controller boxes ----
+// A box's output (measured: docs/acceptance.md (l)): (curve(c) + o - 1024) x ratio / 8 within +-8192, c the source on
+// 0..1024, o 1024 unipolar or 512 bipolar, ratio raw +127 counting as +128. A destination moves by the sum over its
+// boxes of trunc(output x span / 8192) (each box truncated toward zero), within +-span.
+// The source maps: a controller value v (0-127) is 8 v up to 64, then 512 + (v - 64) x 512 / 63 (1024 at 127); the
+// pitch bend its 14-bit value / 16.
+float boxSource(int v127) noexcept;
+// The measured curves (bank 0, type 0, parameter p1): their value at c, 0..1024; -1 for one not measured.
+int boxCurve(int bank, int type, int p1, int p2) noexcept;
+float boxCurveAt(int curve, float c) noexcept;
+// The destinations the core moves: the reference's number, the span (raw steps of a full box) in the
+// destination's unit (index, or cents for the tunings).
+enum BoxDest : uint8_t { BoxCutoff, BoxResonance, BoxLevel, BoxCoarse, BoxFine, BoxHpf, kBoxDests };
+int boxDest(int reference) noexcept;  // -1: not built
+extern const int16_t kBoxSpan[kBoxDests];
+
 }  // namespace laws
 }  // namespace pcm

@@ -700,6 +700,52 @@ static void elementNumber() {
     }
 }
 
+// Controller boxes (measured: docs/acceptance.md (l)): the fine tune at the wheel's values, each box truncated
+// toward zero before the sum, the sum within the span, the element's switch, the bend as a source; a box on the
+// cutoff or the level plays as the static value it lands on.
+static void controllerBoxes() {
+    const std::string tone = "region key=0-127 root=60 element=0 sample=0 loop=0-44100\n";
+    auto rig = [&](const std::string& part, const std::string& el) {
+        return std::unique_ptr<Rig>(new Rig(("oscairn-pcm-sound/0\npart " + part + "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 " + el + "\n" + tone).c_str(),
+                                            sine(44100, 441, 44100, 16384), 44100.f, 44100));
+    };
+    struct { const char* part; const char* el; float wheel; double cents; } cases[] = {
+        {"box1_dst=68 box1_ratio=63", "", 1.0f, 98}, {"box1_dst=68 box1_ratio=63", "", 64 / 127.f, 49},
+        {"box1_dst=68 box1_ratio=63", "", 56 / 127.f, 43}, {"box1_dst=68 box1_ratio=64 box2_dst=68 box2_ratio=64", "", 16 / 127.f, 24},
+        {"box1_dst=68 box1_ratio=64 box2_dst=68 box2_ratio=64", "", 1.0f, 100}, {"box1_dst=68 box1_ratio=32 box1_pol=1", "", 0.0f, -25},
+        {"box1_dst=67 box1_ratio=-32", "", 64 / 127.f, -600}, {"box1_dst=68 box1_ratio=63", "box_sw1=0", 1.0f, 0},
+        {"box1_dst=68 box1_ratio=63 box1_p1=8", "", 64 / 127.f, 16},
+    };
+    for (auto& c : cases) {
+        auto r = rig(c.part, c.el);
+        r->core->setModWheel(0, c.wheel);
+        r->core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto o = r->run(22050);
+        const double got = sineCents(o, 4410, 22050, 441, 44100);
+        if (std::fabs(got - c.cents) > 0.6) { ++failures; std::printf("  %s %s wheel %.3f: %.2f cents, the reference %.0f\n", c.part, c.el, c.wheel, got, c.cents); }
+    }
+    {  // the bend as a source (14-bit / 16) with its own bend range of 2 semitones: 12288 -> +100 + 73 (the reference 173.0)
+        auto r = rig("box1_src=0 box1_dst=68 box1_ratio=63", "");
+        r->core->setPitchBend(0, 0.5f);
+        r->core->noteOn(0, 0, 0, 60, 1.0f);
+        NEAR(sineCents(r->run(22050), 4410, 22050, 441, 44100), 173, 0.6);
+    }
+    // a cutoff box lands on the static index: base 300, ratio +32 at wheel 64 -> 300 + trunc(2048 x 1023 / 8192)
+    {
+        auto a = rig("box1_dst=85 box1_ratio=32", "fil_type=0 fil_cutoff=300 fileg_depth=0"), b = rig("", "fil_type=0 fil_cutoff=555 fileg_depth=0");
+        a->core->setModWheel(0, 64 / 127.f);
+        for (auto* x : {a.get(), b.get()}) x->core->noteOn(0, 0, 0, 60, 1.0f);
+        CHECK(a->run(8192) == b->run(8192));
+    }
+    {   // a level box: 100 - trunc(2048 x 128 / 8192) = 68
+        auto a = rig("box1_dst=60 box1_ratio=-16", "amp_level=100"), b = rig("", "amp_level=68");
+        a->core->setModWheel(0, 1.0f);
+        for (auto* x : {a.get(), b.get()}) x->core->noteOn(0, 0, 0, 60, 1.0f);
+        const auto x = a->run(8192), y = b->run(8192);
+        NEAR(20 * std::log10(rmsOf(x, 4096, 8192) / rmsOf(y, 4096, 8192)), 0.0, 1e-4);
+    }
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -707,7 +753,7 @@ int main() {
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
-        {"equal_level_segments", equalLevelSegments},
+        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes},
     };
     for (auto& t : tests) {
         const int before = failures;

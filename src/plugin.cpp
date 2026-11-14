@@ -206,7 +206,12 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     double loudness(const Voice& v) const { return core->voice(index(v)).level; }
     void applyExpression(const clap_event_note_expression_t& e) {
         Base::applyExpression(e);
-        if (e.port_index > 0 || e.expression_id != CLAP_NOTE_EXPRESSION_VOLUME) return;
+        if (e.port_index > 0) return;
+        if (e.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE) {  // the channel's pressure (a box source)
+            if (e.channel >= 0 && e.channel < 16) core->setSource(e.channel, 2, e.value);
+            return;
+        }
+        if (e.expression_id != CLAP_NOTE_EXPRESSION_VOLUME) return;
         for (uint32_t i = 0; i < kVoices; ++i) if (matches(voices[i], e.note_id, e.key, e.channel)) core->setVolume(i, voices[i].volume);
     }
     void applyMidi(const clap_event_midi_t& e) {
@@ -215,6 +220,10 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         const int ch = e.data[0] & 15, kind = e.data[0] & 0xf0;
         if (kind == 0xe0) core->setPitchBend(int16_t(ch), channelBend[ch]);
         if (kind == 0xb0 && e.data[1] == 1) core->setModWheel(int16_t(ch), channelModWheel[ch]);
+        // the controller boxes' other sources: breath (CC 2), foot controller 1 (CC 11), channel pressure
+        if (kind == 0xb0 && e.data[1] == 2) core->setSource(int16_t(ch), 7, (e.data[2] & 127) / 127.0);
+        if (kind == 0xb0 && e.data[1] == 11) core->setSource(int16_t(ch), 3, (e.data[2] & 127) / 127.0);
+        if (kind == 0xd0) core->setSource(int16_t(ch), 2, (e.data[1] & 127) / 127.0);
         if (kind == 0xb0 && e.data[1] == 64) core->setSustain(int16_t(ch), (e.data[2] & 127) / 127.0);
         pedalHeld();
     }

@@ -69,6 +69,7 @@ public:
     }
     void setPitchBend(int16_t ch, double x) override { core_->setPitchBend(ch, float(x)); }
     void setModWheel(int16_t ch, double x) override { core_->setModWheel(ch, float(x)); }
+    void setSource(int16_t ch, int src, double x) override { core_->setSource(ch, src, float(x)); }
     void keyUp(uint32_t v) override { core_->keyUp(v); }
     void setSustain(int16_t ch, double x) override { core_->setSustain(ch, float(x)); }
     void render(float* const* l, float* const* r, uint32_t n, uint32_t from) override { sync(); core_->render(l, r, n, from); }

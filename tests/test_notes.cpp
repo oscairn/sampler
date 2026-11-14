@@ -289,3 +289,39 @@ TEST(output_ports) {
         }
     }
 }
+
+// Each controller box source reaches its box: a box on the element level at ratio -64 silences the note with its
+// source at the top and leaves it whole at the bottom (mod wheel CC 1, breath CC 2, foot controller CC 11, channel
+// pressure as MIDI and as the CLAP pressure expression).
+TEST(box_sources_drive_their_boxes) {
+    struct { int src; Bytes lo, hi; } cases[] = {
+        {1, midi(0, 0xb0, 1, 0), midi(0, 0xb0, 1, 127)}, {7, midi(0, 0xb0, 2, 0), midi(0, 0xb0, 2, 127)},
+        {3, midi(0, 0xb0, 11, 0), midi(0, 0xb0, 11, 127)}, {2, midi(0, 0xd0, 0, 0), midi(0, 0xd0, 127, 0)},
+    };
+    for (auto& c : cases) {
+        const std::string snd = "oscairn-pcm-sound/0\npart box1_src=" + std::to_string(c.src) + " box1_dst=60 box1_ratio=-64\nsample sine.wav\n"
+                                "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
+        Inst a;
+        CHECK(a.load(stateWith(snd)));
+        a.block(128, {c.lo, on(0, 1, 0, 60, 1.0)});
+        a.run(4800);
+        const float whole = peak(a.L, a.L.size() - 1000);
+        a.block(128, {c.hi});
+        a.run(4800);
+        const float down = peak(a.L, a.L.size() - 1000);
+        if (!(whole > 0.01f && down < 1e-4f * whole)) { ++g_failures; std::printf("  source %d: %g then %g\n", c.src, whole, down); }
+    }
+    // the pressure note expression (CLAP), on the note's channel
+    Inst a;
+    CHECK(a.load(stateWith("oscairn-pcm-sound/0\npart box1_src=2 box1_dst=60 box1_ratio=-64\nsample sine.wav\n"
+                           "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion key=0-127 root=57 element=0 sample=0 loop=0-44100\n")));
+    a.block(128, {on(0, 1, 0, 60, 1.0)});
+    a.run(4800);
+    const float whole = peak(a.L, a.L.size() - 1000);
+    clap_event_note_expression_t e{};
+    e.header = {sizeof e, 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0};
+    e.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE; e.note_id = 1; e.port_index = 0; e.channel = 0; e.key = 60; e.value = 1.0;
+    a.block(128, {bytes(e)});
+    a.run(4800);
+    CHECK(whole > 0.01f && peak(a.L, a.L.size() - 1000) < 1e-4f * whole);
+}

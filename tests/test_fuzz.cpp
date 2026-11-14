@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Fuzz through the ABI: random sounds over the full raw range of every element parameter (covered or
-// not) and of the part's (bend range, velocity sensitivity), random regions, notes, controllers (mod
-// wheel, sustain pedal, pitch bend), note volume and chokes, random block sizes, thousands of blocks. The output must stay finite and bounded, and
+// not) and of the part's (bend range, velocity sensitivity, controller boxes), random regions, notes, controllers (mod
+// wheel, breath, foot, sustain pedal, channel pressure, pitch bend), note volume and chokes, random block sizes, thousands of blocks. The output must stay finite and bounded, and
 // process() must not allocate. (Run on each build: NEON, SSE2, scalar; see docs/cost.md.)
 #include <algorithm>
 #include <cmath>
@@ -26,7 +26,16 @@ const P kParams[] = {
 std::string randomSound(Rng& r) {
     std::string s = "oscairn-pcm-sound/0\npart bend_up=" + std::to_string(r.in(0, 24)) + " bend_down=" + std::to_string(-r.in(0, 48))
                   + " vel_depth=" + std::to_string(r.in(0, 127)) + " vel_offset=" + std::to_string(r.in(0, 127))
-                  + " split_outputs=" + std::to_string(r.in(0, 1)) + "\nsample sine.wav\n";
+                  + " split_outputs=" + std::to_string(r.in(0, 1));
+    // controller boxes: four at random over every part parameter's range, built destinations and sources likelier
+    static const int dsts[6] = {85, 86, 60, 67, 68, 87}, srcs[5] = {0, 1, 3, 4, 7};
+    for (int k = 1; k <= 4; ++k) {
+        const std::string b = " box" + std::to_string(k) + "_";
+        s += b + "src=" + std::to_string(r.in(0, 1) ? srcs[r.in(0, 4)] : r.in(0, 127)) + b + "dst=" + std::to_string(r.in(0, 2) ? dsts[r.in(0, 5)] : r.in(0, 413))
+           + b + "ratio=" + std::to_string(r.in(-128, 127)) + b + "pol=" + std::to_string(r.in(0, 1)) + b + "bank=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 25))
+           + b + "curve=" + std::to_string(r.in(0, 1) ? 0 : r.in(0, 31)) + b + "p1=" + std::to_string(r.in(0, 127)) + b + "p2=" + std::to_string(r.in(0, 127));
+    }
+    s += "\nsample sine.wav\n";
     const int elements = r.in(1, 3);
     for (int e = 0; e < elements; ++e) {
         s += "element";
@@ -74,7 +83,9 @@ TEST(fuzz_random_sounds_and_events) {
                 switch (r.in(0, 8)) {
                 case 0: case 1: case 2: ev.push_back(on(t, r.in(1, 1000), ch, key, r.unit())); ++notesStarted; break;
                 case 3: case 4: ev.push_back(off(t, -1, ch, key)); break;
-                case 5: ev.push_back(midi(t, uint8_t(0xb0 | ch), r.in(0, 1) ? 1 : 64, uint8_t(r.in(0, 127)))); break;
+                case 5: { static const uint8_t ccs[5] = {1, 64, 2, 11, 4};
+                          if (r.in(0, 5)) ev.push_back(midi(t, uint8_t(0xb0 | ch), ccs[r.in(0, 4)], uint8_t(r.in(0, 127))));
+                          else ev.push_back(midi(t, uint8_t(0xd0 | ch), uint8_t(r.in(0, 127)), 0)); } break;
                 case 6: ev.push_back(midi(t, uint8_t(0xe0 | ch), uint8_t(r.in(0, 127)), uint8_t(r.in(0, 127)))); break;
                 case 7: ev.push_back(volume(t, -1, ch, key, 4 * r.unit())); break;
                 default: ev.push_back(choke(t, -1, ch, key)); break;

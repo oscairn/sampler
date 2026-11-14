@@ -109,6 +109,11 @@ struct Compiled {
     int16_t velDepth = 64, velOffset = 64;  // the part's velocity sensitivity (raw)
     bool splitOutputs = false;        // elements to their output buses (else all on bus 0)
     double noteCost = 0;              // estimated instructions a block of the costliest note (all its layers)
+    // the controller boxes the core moves (laws::boxDest), in the part's order: number (0-15), source, destination,
+    // curve; ratio (raw +127 as +128) and offset (1024 unipolar, 512 bipolar)
+    struct Box { uint8_t number, src, dest; int8_t curve; float ratio, off; };
+    uint8_t boxes = 0;
+    Box box[16];
 };
 // Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
 // region's sample is missing or empty, or a loop lies outside its sample (error says which).
@@ -151,6 +156,8 @@ public:
     void setVolume(uint32_t voice, float gain);       // the note's volume expression, linear
     void setPitchBend(int channel, float value);      // -1..1 of the sound's bend range
     void setModWheel(int channel, float value);       // 0..1
+    // A controller box source of the channel, 0..1: 2 channel pressure, 3 foot controller 1 (CC 11), 7 breath (CC 2)
+    void setSource(int channel, int source, float value);
     void reset();                                     // every voice off, controllers to rest
     // Adds every voice into left/right for `frames` frames that start `from` frames into the host's
     // block. Control steps (envelopes, filter coefficients) fall every kSub frames from the block's
@@ -181,7 +188,8 @@ private:
     int64_t clock_ = 0;  // frames rendered since construction
     Interp interp_ = Interp::Sinc;
     uint16_t nextId_ = 1;
-    float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {};
+    float bend_[16] = {}, wheel_[16] = {}, pedal_[16] = {}, pressure_[16] = {}, foot_[16] = {}, breath_[16] = {};
+    float boxSourceOf(int channel, int src) const;
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];

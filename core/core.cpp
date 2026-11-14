@@ -99,6 +99,15 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     out.bendDown = float(d.part[PartBendDown]);
     out.velDepth = d.part[PartVelDepth]; out.velOffset = d.part[PartVelOffset];
     out.splitOutputs = d.part[PartSplitOutputs] != 0;
+    // the controller boxes the core moves (the others are reported by notCovered)
+    out.boxes = 0;
+    for (int k = 0; k < 16; ++k) {
+        const int16_t* b = d.part + PartBox1Src + 8 * k;
+        const int dest = laws::boxDest(b[1]), curve = laws::boxCurve(b[4], b[5], b[6], b[7]);
+        const bool src = b[0] == 0 || b[0] == 1 || b[0] == 2 || b[0] == 3 || b[0] == 4 || b[0] == 7;
+        if (dest < 0 || curve < 0 || !src || b[2] == 0) continue;
+        out.box[out.boxes++] = {uint8_t(k), uint8_t(b[0]), uint8_t(dest), int8_t(curve), b[2] == 127 ? 128.f : float(b[2]), b[3] ? 512.f : 1024.f};
+    }
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
@@ -825,7 +834,6 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
         ls.keyFollow = e[AmpKeyFollow]; ls.level = e[AmpLevel];
         level *= laws::levelScalingGain(ls, key);
     }
-    level *= laws::levelGain(e[AmpLevel]);
     level *= std::pow(10.0f, (float(r.level) / 100.0f) * 0.05f);
     level *= float(std::pow(10.0, kStagingDb / 20.0));
     level *= 1.0f / 32768.0f;  // 16-bit sample values to full scale
@@ -835,7 +843,8 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
         // element EQ Boost6/12/18: a flat +6.02/+12.04/+18.06 dB; bypassed with the filter Thru (measured)
         if (e[EqType] >= 2 && e[EqType] <= 4) level *= float(1 << (e[EqType] - 1));
     }
-    v.level = level;
+    v.levelRest = level;
+    v.level = level * laws::levelGain(e[AmpLevel]);
     // pan: the key bank's pan (the region's, -100..100 as raw 1..127) and the element's added in raw
     // steps, then the element's balance law, mono and stereo alike (measured: docs/acceptance.md (c))
     const int bankPan = int(std::lround(float(r.pan) / 10000.0f * 63.0f));
@@ -882,6 +891,10 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     // the filter: cutoff with key follow and velocity
     const float keyCents = float(e[FilKeyFollow] - 64) * 3.125f * float(key - 60) + laws::cutoffVelocityCents(e[FilCutoff], e[FilVelSens], vel);
     p.f[C0][i] = laws::cutoffCents(float(e[FilCutoff])) + keyCents;
+    v.keyCents = keyCents;
+    v.element = e;
+    const int16_t bases[6] = {e[FilCutoff], e[FilResonance], e[AmpLevel], 0, 0, e[FilHpfCutoff]};
+    for (int k = 0; k < 6; ++k) { v.base[k] = bases[k]; v.moved[k] = 0; }
     p.f[DAMP][i] = laws::filterDamping(e[FilResonance]);
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][i] = 0;
     if (s.plan[ri].filter == Filter::LowHigh || s.plan[ri].filter == Filter::PoleHigh)
@@ -1058,6 +1071,22 @@ void Core::setPitchBend(int ch, float x) {
     bend_[ch] = std::max(-1.0f, std::min(1.0f, x));
     for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].channel == ch) p.v[i].dirty = true;
 }
+void Core::setSource(int ch, int src, float x) {
+    if (ch < 0 || ch >= 16) return;
+    x = std::max(0.0f, std::min(1.0f, x));
+    if (src == 2) pressure_[ch] = x; else if (src == 3) foot_[ch] = x; else if (src == 7) breath_[ch] = x; else return;
+    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].channel == ch) p.v[i].dirty = true;
+}
+float Core::boxSourceOf(int ch, int src) const {
+    switch (src) {
+    case 0: return std::min(16383.0f, 8192.0f + bend_[ch] * 8192.0f) / 16.0f;  // the 14-bit bend / 16 (measured)
+    case 1: return laws::boxSource(int(std::lround(wheel_[ch] * 127.0f)));
+    case 2: return laws::boxSource(int(std::lround(pressure_[ch] * 127.0f)));
+    case 3: return laws::boxSource(int(std::lround(foot_[ch] * 127.0f)));
+    case 7: return laws::boxSource(int(std::lround(breath_[ch] * 127.0f)));
+    default: return 1024.0f;  // foot controller 2 rests at the top (measured: CC 4 does not move it)
+    }
+}
 void Core::setModWheel(int ch, float x) {
     if (ch < 0 || ch >= 16) return;
     wheel_[ch] = std::max(0.0f, std::min(1.0f, x));
@@ -1070,6 +1099,7 @@ void Core::reset() {
     for (auto& b : bend_) b = 0;
     for (auto& w : wheel_) w = 0;
     for (auto& d : pedal_) d = 0;
+    for (int c = 0; c < 16; ++c) { pressure_[c] = 0; foot_[c] = 1; breath_[c] = 1; }  // the reference's rest values (inferred: the analog engine's)
 }
 
 void Core::shed(uint32_t n) {
@@ -1123,6 +1153,35 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
             const float amp = laws::lfoAmpDepthDb(std::fabs(v.lfoAmpRatio) * wheel / 127.0f) * (v.lfoAmpRatio < 0 ? -1.0f : 1.0f);
             lfoGain = std::pow(10.0f, -amp * 2.0f * std::min(ph, 1.0f - ph) / 20.0f);
         }
+        // the controller boxes (the element's switch for each), in raw steps or cents from the bases
+        const Compiled* snd = sound_[v.sound];
+        if (snd && snd->boxes) {
+            int32_t step[laws::kBoxDests] = {};
+            const int16_t* e = v.element;
+            for (uint32_t b = 0; b < snd->boxes; ++b) {
+                const Compiled::Box& x = snd->box[b];
+                if (!e[BoxSw1 + x.number]) continue;
+                float o = (laws::boxCurveAt(x.curve, boxSourceOf(v.channel, x.src)) + x.off - 1024.0f) * x.ratio * 0.125f;
+                o = std::max(-8192.0f, std::min(8192.0f, o));
+                step[x.dest] += int32_t(o * float(laws::kBoxSpan[x.dest]) / 8192.0f);  // each box toward zero
+            }
+            bool changed = false;
+            for (int k = 0; k < laws::kBoxDests; ++k) {
+                const int16_t m = int16_t(std::max<int32_t>(-laws::kBoxSpan[k], std::min<int32_t>(laws::kBoxSpan[k], step[k])));
+                changed |= m != v.moved[k]; v.moved[k] = m;
+            }
+            if (changed || fresh) {
+                auto at = [&](int k, int hi) { return std::max(0, std::min(hi, v.base[k] + v.moved[k])); };
+                if (p.plan.filter != Filter::Thru) {
+                    p.f[C0][i] = laws::cutoffCents(float(at(laws::BoxCutoff, 1023))) + v.keyCents;
+                    p.f[DAMP][i] = laws::filterDamping(at(laws::BoxResonance, 127));
+                    v.filterMoves = true;
+                    if (p.plan.filter == Filter::LowHigh || p.plan.filter == Filter::PoleHigh)
+                        designHigh(p, i, laws::filterCutoffHz(at(laws::BoxHpf, 1023), 0.0f), rate_);
+                }
+                v.level = v.levelRest * laws::levelGain(at(laws::BoxLevel, 127));
+            }
+        }
         if (p.plan.filter != Filter::Thru && fc != v.curCents) {
             v.curCents = fc;
             p.f[CENTS][i] = fc;
@@ -1132,7 +1191,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         const float bend = bend_[v.channel];
         const Compiled* s = sound_[v.sound];
         const float bendCents = s ? (bend >= 0 ? bend * s->bendUp : -bend * s->bendDown) * 100.0f : 0.0f;
-        const float pitch = pc + lfoCents + bendCents;
+        const float pitch = pc + lfoCents + bendCents + float(v.moved[laws::BoxCoarse] + v.moved[laws::BoxFine]);
         if (pitch != v.curPitch || fresh) {
             v.curPitch = pitch;
             const double target = std::min(v.baseStep * std::exp2(double(pitch) / 1200.0), kMaxStep);

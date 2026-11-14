@@ -98,6 +98,7 @@ public:
     virtual void setParam(uint32_t context, Param, double value) = 0;
     virtual void setPitchBend(int16_t channel, double value) = 0;   // -1..1 of the sound's range
     virtual void setModWheel(int16_t channel, double value) = 0;    // 0..1
+    virtual void setSource(int16_t channel, int source, double value) = 0;  // a box source, 0..1: 2 pressure, 3 CC 11, 7 CC 2
     // Adds the sound of every voice of every context into left/right; `from` is the frame of the
     // host's block the segment starts at (control steps keep to the block's grid).
     // left[k], right[k]: output bus k (0 thru, 1 to insertion A, 2 to insertion B; the same buffers as
