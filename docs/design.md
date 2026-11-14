@@ -84,7 +84,9 @@ scratch windows, the stream pool: `sizeof(pcm::Core)`). A sound's audio in memor
 bodies, below) is loaded on the main thread and counted as asset bytes in `oscairn.memory`. The shell publishes a compiled sound per context through a triple buffer the audio
 thread installs from; installing a context's new sound ends the voices of its old one, and the main
 thread drops an entry's sound (and so its samples) only when it overwrites that entry, which is never
-the installed one. Nothing on the audio thread allocates, locks or blocks (tested by interposing the
+the installed one. A discarded sound (its last voice ended, no channel selecting it) goes then, not when its slot
+is reused: the shell publishes no sound for the context and, after the next block has installed that, asks for a
+main-thread call that takes back and empties the entry the audio thread left. Nothing on the audio thread allocates, locks or blocks (tested by interposing the
 allocator).
 
 ## Streaming

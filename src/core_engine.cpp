@@ -4,6 +4,8 @@
 // no lock and no data race between the two threads. A staged entry keeps its sound (and so its
 // samples) alive; the main thread drops an entry's sound only when it overwrites that entry, which
 // is never the installed one, and installing a context's new sound ends the voices of its old one.
+// A discarded context publishes no sound, and once that is installed, takes back the entry the audio
+// thread left and empties it (drop).
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -29,6 +31,8 @@ public:
         std::lock_guard<std::mutex> g(write_);
         core_->prepare(sr > 0 ? sr : 48000);
         for (auto& c : installed_) c = nullptr;
+        for (uint32_t c = 0; c < kContexts; ++c)  // nothing renders now: a discarded context's sounds go at once
+            if (dropping_[c]) for (auto& e : staged_[c].buf) e.sound.reset();
         maxBlock_ = maxBlock ? maxBlock : 128;
         for (auto& s : staged_) s.middle.store(1, std::memory_order_relaxed), s.back = 0, s.front = 2;
     }
@@ -38,15 +42,18 @@ public:
     void loadPatch(uint32_t c, const Patch& p) override {
         if (c >= kContexts) return;
         std::lock_guard<std::mutex> g(write_);
+        dropping_[c] = false;
+        publish(c, p);
+    }
+    bool drop(uint32_t c) override {
+        if (c >= kContexts) return true;
+        std::lock_guard<std::mutex> g(write_);
         Staged& s = staged_[c];
-        Entry& e = s.buf[s.back];
-        e.sound = p.sound;
-        for (uint32_t i = 0; i < kParamCount; ++i) e.value[i] = p.p[i].get();
-        const double voice = p.sound && p.sound->compiled ? p.sound->compiled->noteCost : 0;
-        const double rest = pcm::estimateCost({1, pcm::Interp::Sinc, pcm::Filter::Thru}).rest;
-        cost_[c].voice.store(voice * kNanosPerInstruction * 1e-3 * maxBlock_ / 128, std::memory_order_relaxed);
-        cost_[c].rest.store(rest * kNanosPerInstruction * 1e-3 * maxBlock_ / 128, std::memory_order_relaxed);
-        s.back = s.middle.exchange(s.back | kDirty, std::memory_order_acq_rel) & 3;
+        if (!dropping_[c]) { publish(c, Patch{}); dropping_[c] = true; return false; }
+        if (s.middle.load(std::memory_order_acquire) & kDirty) return false;  // not installed yet
+        publish(c, Patch{});          // the writer gets back the entry the audio thread left
+        s.buf[s.back].sound.reset();  // so no entry holds a sound now
+        return true;
     }
     bool keySounds(uint32_t c, int16_t key, double vel) override {
         sync();
@@ -94,6 +101,19 @@ public:
 
 private:
     static constexpr uint32_t kDirty = 4;
+    // main thread, under write_: the sound for context c into the back entry, then published
+    void publish(uint32_t c, const Patch& p) {
+        Staged& s = staged_[c];
+        Entry& e = s.buf[s.back];
+        e.sound = p.sound;
+        for (uint32_t i = 0; i < kParamCount; ++i) e.value[i] = p.p[i].get();
+        const double voice = p.sound && p.sound->compiled ? p.sound->compiled->noteCost : 0;
+        const double rest = pcm::estimateCost({1, pcm::Interp::Sinc, pcm::Filter::Thru}).rest;
+        cost_[c].voice.store(voice * kNanosPerInstruction * 1e-3 * maxBlock_ / 128, std::memory_order_relaxed);
+        cost_[c].rest.store(rest * kNanosPerInstruction * 1e-3 * maxBlock_ / 128, std::memory_order_relaxed);
+        s.back = s.middle.exchange(s.back | kDirty, std::memory_order_acq_rel) & 3;
+    }
+
     struct Entry { std::shared_ptr<const Sound> sound; float value[kParamCount] = {}; };
     // a value (and a destination's modulation) to the core: the level and pan, a box source, a destination's steps
     void apply(uint32_t c, Param p) {
@@ -127,6 +147,7 @@ private:
     float value_[kContexts][kParamCount] = {};
     float mod_[kContexts][kDestLast - kDest0 + 1] = {};  // the host's modulation, kept with the context across sounds
     uint32_t maxBlock_ = 128;
+    bool dropping_[kContexts] = {};  // under write_: drop() published no sound for the context
     std::mutex write_;  // main-thread writers only
 };
 

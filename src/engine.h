@@ -102,6 +102,9 @@ public:
     // Main thread, also while processing: the sound for `context` (kContexts slots), which the
     // audio thread will not use before the shell publishes it. May allocate.
     virtual void loadPatch(uint32_t context, const Patch&) = 0;
+    // Main thread, also while processing: let go of every sound held for a discarded `context`, the installed one
+    // only once the audio thread has moved off it. False: call again after the next processed block.
+    virtual bool drop(uint32_t context) = 0;
 
     // Audio thread from here on.
     virtual bool keySounds(uint32_t context, int16_t key, double velocity) = 0;  // velocity 0..1

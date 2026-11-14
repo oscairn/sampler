@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // oscairn.sound-contexts: preparing, selecting and discarding sounds, and that a sound's notes,
 // parameters and voices stay its own.
+#include <fcntl.h>
+
 #include "host.h"
 
 namespace {
@@ -140,4 +142,28 @@ TEST(a_sound_plays_only_its_key_range) {
     a.run(2400);
     CHECK_EQ(a.voices(), 1u);
     CHECK(rms(a.L, 2400) > 1e-3);
+}
+
+// A discarded sound lets go of its samples once the audio thread has moved off it, not only when its slot is reused:
+// here the pack its sample is read from, whose file the plugin keeps open while the sound lives.
+TEST(a_discarded_sound_releases_its_samples) {
+    auto openFiles = [] { int n = 0; for (int fd = 0; fd < 4096; ++fd) n += fcntl(fd, F_GETFD) != -1; return n; };
+    Inst a;
+    a.block(128);
+    const int before = openFiles();
+    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nelement ampeg_release=0\nregion element=0 sample=0\n";
+    const uint32_t id = prepare(a, "s", snd.c_str());
+    CHECK(id != CLAP_INVALID_ID);
+    CHECK_EQ(openFiles(), before + 1);
+    a.contexts->select(a.p, id, 0);
+    a.block(128, {on(0, 1, 0, 60)});
+    a.run(4800);
+    a.block(128, {off(0, 1, 0, 60)});
+    a.run(9600);
+    CHECK_EQ(a.voices(), 0u);
+    a.contexts->select(a.p, 0, 0);
+    a.block(128);
+    CHECK(a.contexts->discard(a.p, id));
+    for (int i = 0; i < 4; ++i) { a.block(128); a.p->on_main_thread(a.p); }
+    CHECK_EQ(openFiles(), before);
 }

@@ -106,6 +106,8 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     std::array<Owed, kVoices> owed{};     // notes a snapshot load ended; NOTE_END at the next block's start
     uint32_t owedCount = 0;
     uint32_t shownSlot = 0;               // the sound whose values `values` holds
+    std::array<bool, kContexts> dropping{};  // main thread: discarded contexts whose sounds the core still holds
+    std::atomic<bool> dropsPending{false};   // some are: each block asks for a main-thread call to drop them
     double sampleRate = 48000;
     uint32_t maxBlock = 0;
 
@@ -462,6 +464,12 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     }
     // Main thread, concurrently with process(): the sound is the engine's, not yet selected.
     bool buildPreset(Context& c, std::string&) { core->loadPatch(uint32_t(&c - contexts.data()), c.patch); return true; }
+    // Main thread, its last voice ended and unselected: its samples go now, not when the slot is reused.
+    void discarded(Context& c) {
+        c.patch.sound.reset();
+        const uint32_t i = uint32_t(&c - contexts.data());
+        if (!core->drop(i)) { dropping[i] = true; dropsPending.store(true, std::memory_order_relaxed); }
+    }
 
     static bool saveState(const clap_plugin_t* p, const clap_ostream_t* stream) {
         auto& s = self(p);
@@ -631,8 +639,20 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static bool startProcessing(const clap_plugin_t*) { return true; }
     static void stopProcessing(const clap_plugin_t*) {}
     static void reset(const clap_plugin_t* p) { self(p).silence(); }
-    static void onMainThread(const clap_plugin_t*) {}  // nothing is deferred to it; a host may still call it
-    static clap_process_status process(const clap_plugin_t* p, const clap_process_t* pr) { return Base::process(p, pr); }
+    // the discarded sounds the core could not let go of yet (prepared again: the new sound replaced them)
+    static void onMainThread(const clap_plugin_t* p) {
+        auto& s = self(p);
+        bool left = false;
+        for (uint32_t i = 0; i < kContexts; ++i)
+            if (s.dropping[i]) left |= s.dropping[i] = !s.contexts[i].prepared && !s.core->drop(i);
+        s.dropsPending.store(left, std::memory_order_relaxed);
+    }
+    static clap_process_status process(const clap_plugin_t* p, const clap_process_t* pr) {
+        const auto status = Base::process(p, pr);
+        auto& s = self(p);
+        if (s.dropsPending.load(std::memory_order_relaxed) && s.host && s.host->request_callback) s.host->request_callback(s.host);
+        return status;
+    }
 
     static uint32_t paramCount(const clap_plugin_t*) { return kParamCount; }
     static bool paramInfo(const clap_plugin_t*, uint32_t i, clap_param_info_t* info) {
