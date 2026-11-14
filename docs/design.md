@@ -3,13 +3,15 @@
 ## Layers
 
 - `core/` is the DSP core: plain C++17, no plugin API, no OS, no threads, no files, no heap. The
-  caller owns every object (`pcm::Core`, `pcm::SoundData`, `pcm::Compiled`) and the decoded samples,
-  which it hands in as `SampleView`s. The sound format (`sound.cpp`), the coverage report
+  caller owns every object (`pcm::Core`, `pcm::SoundData`, `pcm::Compiled`) and each region's audio,
+  which it hands in as `SampleView`s; what does not stay in memory reaches the core's fixed pool of
+  `pcm::Stream` rings, handed over with atomics only. The sound format (`sound.cpp`), the coverage report
   (`notCovered`) and the reference's measured laws (`laws.cpp`, `tables.cpp`, carried over from the
   sample-engine fork under its BSD licence) live here too.
-- `src/` is the shell: CLAP, parameters, state and snapshot, sample assets (resolved through the
-  host's `oscairn.assets`, decoded whole with dr_flac/dr_wav), the Oscairn instrument contract
-  through the SDK's helpers. It talks to the core through `src/engine.h` only.
+- `src/` is the shell: CLAP, parameters, state and snapshot, samples from Oscairn Sample Packs
+  (`packs.cpp`, `loader.cpp`: resolved through the host's `oscairn.assets`, read with the samplepack
+  library), the process's I/O thread (`streamer.cpp`), the Oscairn instrument contract through the
+  SDK's helpers. It talks to the core through `src/engine.h` only.
 
 ## The voice
 
@@ -78,10 +80,70 @@ interpolator (`Core::setInterp`), used to null against the fork; the plugin play
 ## Memory and threads
 
 The core is preallocated with the instance (4 pools of 128 element voices, the kernel table, the
-scratch windows: `sizeof(pcm::Core)`). A sound's samples are decoded whole on the main thread and
-shared between the instance's sounds while any uses them (counted as asset bytes in
-`oscairn.memory`). The shell publishes a compiled sound per context through a triple buffer the audio
+scratch windows, the stream pool: `sizeof(pcm::Core)`). A sound's audio in memory (heads and loop
+bodies, below) is loaded on the main thread and counted as asset bytes in `oscairn.memory`. The shell publishes a compiled sound per context through a triple buffer the audio
 thread installs from; installing a context's new sound ends the voices of its old one, and the main
 thread drops an entry's sound (and so its samples) only when it overwrites that entry, which is never
 the installed one. Nothing on the audio thread allocates, locks or blocks (tested by interposing the
 allocator).
+
+## Streaming
+
+A sample reference is `sample:<id>` (the host's `resolve_sample` gives the pack and the record's
+offset) or a path naming a one-record pack. Each pack file is mapped once per process, read-only,
+advised random access, and shared by every instance; its trailer gives every record's offset,
+length and preload span. Loading a sound resolves every reference first, hints every record's
+preload span in one read-ahead batch, reads the headers in ascending offset order, then copies or
+decodes what stays in memory in ascending order (a second hint batch covers frames decoded past
+the windows). Nothing opens a file per sample.
+
+What stays in memory, per region (frames from the region's start):
+
+- a head: the record's preload window, or 4,096 frames decoded at load when the window is shorter,
+  with 32 zero frames before it; a region no longer than that is all head, with 1,024 zero frames
+  after it (the guard the interpolator reads past an end);
+- a forward loop's body, decoded whole at load, when the loop ends past the head and is at most
+  16,384 frames long (64 KiB stereo, the most a record's own window may hold: a loop body never
+  costs more than the largest window). A looping voice then streams the frames between its head and
+  the loop once, and from its first pass on reads only memory: its stream goes back to the pool;
+- regions whose record uses blocks other than 256, 512 or 1,024 frames are decoded whole
+  (the host's packer writes 1,024).
+
+The rest streams. One I/O thread per process (`osc-sampler-io`, normal scheduling, never
+real-time, no memory locking calls), started with the first instance and stopped with the last,
+fills every streaming voice's ring of the instances attached to it. A ring is one `pcm::Stream` of
+the core's fixed pool: 128 rings of 4,096 frames (16 KiB, stereo-sized), 2 MiB an instance. A voice
+takes a free ring at note-on (none free: the layer does not start, counted) and gives it back when
+it ends or no longer reads it. The hand-over, one producer and one consumer per ring, lock-free:
+
+- state Free -> Active (audio thread, after setting the source), Active -> Released (audio thread),
+  Released -> Free (I/O thread, after its last write); the audio thread never reuses a ring the I/O
+  thread may still be writing;
+- `written` (I/O thread, release after the frames) and `consumed` (audio thread, release after its
+  last read below it); the I/O thread writes stream frame f only while f < consumed + 4,096, so it
+  never writes what the voice may read, and the voice reads only below `written`.
+
+The I/O thread works in units of one block (1,024 frames, the rest of a block after an odd start,
+or up to a loop's end), decoded with samplepack's decoder (no CRC at play time; a block that does
+not decode plays silence). Of the rings with room for their next unit it serves first the one that
+runs out first in output time: frames ahead divided by the voice's current step, which the voice
+publishes. It holds a mutex for one unit at a time (the audio thread never takes it; main threads
+take it to attach, detach and free what streams read) and waits a millisecond when nothing has
+room. A loop too long to keep streams too: after its end the thread continues at its start, so
+the ring holds the frames in play order and the voice reads them without wrapping. A one-shot's
+stream ends in 1,024 zero frames.
+
+Reading costs the audio thread almost nothing: each piece (at most 16 frames) reads one cached span
+of the region's audio (head, loop body or ring) with two compares; only crossing a span's end (a
+loop pass, a ring wrap, every 1,024 streamed frames, or 1,152 frames before what is handed over)
+takes the slower path, which also hands back what was read and loads `written`.
+
+Late chunks: once fewer than 1,152 frames past a voice's reads are handed over (and more are due),
+the voice is shed at its next control step with a 16-frame fade, as `Core::shed` does, and counted
+(`Core::streamSheds`, the plugin's `org.oscairn.pcm.streaming/draft-1` extension). 1,152 frames
+cover the rest of the control step and the fade at the largest step (32): the fade never reads a
+frame not handed over, the voice never waits, and its note ends as any other. The read-ahead is in
+frames consumed: the ring holds 4,096 frames, a unit needs 1,024 free, the margin is 1,152, so after
+the I/O thread last had room a voice has about 1,900 frames of slack: 40 ms at 48 kHz at its own
+pitch, 10 ms two octaves up, 5 ms three octaves up (the design's limit: one unit of every ring
+within 5 ms). Voices that play past that are shed, not glitched.

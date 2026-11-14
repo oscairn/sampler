@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace pcmshell {
 
@@ -16,6 +17,7 @@ struct Pack {
     std::string path;
     const uint8_t* data = nullptr;
     size_t len = 0;     // committed bytes
+    std::vector<sp_index_entry> index;  // its trailer's entries, sorted by sample id
     void* base = nullptr;
     size_t mapped = 0;  // bytes mapped
     Pack() = default;
@@ -33,10 +35,13 @@ struct Record {
 // A sample reference "sample:<64 lowercase hex digits>": its id. False for any other reference.
 bool sampleId(const char* ref, uint8_t id[SP_SAMPLE_ID_BYTES]);
 
-// The record at `offset` of the pack at `path`, its header checked and its stated sample id equal to `id`.
-bool recordAt(const std::string& path, uint64_t offset, const uint8_t* id, Record& out, std::string& error);
+// The record of sample `id` at `offset` of the pack at `path`, from the pack's trailer, or from `length` and `preload`
+// when the host gave them (non-zero). Nothing of the record is read yet: checkRecord does that.
+bool findRecord(const std::string& path, uint64_t offset, const uint8_t* id, uint64_t length, uint64_t preload, Record& out, std::string& error);
 // The one live record of a one-record pack (what a path reference names).
 bool onlyRecord(const std::string& path, Record& out, std::string& error);
+// Reads and checks a found record's header (samplepack: checksum, every field, agreement with the entry).
+bool checkRecord(Record&, std::string& error);
 
 // Working memory for decoding (about 48 KiB): one per thread that decodes.
 struct Decoder {

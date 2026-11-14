@@ -125,6 +125,7 @@ public:
     virtual uint32_t voiceCount() const = 0;                        // voices sounding, fading ones included
     virtual VoiceInfo voice(uint32_t voice) const = 0;
     virtual SoundCost cost(uint32_t context) const = 0;              // any thread
+    virtual uint64_t streamSheds() const = 0;                       // element voices shed for want of streamed audio; any thread
     virtual void reset() = 0;                                       // every voice off now, controllers to rest
     // Measurement only (main thread, before processing): Hermite instead of the 20-tap kernel.
     virtual void setHermite(bool on) = 0;

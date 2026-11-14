@@ -86,9 +86,11 @@ struct Host {
     bool pedalHeld[kMaxVoices] = {};
     int pedal = 0;
     Host(double sr, Interp in) { core->prepare(sr); core->setInterp(in); std::fill(keyOf, keyOf + kMaxVoices, -1); }
-    bool load(const SampleView* views) {
+    bool load(const SampleView* sampleViews) {  // one a sample reference
         char err[256];
-        if (!compile(*data, views, *sound, err, sizeof err)) { fprintf(stderr, "compile: %s\n", err); return false; }
+        std::vector<SampleView> views(data->regions);
+        for (uint32_t i = 0; i < data->regions; ++i) views[i] = sampleViews[data->region[i].sample];
+        if (!compile(*data, views.data(), *sound, err, sizeof err)) { fprintf(stderr, "compile: %s\n", err); return false; }
         core->install(0, sound.get()); core->setGain(0, 1, 0);
         return true;
     }

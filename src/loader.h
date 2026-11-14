@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// A sound's samples from packs: each sample reference resolved to a record (through the caller's resolver), the
-// records read in ascending offset order after one read-ahead batch, and the audio the core needs. Main thread.
+// A sound's audio from packs: each sample reference resolved to a record (through the caller's resolver), the
+// records' preload spans hinted in one read-ahead batch and then read in ascending offset order, and for each region
+// what the core keeps in memory and what streams (docs/design.md, "Streaming"). Main thread.
 #pragma once
 #include <functional>
 #include <memory>
@@ -9,19 +10,30 @@
 
 #include "../core/pcore.h"
 #include "packs.h"
+#include "streamer.h"
 
 namespace pcmshell {
 
-// A sample reference to its record (false with a reason).
+// A sample reference to its record, found but not yet read (findRecord, onlyRecord); false with a reason.
 using SampleResolver = std::function<bool(const char* ref, Record&, std::string& error)>;
 
-// What a sound's samples resolve to; the core's views point into it, so it lives while the sound does.
+// A region keeps this many frames from its start in memory before it streams (the record's window when it has at
+// least that many), and a forward loop's body whole up to kMaxLoopBody frames.
+constexpr uint32_t kHeadFrames = 4096, kMaxLoopBody = 16384;
+
+// What a sound's regions play; the core's views point into it, so it lives while the sound does. Freed under
+// holdStreams(): the I/O thread may still be finishing a unit of a voice that just ended.
 struct Samples {
-    std::vector<Record> records;                  // one a sample reference
-    std::vector<std::vector<int16_t>> pcm;        // decoded audio the core reads
-    std::vector<pcm::SampleView> views;           // one a sample reference
-    uint64_t bytes = 0;                           // decoded audio held
+    std::vector<Record> records;               // one a sample reference
+    std::vector<std::vector<int16_t>> pcm;     // what stays in memory: heads (with their guards) and loop bodies
+    std::vector<pcm::SampleView> views;        // one a region
+    std::vector<StreamSource> sources;         // one a region (used by those that stream)
+    uint64_t bytes = 0;                        // bytes of pcm
+    Samples() = default;
+    Samples(const Samples&) = delete;
+    ~Samples();
 };
-std::shared_ptr<const Samples> loadSamples(const pcm::SoundData&, const SampleResolver&, std::string& error);
+// whole: every region decoded whole into memory, nothing streams (for comparisons: OSCAIRN_PCM_DECODE_WHOLE).
+std::shared_ptr<const Samples> loadSamples(const pcm::SoundData&, const SampleResolver&, bool whole, std::string& error);
 
 }  // namespace pcmshell

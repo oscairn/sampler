@@ -97,6 +97,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     oscairn::voices::Limits budget;                         // audio thread: as set_limits gave them
     const uint32_t deviceCap = envCap(kEnvMaxVoices, kMaxDeviceVoices);
     const uint32_t soundCap = envCap(kEnvMaxVoicesPerSound, kMaxDeviceVoicesPerSound);
+    const bool decodeWhole = [] { const char* e = std::getenv(kEnvDecodeWhole); return e && !std::strcmp(e, "1"); }();
     std::array<bool, kVoices> choking{};  // the core was told to fade this voice
     std::array<bool, kVoices> keyUpSent{};  // the core was told the key is up under the pedal
     struct Owed { int32_t id; int16_t channel, key; };
@@ -126,7 +127,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             std::snprintf(r.sha256, sizeof r.sha256, "%s", ref + 7);
             uint64_t offset = 0;
             if (!assets->resolve_sample(host, &r, local, sizeof local, &offset, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
-            return recordAt(local, offset, id, out, error);
+            return findRecord(local, offset, id, 0, 0, out, error);  // draft 4 gives no length or preload: the pack's trailer has them
         }
         if (library.empty()) { error = "a sample path needs a base asset reference"; return false; }
         const std::string full = (path.empty() ? std::string() : path + "/") + ref;
@@ -144,7 +145,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!pcm::readBlob(blob.data(), blob.size(), *s->data, why, sizeof why)) { error = why; return nullptr; }
         s->blob = std::move(blob); s->library = library; s->path = path;
         if (!assets || !assets->resolve) { error = "the host offers no oscairn.assets to resolve samples"; return nullptr; }
-        s->samples = loadSamples(*s->data, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, error);
+        s->samples = loadSamples(*s->data, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, decodeWhole, error);
         if (!s->samples) return nullptr;
         s->compiled.reset(new pcm::Compiled);
         if (!pcm::compile(*s->data, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
@@ -695,6 +696,13 @@ const oscairn_plugin_voice_budget_t kVoiceBudget = {Plugin::honorsVolume, Plugin
 const oscairn_plugin_memory_t kMemory = {Plugin::memoryEstimate, Plugin::memoryCurrent};
 const oscairn_plugin_asset_dependencies_t kDependencies = {Plugin::dependencyCount, Plugin::dependencyGet, nullptr};
 const oscairn_plugin_ui_t kUi = {Plugin::paramHint, nullptr, nullptr};
+// This plugin's own extension: streaming's counter and the tests' hooks (stall the I/O thread, wait for it).
+const struct {
+    uint64_t (*sheds)(const clap_plugin_t*);
+    void (*stall)(const clap_plugin_t*, bool);
+    void (*settle)(const clap_plugin_t*);
+} kStreaming = {[](const clap_plugin_t* p) -> uint64_t { return Plugin::self(p).core->streamSheds(); },
+                [](const clap_plugin_t*, bool on) { stallStreams(on); }, [](const clap_plugin_t*) { settleStreams(); }};
 
 const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &kAudioPorts;
@@ -705,6 +713,7 @@ const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, OSCAIRN_EXT_VOICE_BUDGET)) return &kVoiceBudget;
     if (!std::strcmp(id, OSCAIRN_EXT_MEMORY)) return &kMemory;
     if (!std::strcmp(id, OSCAIRN_EXT_UI) || !std::strcmp(id, OSCAIRN_EXT_UI_DRAFT_4)) return &kUi;
+    if (!std::strcmp(id, kExtStreaming)) return &kStreaming;
     if (!std::strcmp(id, OSCAIRN_EXT_ASSET_DEPENDENCIES) || !std::strcmp(id, OSCAIRN_EXT_ASSET_DEPENDENCIES_DRAFT_1)) return &kDependencies;
     return nullptr;
 }

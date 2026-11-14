@@ -71,17 +71,11 @@ std::shared_ptr<const Pack> mapPack(const std::string& path, uint64_t need, std:
     }
     if (st != SP_OK) { error = "not a valid sample pack (error " + std::to_string(int(st)) + "): " + path; return nullptr; }
     p->len = size_t(committed);
+    p->index.resize(size_t(info.records));
+    size_t n = 0;
+    if (info.records && sp_pack_index(p->data, p->len, p->index.data(), p->index.size(), &n) != SP_OK) { error = "cannot read the index of " + path; return nullptr; }
     slot = p;
     return p;
-}
-
-uint64_t le64(const uint8_t* b) { uint64_t v = 0; for (int i = 7; i >= 0; --i) v = v << 8 | b[i]; return v; }
-uint32_t le32(const uint8_t* b) { return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24; }
-
-bool checkRecord(Record& r, std::string& error) {
-    const sp_status st = sp_pack_record(r.pack->data, r.pack->len, &r.entry, &r.info);
-    if (st != SP_OK) { error = "bad sample record (error " + std::to_string(int(st)) + ") in " + r.pack->path; return false; }
-    return true;
 }
 
 }  // namespace
@@ -106,27 +100,35 @@ bool sampleId(const char* ref, uint8_t id[SP_SAMPLE_ID_BYTES]) {
     return true;
 }
 
-bool recordAt(const std::string& path, uint64_t offset, const uint8_t* id, Record& r, std::string& error) {
-    if (offset % SP_PACK_PAGE || offset < SP_PACK_PAGE) { error = "bad record offset in " + path; return false; }
-    if (!(r.pack = mapPack(path, offset + SP_PACK_PAGE, error))) return false;
-    // the entry from the record's own header (sp_pack_record checks it all: checksum, fields, bounds)
-    const uint8_t* h = r.pack->data + offset;
-    if (offset + 64 > r.pack->len || std::memcmp(h, "OSPR", 4)) { error = "no sample record at that offset in " + path; return false; }
-    r.entry.offset = offset;
-    r.entry.length = le64(h + 8);
-    r.entry.preload = uint64_t(le32(h + 24)) + le32(h + 28);
-    std::memcpy(r.entry.id, h + 32, SP_SAMPLE_ID_BYTES);
-    if (offset + r.entry.length > r.pack->len && !(r.pack = mapPack(path, offset + r.entry.length, error))) return false;
-    if (!checkRecord(r, error)) return false;
-    if (std::memcmp(r.info.id, id, SP_SAMPLE_ID_BYTES)) { error = "the record in " + path + " holds another sample"; return false; }
-    return true;
+bool findRecord(const std::string& path, uint64_t offset, const uint8_t* id, uint64_t length, uint64_t preload, Record& r, std::string& error) {
+    for (uint64_t need = 0;; need = offset + std::max<uint64_t>(length, SP_PACK_PAGE)) {  // mapped again once when the host appended
+        if (!(r.pack = mapPack(path, need, error))) return false;
+        if (length && preload) {
+            r.entry = {}; std::memcpy(r.entry.id, id, SP_SAMPLE_ID_BYTES);
+            r.entry.offset = offset; r.entry.length = length; r.entry.preload = preload;
+            if (offset + length <= r.pack->len) return true;
+        } else {
+            size_t at = 0;
+            if (sp_index_find(r.pack->index.data(), r.pack->index.size(), id, &at) == SP_OK && r.pack->index[at].offset == offset) { r.entry = r.pack->index[at]; return true; }
+        }
+        if (need) break;
+    }
+    error = "no record of that sample at that offset in " + path;
+    return false;
 }
 
 bool onlyRecord(const std::string& path, Record& r, std::string& error) {
     if (!(r.pack = mapPack(path, 0, error))) return false;
-    size_t n = 0;
-    if (sp_pack_index(r.pack->data, r.pack->len, &r.entry, 1, &n) != SP_OK || n != 1) { error = path + " is not a one-sample pack"; return false; }
-    return checkRecord(r, error);
+    if (r.pack->index.size() != 1) { error = path + " is not a one-sample pack"; return false; }
+    r.entry = r.pack->index[0];
+    return true;
+}
+
+bool checkRecord(Record& r, std::string& error) {
+    const sp_status st = sp_pack_record(r.pack->data, r.pack->len, &r.entry, &r.info);
+    if (st != SP_OK) { error = "bad sample record (error " + std::to_string(int(st)) + ") in " + r.pack->path; return false; }
+    if (std::memcmp(r.info.id, r.entry.id, SP_SAMPLE_ID_BYTES)) { error = "the record in " + r.pack->path + " holds another sample"; return false; }
+    return true;
 }
 
 uint32_t decodeBlock(const Record& r, uint32_t block, Decoder& d) {

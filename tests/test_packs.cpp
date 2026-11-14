@@ -48,6 +48,64 @@ TEST(sample_references_fail_with_reasons) {
     g_store[std::string(64, 'f')] = g_store.at(g_tones.at("sine").id);  // the host names the wrong record
     const std::string wrong = soundOf("sample:" + std::string(64, 'f'));
     CHECK_EQ(a.contexts->prepare(a.p, "x", nullptr, 0, wrong.c_str(), testBase(), msg, sizeof msg), CLAP_INVALID_ID);
-    CHECK(std::strstr(msg, "another sample") != nullptr);
+    CHECK(std::strstr(msg, "no record of that sample") != nullptr);
     g_store.erase(std::string(64, 'f'));
+}
+
+namespace {
+// A note of `sound` from `tone`, with the plugin's I/O thread filling every ring before each block (or every region
+// decoded whole when `whole`).
+std::vector<float> render(const std::string& sound, bool whole, int key, long frames) {
+    if (whole) setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1);
+    std::vector<float> out;
+    {
+        Inst a;
+        unsetenv("OSCAIRN_PCM_DECODE_WHOLE");
+        if (!a.load(stateWith(sound))) { std::printf("  the sound did not load\n"); ++g_failures; return {}; }
+        a.block(128, {on(3, 1, 0, int16_t(key))});
+        a.run(frames * 3 / 4, 128);
+        a.block(100, {off(7, 1, 0, int16_t(key))});
+        a.run(frames / 4, 128);
+        CHECK_EQ(a.streaming->sheds(a.p), 0u);
+        out = a.L;
+        out.insert(out.end(), a.R.begin(), a.R.end());
+    }
+    return out;
+}
+}  // namespace
+
+// The main correctness test: audio played from packs, streamed, is the same audio decoded whole, sample for sample:
+// one-shots, every way a loop is kept (in the head, its body whole with the frames before it streamed once, its body
+// whole starting inside the head, too long to keep and streamed), mono and stereo, at the root and transposed up.
+TEST(streamed_audio_equals_whole) {
+    const char* regions[] = {"", " loop=2000-3900", " loop=50000-60000", " loop=1000-9000", " loop=10000-140000", " loop=70000-70100"};
+    for (const char* tone : {"mono", "stereo"})
+        for (const char* loop : regions)
+            for (int key : {60, 79, 96}) {
+                if (std::string(tone) == "mono" && std::string(loop).find("140000") != std::string::npos) continue;  // past its end
+                const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef(tone) + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\n"
+                                        "region key=0-127 root=60 element=0 sample=0" + loop + "\n";
+                const auto w = render(snd, true, key, 96000), s = render(snd, false, key, 96000);
+                if (w.empty() || w != s) { std::printf("  %s%s key %d differs\n", tone, loop, key); ++g_failures; }
+                CHECK(peak(s) > 0.01f);
+            }
+}
+
+// The comparison above compares two different things: decoded whole holds the tone in memory, streamed only its head.
+TEST(streaming_holds_only_heads) {
+    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nelement\nregion element=0 sample=0\n";
+    uint64_t bytes[2] = {};
+    for (int whole = 0; whole < 2; ++whole) {
+        if (whole) setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1);
+        Inst a;
+        unsetenv("OSCAIRN_PCM_DECODE_WHOLE");
+        char msg[256];
+        const uint32_t id = a.contexts->prepare(a.p, "s", nullptr, 0, snd.c_str(), testBase(), msg, sizeof msg);
+        CHECK(id != CLAP_INVALID_ID);
+        oscairn_memory_t m{};
+        a.memory->current(a.p, &m);
+        bytes[whole] = m.asset_bytes;
+    }
+    CHECK(bytes[1] >= 150000u * 4);                                   // the stereo tone whole
+    CHECK(bytes[0] < 150000u * 4 / 4);                                // streamed: the default sound's head and the tone's
 }

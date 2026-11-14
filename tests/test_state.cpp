@@ -111,7 +111,7 @@ TEST(memory_is_declared) {
     Inst a(false);
     oscairn_memory_t m{};
     CHECK(a.memory->estimate(a.p, kRate, 4096, &m));
-    CHECK(m.shared_bytes > 0 && m.context_bytes > 0 && m.asset_bytes >= 44100 * 2);  // the default sound's sample
+    CHECK(m.shared_bytes > 0 && m.context_bytes > 0 && m.asset_bytes >= 4096 * 2 && m.asset_bytes < 44100 * 2);  // the default sound: its head in memory, the rest streams
     a.p->activate(a.p, kRate, 1, 4096);
     oscairn_memory_t c{};
     CHECK(a.memory->current(a.p, &c) && c.shared_bytes > 0);

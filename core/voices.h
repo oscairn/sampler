@@ -59,10 +59,15 @@ struct VoiceScalar {
     bool releasing = false, fresh = true, filterMoves = false, eq = false;  // eq: the element EQ shapes the sound
     bool steady = false, dirty = true;  // steady: control steps change nothing until an event makes it dirty
     uint8_t lfoRatio[3] = {127, 127, 127};  // the element's part LFO depth ratio for each slot (it scales a slot on the cutoff)
-    // the sample and its loop (virtual, unwrapped positions; see feed())
-    const int16_t* data = nullptr;
-    int64_t frames = 0, loopStart = 0, loopEnd = 0, cycEnd = 0, shift = 0;
+    // the region's audio (virtual, unwrapped positions; see feed()): its view, the span of it the
+    // positions in [segLo, segHi) read (frame x at seg + x * channels), the frames rebasing took off,
+    // the stream while it streams; starve: 1 its stream is late (the next control step sheds it), 2 shed
+    const SampleView* src = nullptr;
+    const int16_t* seg = nullptr;
+    int64_t segLo = 0, segHi = 0, shift = 0;
+    Stream* stream = nullptr;
     bool loop = false, ended = false;
+    uint8_t starve = 0;
     uint8_t plfo = 0, lfoSlots = 0;  // the part LFO: bit d, a slot on destination d (laws::LfoDest) reaches it; bit k, slot k does
     int16_t panRaw = 64;       // the pan before the part LFO (raw)
     AmpEnv amp;

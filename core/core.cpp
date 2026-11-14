@@ -141,11 +141,17 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     double worst = 0;
     for (uint32_t i = 0; i < d.regions; ++i) {
         const Region& r = d.region[i];
-        const SampleView& v = views[r.sample];
+        SampleView v = views[i];
         if (!v.data || !v.frames || (v.channels != 1 && v.channels != 2) || !(v.rate > 0))
             return fail("region %u: sample %u is missing or empty", i, r.sample);
         if (r.loop && (r.loopEnd > v.frames || r.loopStart >= r.loopEnd))
             return fail("region %u: the loop lies outside its sample of %u frames", i, v.frames);
+        if (!v.head || v.head > v.frames) v.head = v.frames;
+        v.looped = r.loop != 0; v.loopStart = r.loopStart; v.loopEnd = r.loopEnd;
+        v.loopStreams = v.looped && v.loopEnd > v.head && !v.loop;
+        // every frame it plays: in data, a kept loop body or the stream
+        const bool all = v.head == v.frames || (v.looped && !v.loopStreams && v.loopStart <= v.head);
+        if (!all && !v.stream) return fail("region %u: frames from %u on are neither loaded nor streamed", i, v.head);
         out.region[i] = r;
         out.sample[i] = v;
         const int type = d.element[r.element].v[FilType];
@@ -565,6 +571,12 @@ template <bool R> PV_INLINE void put(vf* acc, int s, vf y, vf g, const Buses& b)
     }
 }
 
+// A voice no longer reads its stream: the I/O thread may take it back (the Stream rules)
+static void dropStream(VoiceScalar& v) {
+    if (v.stream) v.stream->state.store(Stream::Released, std::memory_order_release);
+    v.stream = nullptr;
+}
+
 struct Kernel {
     // One piece of n frames (n <= kSub) for the voices of a pool, added into accL/accR (R: per bus).
     template <int C, class I, int K, bool R>
@@ -690,41 +702,81 @@ struct Kernel {
 
     // A voice's tap window for n frames, converted to float once (each frame serves every output
     // frame whose taps reach it): a base pointer b with b[v * C] the source frame of virtual frame v
-    // over [first - H, last + A], from the sample or across a loop end, stitched.
+    // over [first - H, last + A]. One span of the region's audio (cached: seg, segLo, segHi) serves
+    // most pieces; the rest are gathered span by span (gather()).
     template <int C> static const float* feed(Pool& p, int i, int n, int H, int A, float* win) {
         VoiceScalar& v = p.v[i];
         int64_t p0 = p.pos[i];
         const int64_t s0 = p.step[i], d = p.dstep[i];
-        if (v.loop) {
-            const int64_t L = v.loopEnd - v.loopStart;
-            if ((p0 >> 32) > (int64_t(1) << 30)) {  // keep virtual positions within int32
-                const int64_t k = ((p0 >> 32) - v.loopEnd) / L;
-                p0 -= (k * L) << 32; p.pos[i] = p0; v.cycEnd -= k * L; v.shift -= k * L;
-            }
+        if (v.loop && (p0 >> 32) > (int64_t(1) << 30)) {  // keep virtual positions within int32, at least 64 frames into the loop
+            const int64_t L = v.src->loopEnd - v.src->loopStart, k = ((p0 >> 32) - v.src->loopStart - 64) / L;
+            p0 -= (k * L) << 32; p.pos[i] = p0; v.shift += k * L;
+            v.segLo -= k * L; v.segHi -= k * L; v.seg += k * L * C;
         }
         const int64_t last = p0 + int64_t(n - 1) * s0 + d * int64_t(n - 1) * n / 2;
         const int64_t lo = (p0 >> 32) - H, hi = (last >> 32) + A;
         const int count = int(hi - lo + 1);
-        if (!v.loop) {
-            if ((p0 >> 32) >= v.frames) v.ended = true;  // past the end: the reads stay in the zero guard
-            convert(v.data + lo * C, win, count * C);
-            return win - lo * C;
-        }
-        const int64_t L = v.loopEnd - v.loopStart;
-        while (lo >= v.cycEnd) { v.cycEnd += L; v.shift += L; }
-        if (hi < v.cycEnd) { convert(v.data + (lo - v.shift) * C, win, count * C); return win - lo * C; }
-        // across the loop end (possibly more than once for a short loop): segment by segment
-        int64_t at = lo - v.shift;  // real frame of virtual lo
-        for (int64_t x = lo; x <= hi;) {
-            const int64_t k = std::min<int64_t>(hi - x + 1, v.loopEnd - at);
-            convert(v.data + at * C, win + (x - lo) * C, int(k) * C);
-            x += k; at += k;
-            if (at >= v.loopEnd) at -= L;
-        }
+        if (!v.loop && (p0 >> 32) >= v.src->frames) v.ended = true;  // past the end: the reads stay in the zero guard
+        if (lo >= v.segLo && hi < v.segHi) { convert(v.seg + lo * C, win, count * C); return win - lo * C; }
+        gather<C>(v, lo, hi, s0, win);
         return win - lo * C;
     }
-    // int16 to float, four at a time (may write up to three values past `count`; reads stay in the
-    // sample's guard frames)
+    // Frames [lo, hi] span by span; the span holding hi becomes the cached one.
+    template <int C> static PV_NOINLINE void gather(VoiceScalar& v, int64_t lo, int64_t hi, int64_t step, float* win) {
+        static const int16_t zeros[kGuardPost * 2 + kOverread] = {};
+        for (int64_t x = lo; x <= hi;) {
+            const int16_t* at = nullptr;
+            int64_t k = span<C>(v, x, lo, step, at);
+            if (k < 1) { at = zeros; k = kGuardPost; v.starve = v.starve ? v.starve : 1; v.dirty = true; }  // not handed over (cannot happen: the margin)
+            k = std::min(k, hi - x + 1);
+            convertExact(at, win + (x - lo) * C, int(k) * C);
+            x += k;
+        }
+    }
+    // Virtual frame x on (the piece's reads start at lo): where it is and how many frames follow it there
+    // (fewer than 1: not handed over yet). Caches the span; a stream's only up to kStreamMargin frames
+    // before what is handed over, so a piece reading closer comes back here to look again.
+    template <int C> static int64_t span(VoiceScalar& v, int64_t x, int64_t lo, int64_t step, const int16_t*& at) {
+        const SampleView& s = *v.src;
+        const int64_t head = s.head, ls = s.loopStart, le = s.loopEnd;
+        const bool body = s.looped && !s.loopStreams;
+        int64_t k, hiEnd;
+        if (body && x >= ls) {  // the kept loop body (in data or its own buffer): one pass
+            if (v.stream && lo >= ls) dropStream(v);  // no frame before the loop is read again: no more I/O
+            const int64_t r = ls + (x - ls) % (le - ls);
+            at = (s.loop ? s.loop - ls * C : s.data) + r * C;
+            k = hiEnd = le - r;
+        } else if (const int64_t resident = body ? std::min(head, ls) : head == s.frames ? head + kGuardPost : head; x < resident) {
+            at = s.data + x * C;
+            k = hiEnd = resident - x;
+        } else {  // the stream: up to what is handed over (and the kept loop's start)
+            Stream* st = v.stream;
+            if (!st) return 0;
+            const int64_t f = x + v.shift - head;
+            const int64_t streamEnd = body ? ls : s.looped ? INT64_MAX : int64_t(s.frames) + kGuardPost;
+            const int64_t end = std::min(st->written.load(std::memory_order_acquire) + head - v.shift, streamEnd);
+            st->consumed.store(std::max<int64_t>(0, lo + v.shift - head), std::memory_order_release);
+            st->speed.store(float(step) * (1.0f / 4294967296.0f), std::memory_order_relaxed);
+            if (end < streamEnd && end - lo < kStreamMargin && !v.starve) { v.starve = 1; v.dirty = true; }  // late: shed at the next control step
+            const int64_t o = f % kStreamFrames;
+            at = st->ring + o * C;
+            k = std::min<int64_t>(kStreamFrames - o, end - x);
+            // comes back at a 1,024-frame boundary (to hand back what it read) or kStreamMargin before the end
+            hiEnd = std::min(k, end < streamEnd ? end - kStreamMargin - x : k);
+            hiEnd = std::min(hiEnd, 1024 - f % 1024);
+        }
+        v.seg = at - x * C; v.segLo = x; v.segHi = x + std::max<int64_t>(0, hiEnd);
+        return k;
+    }
+    static PV_INLINE void convertExact(const int16_t* src, float* dst, int count) {
+        int k = 0;
+#if !PV_SCALAR
+        for (; k + 4 <= count; k += 4) storeu(dst + k, ld4(src + k));
+#endif
+        for (; k < count; ++k) dst[k] = float(src[k]);
+    }
+    // int16 to float, four at a time (may read and write up to three values past `count`: every buffer has
+    // kOverread values after it, and a cached stream span ends kStreamMargin frames before what is handed over)
     static PV_INLINE void convert(const int16_t* src, float* dst, int count) {
 #if PV_SCALAR
         for (int k = 0; k < count; ++k) dst[k] = float(src[k]);
@@ -855,6 +907,8 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     const SampleView& sv = s.sample[ri];
     Pool& p = poolOf(s.plan[ri]);
     if (p.n >= kPoolVoices) return;  // shortcut: a full pool skips the layer (64 notes of at most two layers fit)
+    Stream* stream = nullptr;
+    if (sv.stream && !(stream = takeStream())) { streamSheds_.fetch_add(1, std::memory_order_relaxed); return; }  // every stream taken
     const int16_t* e = s.element[r.element].v;
     const uint32_t i = p.n++;
     VoiceScalar& v = p.v[i];
@@ -867,10 +921,14 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     v.bus = s.splitOutputs ? uint8_t(e[ElementConnection]) : 0;
     p.f[B1][i] = v.bus == 1 ? 1.f : 0.f; p.f[B2][i] = v.bus == 2 ? 1.f : 0.f;
     v.start = clock_;
-    // the sample
-    v.data = sv.data; v.frames = sv.frames;
-    v.loop = r.loop != 0; v.loopStart = r.loopStart; v.loopEnd = r.loopEnd;
-    v.cycEnd = v.loop ? v.loopEnd : (int64_t(1) << 62); v.shift = 0;
+    // the region's audio: the cached span starts as data (feed() finds the rest)
+    v.src = &sv; v.loop = sv.looped;
+    v.seg = sv.data; v.segLo = -int64_t(kGuardPre); v.segHi = sv.head == sv.frames && !sv.looped ? int64_t(sv.frames) + kGuardPost : std::min<int64_t>(sv.head, sv.looped ? sv.loopStart : sv.head);
+    if (stream) {
+        v.stream = stream;
+        stream->source = sv.stream; stream->channels = sv.channels;
+        stream->state.store(Stream::Active, std::memory_order_release);
+    }
     // pitch: the fork's float arithmetic (keytrack 100 cents, the region's tune and transpose)
     // (pitch key follow: the centre note at its pitch, every key from it at the measured cents a key)
     const float pitchKey = e[PitchKeyFollow] == 96 ? 100.0f * (float(key) - float(r.root))
@@ -1192,6 +1250,7 @@ void Core::choke(uint32_t voice, uint32_t frames) {
 }
 
 void Core::free_(Pool& p, uint32_t i) {
+    dropStream(p.v[i]);
     const uint32_t last = --p.n;
     if (i != last) {
         for (int k = 0; k < NFIELDS; ++k) p.f[k][i] = p.f[k][last];
@@ -1271,7 +1330,7 @@ void Core::setModWheel(int ch, float x) {
 }
 
 void Core::reset() {
-    for (auto& p : pool_) p.n = 0;
+    for (auto& p : pool_) { for (uint32_t i = 0; i < p.n; ++i) dropStream(p.v[i]); p.n = 0; }
     for (auto& s : slot_) s = Slot{};
     pendingSlots_ = 0;
     rand_ = 0x9e3779b9u;  // the random pitches start over
@@ -1281,6 +1340,18 @@ void Core::reset() {
     for (int c = 0; c < 16; ++c) { pressure_[c] = 0; foot_[c] = 1; breath_[c] = 1; }  // the reference's rest values (inferred: the analog engine's)
     for (auto& t : lfoStart_) t = -1;  // the part LFOs start with their next note
     for (uint32_t s = 0; s < kMaxSounds; ++s) { for (auto& g : cycle_[s]) g = 0; draw_[s] = 0x2545f491u; }  // the cycles and draws start over
+}
+
+void Core::fadeFast(Pool& p, uint32_t i) {
+    VoiceScalar& v = p.v[i];
+    ampAdvance(v.amp, clock_ - 1, sr_);
+    v.releasing = true;
+    v.steady = false;
+    v.amp.stage = AmpEnv::Fade; v.amp.ramp = true; v.amp.target = 0;
+    v.amp.step = -std::max(v.amp.gain, 1e-9) / kSub;
+    float* f[5] = {p.f[G], p.f[M], p.f[A], p.f[LO], p.f[HI]};
+    ampFields(v.amp, f, int(i));
+    p.f[LO][i] = 0;
 }
 
 void Core::shed(uint32_t n) {
@@ -1293,16 +1364,18 @@ void Core::shed(uint32_t n) {
                 if (g < bg) { bg = g; best = &p; bi = i; }
             }
         if (!best) return;
-        VoiceScalar& v = best->v[bi];
-        ampAdvance(v.amp, clock_ - 1, sr_);
-        v.releasing = true;
-        v.steady = false;
-        v.amp.stage = AmpEnv::Fade; v.amp.ramp = true; v.amp.target = 0;
-        v.amp.step = -std::max(v.amp.gain, 1e-9) / kSub;
-        float* f[5] = {best->f[G], best->f[M], best->f[A], best->f[LO], best->f[HI]};
-        ampFields(v.amp, f, int(bi));
-        best->f[LO][bi] = 0;
+        fadeFast(*best, bi);
     }
+}
+
+Stream* Core::takeStream() {
+    for (uint32_t k = 0; k < kStreams; ++k) {
+        Stream& s = streams_[(nextStream_ + k) % kStreams];
+        if (s.state.load(std::memory_order_acquire) != Stream::Free) continue;
+        nextStream_ = (nextStream_ + k + 1) % kStreams;
+        return &s;
+    }
+    return nullptr;
 }
 
 // The part LFO at this control step (a voice it reaches): the sound's oscillator through the element's slots, in raw steps
@@ -1343,6 +1416,11 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
     const bool fresh = v.fresh;
     v.fresh = false;
     if (grid || fresh) {
+        if (grid && v.starve == 1) {  // its stream is late: shed now, counted (Core::streamSheds)
+            v.starve = 2;
+            streamSheds_.fetch_add(1, std::memory_order_relaxed);
+            if (v.amp.stage != AmpEnv::Done) fadeFast(p, i);
+        }
         if (grid) {
             ampAdvance(v.amp, clock_ - 1, sr_);
             if (v.pedalRelease && !v.releasing && v.amp.stage == AmpEnv::Sustain) releaseLayer(p, i, pedalIndex(v, pedal_[v.channel]));

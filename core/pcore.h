@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The DSP core: a plain C++ library with no dependency on a plugin API, the OS, threads, files or a
 // heap. It never allocates; the caller owns every object's memory (the Core, the parsed SoundData,
-// the Compiled sound) and the decoded samples, which it hands in as SampleViews.
+// the Compiled sound) and the decoded samples, which it hands in as SampleViews. Audio that does not
+// stay in memory streams: the caller's I/O thread fills the Core's fixed pool of Streams, handed over
+// with atomics only (the Stream rules below).
 //
 // A sound (sound format v0, sound.cpp): a region table (key and velocity ranges, root, tuning,
 // level, pan, sample reference, loop) over element parameter sets in the reference's raw units
@@ -12,6 +14,7 @@
 // A voice's plan is data (PlanDesc: channels, interpolator, filter stages); the stage kernels are
 // plain functions over structure-of-arrays voice state, compiled once per plan (core.cpp).
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -77,10 +80,52 @@ struct Gap { uint16_t element; int16_t param; const char* why; bool part = false
 uint32_t notCovered(const SoundData&, Gap* out, uint32_t cap);
 
 // ---- samples -----------------------------------------------------------------------------------
-// Decoded 16-bit PCM, interleaved when stereo, owned by the caller. Frames [-kGuardPre, frames +
-// kGuardPost) must be readable and zero outside [0, frames).
-constexpr uint32_t kGuardPre = 32, kGuardPost = 1024;
-struct SampleView { const int16_t* data = nullptr; uint32_t frames = 0; uint8_t channels = 0; float rate = 0; };
+// A region's audio, owned by the caller: 16-bit PCM, interleaved when stereo, frames counted from the
+// region's own start. `data` holds frames [0, head) with kGuardPre zero frames before them and, when
+// head is every frame, kGuardPost zero frames after. A forward loop's body [loopStart, loopEnd) is in
+// data when loopEnd <= head, else in `loop` (its frames only) when the caller keeps it whole, else in
+// the stream. Every other frame from head on streams: `stream` is the caller's description of it for
+// its I/O thread (Stream::source; the core never reads it). Every buffer is readable kOverread values past
+// its end.
+constexpr uint32_t kGuardPre = 32, kGuardPost = 1024, kOverread = 8;
+struct SampleView {
+    const int16_t* data = nullptr; uint32_t frames = 0; uint8_t channels = 0; float rate = 0;
+    uint32_t head = 0;               // frames in data; 0: all of them
+    const int16_t* loop = nullptr;   // a forward loop's body, kept whole
+    const void* stream = nullptr;    // the frames from head on (null: nothing streams)
+    // compile() sets these from the region
+    bool looped = false, loopStreams = false;  // a forward loop; its body streams (too long to keep)
+    uint32_t loopStart = 0, loopEnd = 0;
+};
+
+// One streaming voice's ring of decoded frames, from a fixed pool in the Core (Core::streams()). The
+// audio thread and the caller's I/O thread hand it over with atomics only; the audio thread never
+// waits, locks or reads a frame not yet handed over:
+//   state: Free -> Active by the audio thread when a voice starts (source and channels set before);
+//          Active -> Released when the voice ends; Released -> Free by the I/O thread, which then no
+//          longer touches the ring (it zeroes written and consumed first).
+//   written: stream frames handed over (stream frame 0 is the region's frame `head`), stored by the
+//          I/O thread with release after their samples; frame f sits at ring[(f % kStreamFrames) x channels].
+//   consumed: stream frames the voice will not read again, stored by the audio thread with release; the
+//          I/O thread writes frame f only while f < consumed + kStreamFrames.
+//   speed: source frames per output frame now, for the I/O thread's order of urgency.
+// io*: the I/O thread's own fields.
+constexpr uint32_t kStreams = 128;        // streaming element voices at once: two a voice slot
+constexpr uint32_t kStreamFrames = 4096;  // a ring: four 1,024-frame blocks
+struct Stream {
+    enum : uint8_t { Free, Active, Released };
+    std::atomic<uint8_t> state{Free};
+    std::atomic<int64_t> written{0}, consumed{0};
+    std::atomic<float> speed{1};
+    const void* source = nullptr;
+    uint8_t channels = 0;
+    bool ioFresh = true, ioDone = false;
+    int64_t ioAt = 0, ioZeros = 0;
+    alignas(16) int16_t ring[kStreamFrames * 2 + kOverread] = {};
+};
+// A streaming voice is shed (a 16-frame fade) once fewer than this many frames past its reads are handed
+// over and more are due: enough to play the fade at the largest step
+constexpr int64_t kStreamMargin = 1152;
 
 // ---- the plan ----------------------------------------------------------------------------------
 enum class Interp : uint8_t { Hermite, Sinc };  // Sinc: 20 taps (docs/design.md)
@@ -95,9 +140,9 @@ struct Cost { double voiceBlock, rest; };
 Cost estimateCost(const PlanDesc&);
 
 // ---- the compiled sound ------------------------------------------------------------------------
-// A sound bound to its decoded samples, ready for the audio thread (caller memory). The laws that
-// depend on the note (key, velocity) are applied at note-on. It points into nothing but the
-// SampleViews it was given, which must outlive the voices using them.
+// A sound bound to its regions' audio, ready for the audio thread (caller memory). The laws that
+// depend on the note (key, velocity) are applied at note-on. It points into nothing but the audio
+// its SampleViews name, which must outlive the voices using them.
 struct Compiled {
     bool loaded = false;
     uint32_t regions = 0;
@@ -129,8 +174,9 @@ struct Compiled {
     } lfo;
     bool select = false;              // an element plays by cycle, at random or by the switches (Core::noteOn)
 };
-// Binds a parsed sound to its samples (views[i] for the sound's sample reference i). False when a
-// region's sample is missing or empty, or a loop lies outside its sample (error says which).
+// Binds a parsed sound to its regions' audio (views[i] for region i). False when a region's audio is
+// missing or empty, a loop lies outside it, or frames it plays are neither in memory nor streamed
+// (error says which).
 bool compile(const SoundData&, const SampleView* views, Compiled& out, char* error, size_t errorCap);
 // Whether a key and velocity (1..127, as played: the part's velocity sensitivity applies) start any region.
 bool keySounds(const Compiled&, int key, int velocity);
@@ -188,6 +234,11 @@ public:
     void render(float* const* left, float* const* right, uint32_t frames, uint32_t from);
     // Sheds n voices now: the quietest element voices fade out over one control step's frames.
     void shed(uint32_t n);
+    // The streams the caller's I/O thread fills (kStreams of them; the Stream rules above).
+    Stream* streams() { return streams_; }
+    // Element voices given up for want of streamed audio: shed because their stream was late, or not
+    // started because every stream was taken. Any thread.
+    uint32_t streamSheds() const { return streamSheds_.load(std::memory_order_relaxed); }
 
     uint32_t voiceCount() const;  // slots sounding
     uint32_t elementVoices() const;
@@ -209,6 +260,8 @@ private:
     void dropPending(Slot&);
     int64_t startPending_();  // starts the held-back layers due now; the clock the next one is due at
     void reap_();
+    void fadeFast(Pool&, uint32_t i);   // a 16-frame fade, then free (a shed)
+    Stream* takeStream();
     double sr_ = 48000;
     int64_t clock_ = 0;  // frames rendered since construction
     Interp interp_ = Interp::Sinc;
@@ -231,6 +284,9 @@ private:
     Tables tables_;
     Pool pool_[2 * kFilters];  // channels 1, 2 x the filters
     Scratch scratch_;
+    Stream streams_[kStreams];
+    uint32_t nextStream_ = 0;
+    std::atomic<uint32_t> streamSheds_{0};
 };
 
 }  // namespace pcm

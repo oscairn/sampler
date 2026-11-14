@@ -26,8 +26,9 @@ target_include_directories(clap_headers INTERFACE third_party/clap/include third
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/samplepack/cmake")
 include(SamplePack)
 
-add_library(oscairn_pcm MODULE src/plugin.cpp src/core_engine.cpp src/loader.cpp src/packs.cpp)
-target_link_libraries(oscairn_pcm PRIVATE pcmcore samplepack::samplepack)
+add_library(oscairn_pcm MODULE src/plugin.cpp src/core_engine.cpp src/loader.cpp src/packs.cpp src/streamer.cpp)
+find_package(Threads REQUIRED)  # the I/O thread
+target_link_libraries(oscairn_pcm PRIVATE pcmcore samplepack::samplepack Threads::Threads)
 target_link_libraries(oscairn_pcm PRIVATE clap_headers)
 if(NOT MSVC)
     target_compile_options(oscairn_pcm PRIVATE -Wall -Wextra)

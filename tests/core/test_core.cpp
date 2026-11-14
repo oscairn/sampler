@@ -222,6 +222,32 @@ static void lawValues() {
 }
 
 // ---- voices ----
+// A stand-in for the shell's I/O thread over one region's whole audio (a stream's source): hands every
+// active stream its next frames (at most `late` a call when non-zero), loop and zero tail as the shell's.
+struct StreamFill {
+    const int16_t* data = nullptr;  // the region's frames from 0
+    int64_t frames = 0;
+    uint32_t head = 0;
+    uint8_t channels = 1;
+    int64_t late = 0;
+    const SampleView* view = nullptr;
+    void serve(Core& core) const {
+        for (uint32_t k = 0; k < kStreams; ++k) {
+            Stream& st = core.streams()[k];
+            const uint8_t state = st.state.load(std::memory_order_acquire);
+            if (state == Stream::Released) { st.written = 0; st.consumed = 0; st.state.store(Stream::Free, std::memory_order_release); continue; }
+            if (state != Stream::Active || st.source != this) continue;
+            int64_t w = st.written.load(), n = 0;
+            const int64_t c = st.consumed.load(std::memory_order_acquire);
+            const int64_t total = frames + kGuardPost - head;
+            for (; w < total && w - c < kStreamFrames && (!late || n < late); ++w, ++n) {
+                const int64_t r = head + w;
+                for (int ch = 0; ch < channels; ++ch) st.ring[(w % kStreamFrames) * channels + ch] = r < frames ? data[r * channels + ch] : 0;
+            }
+            st.written.store(w, std::memory_order_release);
+        }
+    }
+};
 struct Rig {
     std::vector<int16_t> pcm;
     std::unique_ptr<SoundData> data{new SoundData};
@@ -236,7 +262,8 @@ struct Rig {
         const std::string text = "oscairn-pcm-sound/0\nsample s\nelement " + element + "\nregion key=0-127 root=60 element=0 sample=0 " + region + (loop ? std::string(" loop=") + loop : "") + "\n";
         char err[256];
         if (!readText(text.c_str(), *data, err, sizeof err)) { std::printf("  sound: %s\n", err); ++failures; }
-        if (!compile(*data, &view, *sound, err, sizeof err)) { std::printf("  compile: %s\n", err); ++failures; }
+        const std::vector<SampleView> views(data->regions, view);
+        if (!compile(*data, views.data(), *sound, err, sizeof err)) { std::printf("  compile: %s\n", err); ++failures; }
         core->prepare(sr);
         core->install(0, sound.get());
         core->setGain(0, 1, 0);
@@ -248,8 +275,25 @@ struct Rig {
         view = {pcm.data() + kGuardPre, uint32_t(frames.size()), 1, rate};
         char err[256];
         if (!readText(text, *data, err, sizeof err)) { std::printf("  sound: %s\n", err); ++failures; }
-        if (!compile(*data, &view, *sound, err, sizeof err)) { std::printf("  compile: %s\n", err); ++failures; }
+        const std::vector<SampleView> views(data->regions, view);
+        if (!compile(*data, views.data(), *sound, err, sizeof err)) { std::printf("  compile: %s\n", err); ++failures; }
         core->prepare(sr);
+        core->install(0, sound.get());
+    }
+    // The region's frames from `head` on stream instead (the data past head made unusable, so a read of it
+    // shows); `late` frames are handed over at most each block (0: every frame at once), the stand-in I/O thread.
+    StreamFill fill;
+    std::vector<int16_t> headOnly;
+    void stream(uint32_t head, int64_t late = 0) {
+        const int c = view.channels;
+        fill = {view.data, int64_t(view.frames), head, uint8_t(c), late};
+        headOnly.assign(pcm.begin(), pcm.end());
+        for (size_t i = (kGuardPre + head) * size_t(c); i < headOnly.size(); ++i) headOnly[i] = 12345;
+        SampleView v = view;
+        v.data = headOnly.data() + kGuardPre * c; v.head = head; v.stream = &fill;
+        const std::vector<SampleView> views(data->regions, v);
+        char err[256];
+        if (!compile(*data, views.data(), *sound, err, sizeof err)) { std::printf("  compile: %s\n", err); ++failures; }
         core->install(0, sound.get());
     }
     // renders n frames in blocks of `block`, each split at the given frame offsets
@@ -257,6 +301,7 @@ struct Rig {
         std::vector<float> out;
         std::vector<float> L(static_cast<size_t>(block)), R(static_cast<size_t>(block));
         for (long done = 0; done < n; done += block) {
+            if (fill.data) fill.serve(*core);
             std::fill(L.begin(), L.end(), 0.f); std::fill(R.begin(), R.end(), 0.f);
             int at = 0;
             for (int s : splits) if (s > at && s < block) { core->render(L.data() + at, R.data() + at, uint32_t(s - at), uint32_t(at)); at = s; }
@@ -1058,6 +1103,32 @@ static void randomPitch() {
     for (int k = 0; k < 7; ++k) CHECK(count[k] >= 8);
 }
 
+// Streamed voices play exactly as the same audio in memory: one-shots, transposed up two octaves and more,
+// over blocks split by events; a voice whose stream comes too late is shed with a short fade, counted, and ends.
+static void streaming() {
+    std::vector<int16_t> tone(30000);
+    uint32_t r = 7;
+    for (size_t i = 0; i < tone.size(); ++i) { r = r * 1664525u + 1013904223u; tone[i] = int16_t(9000 * std::sin(0.031 * double(i)) + float(int32_t(r) >> 20)); }
+    for (int key : {60, 84, 103}) {
+        Rig a("ampeg_decay1=127 ampeg_decay2=127", tone, 1, 44100.f, nullptr), b("ampeg_decay1=127 ampeg_decay2=127", tone, 1, 44100.f, nullptr);
+        b.stream(4096);
+        a.core->noteOn(0, 0, 0, key, 0.8f); b.core->noteOn(0, 0, 0, key, 0.8f);
+        const auto x = a.run(40000, 128, {37, 90}), y = b.run(40000, 128, {37, 90});
+        CHECK(x == y);
+        CHECK(!b.core->voice(0).sounding && b.core->streamSheds() == 0);  // the one-shot ended
+    }
+    // late: 300 frames a block reach the stream, the voice at key 84 (3.7 frames an output frame) needs more
+    Rig c("ampeg_decay1=127 ampeg_decay2=127", tone, 1, 44100.f, nullptr);
+    c.stream(4096, 300);
+    c.core->noteOn(0, 0, 0, 84, 0.8f);
+    const auto z = c.run(4000);
+    CHECK(c.core->streamSheds() == 1u);
+    CHECK(!c.core->voice(0).sounding);
+    float worst = 0;  // no click: the last frames fall to zero within a fade
+    for (size_t i = 2; i + 1 < z.size(); i += 2) worst = std::max(worst, std::fabs(z[i] - z[i - 2]));
+    CHECK(worst < 0.05f);
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -1068,6 +1139,7 @@ int main() {
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
         {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity}, {"pitch_velocity", pitchVelocity}, {"random_pitch", randomPitch},
+        {"streaming", streaming},
     };
     for (auto& t : tests) {
         const int before = failures;

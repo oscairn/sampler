@@ -106,6 +106,13 @@ inline Bytes volume(uint32_t t, int32_t id, int16_t ch, int16_t key, double v) {
     return bytes(e);
 }
 
+// The plugin's own streaming extension (src/identity.h: kExtStreaming): voices shed for late streams, and test hooks.
+struct StreamingExt {
+    uint64_t (*sheds)(const clap_plugin_t*);
+    void (*stall)(const clap_plugin_t*, bool);
+    void (*settle)(const clap_plugin_t*);
+};
+
 struct Rec { uint16_t type; int32_t id; int16_t port, channel, key; uint32_t time; long frame; double value; };
 
 // What the plugin pushed to the host: fixed storage, so that recording never allocates while the
@@ -201,6 +208,8 @@ struct Inst {
     const oscairn_plugin_sound_contexts_t* contexts = nullptr;
     const oscairn_plugin_voice_budget_t* budget = nullptr;
     const oscairn_plugin_memory_t* memory = nullptr;
+    const StreamingExt* streaming = nullptr;
+    bool settle = true;         // before each block, wait until the plugin's I/O thread has filled every ring (deterministic)
     std::vector<Rec> log;       // every event the plugin pushed
     std::vector<float> L, R;    // every sample rendered (the main port)
     uint32_t outputs = 1;       // audio output ports the test host gives (1 or 3)
@@ -225,6 +234,8 @@ struct Inst {
         contexts = static_cast<const oscairn_plugin_sound_contexts_t*>(p->get_extension(p, OSCAIRN_EXT_SOUND_CONTEXTS));
         budget = static_cast<const oscairn_plugin_voice_budget_t*>(p->get_extension(p, OSCAIRN_EXT_VOICE_BUDGET));
         memory = static_cast<const oscairn_plugin_memory_t*>(p->get_extension(p, OSCAIRN_EXT_MEMORY));
+        streaming = static_cast<const StreamingExt*>(p->get_extension(p, "org.oscairn.pcm.streaming/draft-1"));
+        if (!streaming) { std::printf("  no streaming extension\n"); ++g_failures; return; }
         if (start) { p->activate(p, kRate, 1, 4096); p->start_processing(p); }
         // The default sound for these tests (kSound), loaded through the CLAP state.
         if (state) {
@@ -250,6 +261,7 @@ struct Inst {
         clap_process_t pr{};
         pr.steady_time = frame; pr.frames_count = frames; pr.in_events = &in.api; pr.out_events = &out.api;
         pr.audio_outputs = buf; pr.audio_outputs_count = outputs;
+        if (settle) streaming->settle(p);
         if (guard) allocGuardEnable(true);
         const auto st = p->process(p, &pr);
         if (guard) { allocGuardEnable(false); allocations = allocGuardCount(); }

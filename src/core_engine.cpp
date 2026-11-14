@@ -10,6 +10,7 @@
 #include <mutex>
 
 #include "engine.h"
+#include "streamer.h"
 
 namespace pcmshell {
 
@@ -22,7 +23,8 @@ constexpr double kNanosPerInstruction = 1.0;
 
 class CoreEngine final : public Engine {
 public:
-    CoreEngine() : core_(new pcm::Core) {}
+    CoreEngine() : core_(new pcm::Core) { attachStreams(core_->streams(), pcm::kStreams); }
+    ~CoreEngine() override { detachStreams(core_->streams()); }
     void prepare(double sr, uint32_t maxBlock) override {
         std::lock_guard<std::mutex> g(write_);
         core_->prepare(sr > 0 ? sr : 48000);
@@ -31,7 +33,7 @@ public:
         for (auto& s : staged_) s.middle.store(1, std::memory_order_relaxed), s.back = 0, s.front = 2;
     }
     // the core is preallocated with the instance; a context holds its staged sounds' compiled form
-    // (samples are counted as assets by the shell)
+    // (samples are counted as assets by the shell; the stream pool is in the core)
     EngineMemory memory(double, uint32_t) const override { return {sizeof(CoreEngine) + sizeof(pcm::Core), sizeof(Patch) + sizeof(pcm::Compiled) * 3}; }
     void loadPatch(uint32_t c, const Patch& p) override {
         if (c >= kContexts) return;
@@ -87,6 +89,7 @@ public:
         return {cost_[c].voice.load(std::memory_order_relaxed), cost_[c].rest.load(std::memory_order_relaxed)};
     }
     void reset() override { sync(); core_->reset(); }
+    uint64_t streamSheds() const override { return core_->streamSheds(); }
     void setHermite(bool on) override { core_->setInterp(on ? pcm::Interp::Hermite : pcm::Interp::Sinc); }
 
 private:
