@@ -613,11 +613,13 @@ shape.
 | cutoff offset | 8 index steps a unit, at both base cutoffs (400 + 8 o: 144, 272, 336, 464, 528, 656, 784, 904 read 148, 272, 336, 464, 528, 656, 784, 908; 700 - 256: 444) | `part_cutoff`, 8 a unit, within 0-1023 | within 4 index steps (-48: the noise near the bottom of the table, 40 against 16; 700 + 256: the table's top) | 13 notes |
 | resonance offset | 2 steps a unit (7, 23, 38, 55, 73 against 8, 24, 40, 56, 72) | `part_resonance`, 2 a unit, within 0-127 | within 2 steps | 5 notes |
 
-The offsets act on every element before velocity, scaling, boxes and the part LFO (assumed: the order not measured). The
-amplitude envelope's offsets (attack, decay, sustain, release) and the filter envelope's depth offset are not built: the
-attack and sustain takes suggest 2 steps a unit; the depth's takes are recorded (batch M).
+| filter envelope depth offset | 2 depth steps a unit (`n_pofeg*`: white noise through type 0 at 300 with the envelope held at its top; base depths 0, 16, 32 with offsets -32 to +32 read as the static depths 2 o away; the reference's own static depths `n_fegref*` read as themselves from -16 to +32) | `part_feg_depth`, 2 a unit, within -64..+63 | the same depth (the reading saturates at 49 near the cutoff's top) | 8 notes |
 
-- Engine: `part_cutoff`, `part_resonance` (applied when the sound is compiled: no cost while playing); core test
+The offsets act on every element before velocity, scaling, boxes and the part LFO (assumed: the order not measured). The
+amplitude envelope's offsets (attack, decay, sustain, release) are not built: the attack and sustain takes suggest 2 steps
+a unit.
+
+- Engine: `part_cutoff`, `part_resonance`, `part_feg_depth` (applied when the sound is compiled: no cost while playing); core test
   `part_offsets`.
 
 ## (s) Resonance velocity sensitivity against the reference

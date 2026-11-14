@@ -100,6 +100,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
         int16_t* v = out.element[e].v;
         v[FilCutoff] = int16_t(std::max(0, std::min(1023, v[FilCutoff] + 8 * d.part[PartCutoffOffset])));
         v[FilResonance] = int16_t(std::max(0, std::min(127, v[FilResonance] + 2 * d.part[PartResonanceOffset])));
+        v[FilEgDepth] = int16_t(std::max(-64, std::min(63, v[FilEgDepth] + 2 * d.part[PartFegDepthOffset])));
     }
     out.bendUp = float(d.part[PartBendUp]);
     out.bendDown = float(d.part[PartBendDown]);

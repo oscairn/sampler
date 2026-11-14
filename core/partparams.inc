@@ -192,3 +192,5 @@ X(PartLfoRandomSpeed, "plfo_random_speed", 0, 127, 0)
 // the part's offsets on its elements (raw, as displayed): the cutoff, 8 index steps a unit, the resonance 2 steps a unit
 X(PartCutoffOffset, "part_cutoff", -64, 63, 0)
 X(PartResonanceOffset, "part_resonance", -64, 63, 0)
+// the part's filter envelope depth offset (as displayed): 2 depth steps a unit
+X(PartFegDepthOffset, "part_feg_depth", -64, 63, 0)

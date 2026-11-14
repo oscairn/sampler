@@ -995,10 +995,11 @@ static void keyOnDelay() {
 // The part's cutoff and resonance offsets (measured): 8 index steps and 2 resonance steps a unit on every element, within
 // the limits.
 static void partOffsets() {
-    Rig r("oscairn-pcm-sound/0\npart part_cutoff=16 part_resonance=-8\nsample s\nelement fil_type=0 fil_cutoff=400 fil_resonance=40\n"
-          "element fil_type=0 fil_cutoff=1000 fil_resonance=10\nregion element=0 sample=0\nregion element=1 sample=0\n", constant(4410, 16384), 44100.f, 44100);
+    Rig r("oscairn-pcm-sound/0\npart part_cutoff=16 part_resonance=-8 part_feg_depth=-8\nsample s\nelement fil_type=0 fil_cutoff=400 fil_resonance=40 fileg_depth=32\n"
+          "element fil_type=0 fil_cutoff=1000 fil_resonance=10 fileg_depth=-60\nregion element=0 sample=0\nregion element=1 sample=0\n", constant(4410, 16384), 44100.f, 44100);
     CHECK(r.sound->element[0].v[FilCutoff] == 528 && r.sound->element[0].v[FilResonance] == 24);
     CHECK(r.sound->element[1].v[FilCutoff] == 1023 && r.sound->element[1].v[FilResonance] == 0);
+    CHECK(r.sound->element[0].v[FilEgDepth] == 16 && r.sound->element[1].v[FilEgDepth] == -64);
 }
 
 // Resonance velocity sensitivity (measured): the law's values, and the voice's damping at a soft note.
