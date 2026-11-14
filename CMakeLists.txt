@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(oscairn_pcm VERSION 0.7.1 LANGUAGES C CXX)
+project(oscairn_pcm VERSION 0.8.0 LANGUAGES C CXX)
 
 # The binary's name (the release stem is NAME in tools/release/release.conf).
 set(PCM_NAME oscairn-pcm)
