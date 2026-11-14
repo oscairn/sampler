@@ -73,7 +73,7 @@ starting with "no" are reported at every value but the default (any other start:
 | AEG Time Key Follow Sensitivity Release Adjustment | 0 – 127 | yes: `ampeg_veltime*`, `ampeg_keytime*` | K10 | core test `level_scaling_and_velocity` (time shift); pads 0 |
 | Coarse Tune | −48 – +48 | yes: folded into the region table by the converter, the key map moved down by the coarse tune (the reference picks the sample by key plus coarse tune) | measured here (acceptance g; exact: -12 is 0.000 cents) | the probe bass (acceptance g); sine and saw probes |
 | Fine Tune | −64 – +63 | yes: folded into the region's tune by the converter: s x 100 / 64 cents, truncated toward zero (whole cents) | measured here (round 3, takes `m_fine*`, `r_fine_*`: every step, rms 0.047 cents, at most 0.18; rounding or flooring miss by a cent on half the steps) | pads (fine 0) |
-| Pitch Velocity Sensitivity | −64 – +63 | no (100 cents a key) | - | - |
+| Pitch Velocity Sensitivity | −64 – +63 | yes: `pitch_velsens`: v x s x 1200 / 8192 cents at note-on (+63 as +64) | measured here (acceptance s) | 10 sensitivities at 7 velocities: rms 0.29 cents over 70 notes; core test `pitch_velocity` |
 | Random Pitch Depth | 0 – 127 | no (100 cents a key) | - | - |
 | Pitch Key Follow Sensitivity | −200% – +200% | yes: `pitch_keyfollow`, `pitch_keyfollow_center`: the centre note at its pitch, every key from it at the measured cents a key | measured here at every raw value (acceptance o): whole cents within 0.013 | core test `pitch_key_follow` |
 | Pitch Key Follow Sensitivity Center Note | C-2 – G8 | yes: `pitch_keyfollow_center` (with `pitch_keyfollow`) | measured here (acceptance o): centres 48, 60, 72 within 1 cent | core test `pitch_key_follow` |

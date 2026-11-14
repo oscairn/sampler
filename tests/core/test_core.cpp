@@ -994,6 +994,16 @@ static void resonanceVelocity() {
     CHECK(ring("fil_resonance=100 fil_res_velsens=63", 1.0f) > 1.2 * ring("fil_resonance=0", 1.0f));
 }
 
+// Pitch velocity sensitivity (measured): +63 at velocity 64 is 600 cents up, -32 at 127 595.3 down.
+static void pitchVelocity() {
+    struct { int s; float vel; double cents; } cases[] = {{63, 64 / 127.f, 600.0}, {-32, 1.0f, -127 * 32 * 1200.0 / 8192}, {16, 100 / 127.f, 100 * 16 * 1200.0 / 8192}};
+    for (auto& c : cases) {
+        Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 pitch_velsens=" + std::to_string(c.s), sine(44100, 441, 44100, 16384), 1, 44100.f, "0-44100", 44100);
+        r.core->noteOn(0, 0, 0, 60, c.vel);
+        NEAR(sineCents(r.run(22050), 4410, 22050, 441, 44100), c.cents, 0.6);
+    }
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -1003,7 +1013,7 @@ int main() {
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
-        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity},
+        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity}, {"pitch_velocity", pitchVelocity},
     };
     for (auto& t : tests) {
         const int before = failures;

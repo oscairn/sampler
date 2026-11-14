@@ -616,6 +616,11 @@ own static resonances 0-127 every 8 (`l_rref*`: the engine reads 64 as 66, 96 as
 |---|---|---|---|---|
 | resonance at velocity v | the element's less abs(s) x (127 - v) / 126 for s > 0, abs(s) x (v - 1) / 126 for s < 0 (full sensitivity: 64 steps across the velocity range, the base at velocity 127 or 1), within 0-127 | `laws::resonanceAtVelocity` (rounded; +63 as +64), at note-on | rms 0.58 steps, at most 1.7 | 84 notes (12 settings x 7) |
 
+Pitch velocity sensitivity (`a_pvs*`, `l_pvs*`): a sine at key 60, velocities as above, sensitivities -64, -48, -32, -16,
+-1, +1, +16, +32, +48, +63: every note moves by v x s x 1200 / 8192 cents (+63 as +64: an octave at full velocity and
+sensitivity, nothing at velocity 0): rms 0.29 cents, at most 0.7, over 70 notes (each take's own offset, about 1-2 cents,
+removed). Engine: `pitch_velsens` (`laws::pitchVelocityCents`, at note-on); core test `pitch_velocity`.
+
 - Engine: `fil_res_velsens`; core test `resonance_velocity` (the law's values; a step through resonance 100 at the
   softest velocity rings as resonance 36).
 

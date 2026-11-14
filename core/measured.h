@@ -64,6 +64,10 @@ float cutoffScalingSteps(const int16_t* keys, const int16_t* offsets, int key) n
 // +64), |s| x (v - 1) / 126 for a negative one, rounded, within 0-127 (measured: docs/acceptance.md (s))
 int resonanceAtVelocity(int resonance, int sensitivity, int velocity) noexcept;
 
+// ---- pitch velocity sensitivity ----
+// Cents a note at velocity v (1-127) moves: v x s x 1200 / 8192 (an octave at velocity 128 and sensitivity 64; +63 as +64)
+float pitchVelocityCents(int sensitivity, int velocity) noexcept;
+
 // ---- pitch key follow ----
 float pitchKeyFollowCents(int raw) noexcept;  // cents a key at a raw sensitivity (96: 100, 64: 0)
 

@@ -871,7 +871,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     // (pitch key follow: the centre note at its pitch, every key from it at the measured cents a key)
     const float pitchKey = e[PitchKeyFollow] == 96 ? 100.0f * (float(key) - float(r.root))
         : 100.0f * float(e[PitchKeyFollowCenter] - r.root) + laws::pitchKeyFollowCents(e[PitchKeyFollow]) * float(key - e[PitchKeyFollowCenter]);
-    const float cents = pitchKey + float(r.tune) / 100.0f + 100.0f * float(r.transpose);
+    const float cents = pitchKey + float(r.tune) / 100.0f + 100.0f * float(r.transpose) + laws::pitchVelocityCents(e[PitchVelSens], vel);
     const float ratio = std::pow(2.0f, cents / 1200.0f) * float(double(sv.rate) / sr_);
     v.baseStep = std::min<double>(ratio, kMaxStep);
     p.pos[i] = 0;

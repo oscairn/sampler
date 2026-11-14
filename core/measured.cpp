@@ -228,6 +228,12 @@ int resonanceAtVelocity(int resonance, int s, int v) noexcept
     return std::max(0, std::min(127, resonance - int(std::lround(drop))));
 }
 
+float pitchVelocityCents(int s, int v) noexcept
+{
+    // 10 sensitivities (-64 to +63) at 7 velocities on a sine: rms 0.29 cents, at most 0.7 (round 5 batch A, round 6 batch L)
+    return float(v) * float(s >= 63 ? 64 : s) * (1200.0f / 8192.0f);
+}
+
 float hpfKeyCents(int kf, int key) noexcept
 {
     // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,
