@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            compiler: gcc
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            compiler: gcc
+          - name: macos
+            os: macos-15
+            compiler: appleclang
+          # Unexercised so far (no remote to run it on): the core's tests and the plugin build.
+          - name: windows-x86_64
+            os: windows-2022
+            compiler: msvc
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plugin version equals CMake project version
+        if: runner.os != 'Windows'
+        run: |
+          cmake_v=$(sed -n 's/^project(oscairn_pcm VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          plugin_v=$(python3 tools/release/version.py)
+          [ -n "$cmake_v" ] && [ "$cmake_v" = "$plugin_v" ] || { echo "CMake says '$cmake_v', the plugin descriptor says '$plugin_v'"; exit 1; }
+      - uses: hendrikmuhs/ccache-action@v1.2.24
+        if: runner.os != 'Windows'
+        with:
+          key: pcm-${{ matrix.os }}-${{ matrix.compiler }}-Release-none
+          max-size: 200M
+          evict-old-files: job
+      - name: Configure
+        if: runner.os != 'Windows'
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Configure (MSVC)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build --parallel --config Release
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -C Release
+
+  sanitizers:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: asan-ubsan
+            flags: -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
+          - name: tsan
+            flags: -fsanitize=thread
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # ThreadSanitizer cannot map its shadow memory with the runner kernel's default ASLR entropy.
+      - name: Lower ASLR entropy
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: pcm-ubuntu-24.04-clang-Debug-${{ matrix.name }}
+          max-size: 200M
+          evict-old-files: job
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          "-DCMAKE_CXX_FLAGS=${{ matrix.flags }} -g"
+          "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.flags }}"
+          "-DCMAKE_MODULE_LINKER_FLAGS=${{ matrix.flags }}"
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build --output-on-failure

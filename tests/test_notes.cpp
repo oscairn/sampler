@@ -1,0 +1,257 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Note lifetime: every note the host starts gets exactly one NOTE_END, on every path that ends
+// it, and none for a note that never started.
+#include <random>
+#include <set>
+#include "host.h"
+
+TEST(descriptor_and_ports) {
+    auto& lib = library();
+    CHECK(lib.factory != nullptr);
+    if (!lib.factory) return;
+    CHECK_EQ(lib.factory->get_plugin_count(lib.factory), 1u);
+    const auto* d = lib.factory->get_plugin_descriptor(lib.factory, 0);
+    CHECK(d && !std::strcmp(d->id, kId));
+    CHECK(d && d->clap_version.major == CLAP_VERSION_MAJOR);
+    bool instrument = false;
+    for (auto f = d ? d->features : nullptr; f && *f; ++f) instrument |= !std::strcmp(*f, CLAP_PLUGIN_FEATURE_INSTRUMENT);
+    CHECK(instrument);
+    Inst a(false);
+    auto* ap = static_cast<const clap_plugin_audio_ports_t*>(a.p->get_extension(a.p, CLAP_EXT_AUDIO_PORTS));
+    auto* np = static_cast<const clap_plugin_note_ports_t*>(a.p->get_extension(a.p, CLAP_EXT_NOTE_PORTS));
+    CHECK(ap && ap->count(a.p, false) == 1 && ap->count(a.p, true) == 0);
+    clap_audio_port_info_t ai{};
+    CHECK(ap && ap->get(a.p, 0, false, &ai) && ai.channel_count == 2);
+    clap_note_port_info_t ni{};
+    CHECK(np && np->count(a.p, true) == 1 && np->get(a.p, 0, true, &ni));
+    CHECK((ni.supported_dialects & CLAP_NOTE_DIALECT_CLAP) && (ni.supported_dialects & CLAP_NOTE_DIALECT_MIDI));
+    CHECK(a.contexts && a.budget && a.memory && a.state && a.params);
+    CHECK(a.budget && a.budget->honors_volume(a.p));
+}
+
+TEST(note_ends_once_after_release) {
+    Inst a;
+    a.block(128, {on(10, 1, 0, 60)});
+    a.run(4800);
+    CHECK(peak(a.L) > 0.01f && peak(a.R) > 0.01f);
+    CHECK_EQ(a.ends(1), 0);
+    a.block(128, {off(0, 1, 0, 60)});
+    a.run(48000 / 2);
+    CHECK_EQ(a.ends(1), 1);
+    const auto* e = a.endOf(1);
+    CHECK(e && e->key == 60 && e->channel == 0 && e->port == 0);
+    CHECK(silent(a, a.L.size() - 4800));
+    CHECK(!a.badStatus && !a.badTime);
+}
+
+TEST(refused_note_on_still_ends) {
+    Inst a;
+    a.block(256, {on(5, 7, 0, 60, 0.8, 1), on(6, 8, 16, 60), on(7, 9, 0, 128), on(8, 10, -1, 60), on(9, 11, 0, -1)});
+    for (int id = 7; id <= 11; ++id) CHECK_EQ(a.ends(id), 1);
+    const auto* e = a.endOf(7);
+    CHECK(e && e->port == 1 && e->key == 60 && e->time == 5);  // the fields it came with, at its time
+    e = a.endOf(8); CHECK(e && e->channel == 16);
+    e = a.endOf(9); CHECK(e && e->key == 128);
+    CHECK_EQ(a.voices(), 0u);
+    a.run(4800);
+    CHECK_EQ(a.endsTotal(), 5);
+    CHECK(silent(a, 0));
+}
+
+TEST(choke_ends_once_with_a_fade) {
+    Inst a;
+    a.block(128, {on(0, 1, 0, 60), on(0, 2, 0, 64)});
+    a.run(2400);
+    a.block(256, {choke(0, 1, 0, 60)});
+    CHECK_EQ(a.ends(1), 1);  // the 3 ms fade ends inside this block
+    CHECK_EQ(a.ends(2), 0);
+    const auto* e = a.endOf(1);
+    CHECK(e && e->frame >= 2528 + int(kChoke) - 1 && e->frame < 2528 + 256);  // at the end of the segment that finishes the fade
+    a.run(4800);
+    CHECK_EQ(a.ends(1), 1);
+    CHECK_EQ(a.voices(), 1u);
+}
+
+TEST(wildcards) {
+    Inst a;
+    a.block(128, {on(0, 1, 0, 60), on(0, 2, 1, 62), on(0, 3, 1, 64), on(0, 4, 2, 65)});
+    a.run(1200);
+    a.block(128, {off(0, -1, 1, -1)});  // every key of channel 1
+    a.run(24000);
+    CHECK(a.ends(1) == 0 && a.ends(2) == 1 && a.ends(3) == 1 && a.ends(4) == 0);
+    a.block(128, {off(0, -1, -1, 65)});  // key 65 on every channel
+    a.run(24000);
+    CHECK(a.ends(4) == 1 && a.ends(1) == 0);
+    a.block(128, {choke(0, -1, -1, -1)});  // everything
+    a.run(2400);
+    for (int id = 1; id <= 4; ++id) CHECK_EQ(a.ends(id), 1);
+    CHECK_EQ(a.voices(), 0u);
+}
+
+TEST(midi_notes_pedal_and_all_notes_off) {
+    Inst a;
+    // note ID -1 for raw MIDI: one NOTE_END (id -1) per note-on
+    a.block(128, {midi(0, 0x90, 60, 100), midi(0, 0x91, 62, 100), midi(0, 0x90, 64, 0)});  // velocity 0 on 64: a note-off for a note not held
+    a.run(1200);
+    CHECK_EQ(a.endsTotal(), 0);
+    a.block(128, {midi(0, 0xb0, 64, 127), midi(1, 0x80, 60, 0)});  // pedal down, then release 60: it rings on
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), 0);
+    a.block(128, {midi(0, 0xb0, 64, 0)});  // pedal up: it releases
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), 1);
+    a.block(128, {midi(0, 0xb1, 123, 0)});  // all notes off, channel 1
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), 2);
+    a.block(128, {midi(0, 0x90, 70, 100), midi(0, 0x90, 70, 100), midi(0, 0xb0, 120, 0)});  // two on one key, then all sound off
+    a.run(2400);
+    CHECK_EQ(a.endsTotal(), 4);
+    CHECK_EQ(a.voices(), 0u);
+}
+
+TEST(reset_is_immediate_and_says_nothing_about_earlier_notes) {
+    Inst a;
+    a.block(128, {on(0, 1, 0, 60), on(0, 2, 0, 62), on(0, 3, 0, 64), off(100, 3, 0, 64)});
+    a.run(2400);
+    a.p->reset(a.p);
+    CHECK_EQ(a.voices(), 0u);
+    a.block(128);
+    CHECK(silent(a, a.L.size() - 128));
+    a.run(48000);
+    CHECK_EQ(a.endsTotal(), 0);  // no NOTE_END (or anything else) for notes 1, 2 and 3
+    for (auto& r : a.log) CHECK(r.type != CLAP_EVENT_NOTE_END && r.type != CLAP_EVENT_NOTE_OFF && r.type != CLAP_EVENT_NOTE_CHOKE);
+    // a note a snapshot load owed an end, then reset: forgotten too
+    Stream snap;
+    a.contexts->state->save(a.p, &snap.out);
+    a.block(128, {on(0, 4, 0, 60)});
+    a.run(1200);
+    CHECK(a.contexts->state->load(a.p, &snap.in));
+    a.p->reset(a.p);
+    a.run(1280);
+    CHECK_EQ(a.endsTotal(), 0);
+    // a stale off for a forgotten id does nothing, and the instance plays as new
+    a.block(128, {off(0, 1, 0, 60), on(0, 5, 0, 60)});
+    a.run(2400);
+    CHECK(peak(a.L, a.L.size() - 2400) > 0.01f);
+    a.block(128, {off(0, 5, 0, 60)});
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), 1);
+    CHECK_EQ(a.ends(5), 1);
+}
+
+TEST(snapshot_load_ends_held_notes_once) {
+    Inst a;
+    Stream snap;
+    CHECK(a.contexts->state->save(a.p, &snap.out));
+    a.block(128, {on(0, 1, 0, 60), on(0, 2, 1, 62)});
+    a.run(1200);
+    CHECK(a.contexts->state->load(a.p, &snap.in));
+    a.run(256);
+    CHECK(a.ends(1) == 1 && a.ends(2) == 1);
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), 2);
+    CHECK_EQ(a.voices(), 0u);
+}
+
+TEST(volume_expression_scales_the_note) {
+    Inst a;
+    a.block(128, {on(0, 1, 0, 60, 1.0)});
+    a.run(4800);
+    const float full = peak(a.L, a.L.size() - 1000);
+    a.block(128, {volume(0, 1, 0, 60, 0.5)});
+    a.run(4800);
+    const float half = peak(a.L, a.L.size() - 1000);
+    CHECK(full > 0.01f && half > 0.4f * full && half < 0.6f * full);
+}
+
+// A randomised run: thousands of blocks of notes started, released, choked and wildcarded in
+// every dialect, with resets, snapshot loads, state loads, selections, parameter changes and
+// changing voice budgets. Every CLAP note-on id must end exactly once, and no id that never
+// started may end; MIDI notes (id -1) must end once each.
+static void randomRun(unsigned seed, const char* instanceCap, int blocks) {
+    if (instanceCap) setenv("OSCAIRN_PCM_MAX_VOICES", instanceCap, 1);
+    Inst a;
+    unsetenv("OSCAIRN_PCM_MAX_VOICES");
+    std::mt19937 rng(seed);
+    auto pick = [&](int n) { return int(rng() % unsigned(n)); };
+    // prepare two more sounds and keep selecting among them
+    uint32_t ids[3] = {0, CLAP_INVALID_ID, CLAP_INVALID_ID};
+    char msg[128];
+    ids[1] = a.contexts->prepare(a.p, "b", nullptr, 0, patchWith("level=0.4 pan=-0.5").c_str(), testBase(), msg, sizeof msg);
+    ids[2] = a.contexts->prepare(a.p, "c", nullptr, 0, patchWith("level=0.6 pan=0.5 polyphony=3").c_str(), testBase(), msg, sizeof msg);
+    CHECK(ids[1] != CLAP_INVALID_ID && ids[2] != CLAP_INVALID_ID);
+    Stream snap, st;
+    a.contexts->state->save(a.p, &snap.out);
+    a.state->save(a.p, &st.out);
+    int32_t nextId = 1; int midiOns = 0;
+    std::set<int32_t> started;
+    // A reset forgets the notes sounding then: they get no END. Read them (notes(), same thread)
+    // before each reset, and the ones a snapshot load still owes an END until the next block.
+    std::set<int32_t> forgotten, owedIds; int forgottenMidi = 0, owedMidi = 0;
+    auto sounding = [&](std::set<int32_t>& ids, int& midiVoices) {
+        oscairn_voice_budget_note_t n[64];
+        const uint32_t k = a.budget->notes(a.p, n, 64);
+        for (uint32_t i = 0; i < k; ++i) { if (n[i].note_id >= 0) ids.insert(n[i].note_id); else midiVoices += int(n[i].voices); }
+    };
+    for (int b = 0; b < blocks; ++b) {
+        std::vector<Bytes> ev;
+        std::vector<uint32_t> times;
+        const uint32_t frames = uint32_t(64 + pick(65));
+        const int n = pick(4);
+        for (int i = 0; i < n; ++i) times.push_back(uint32_t(pick(int(frames))));
+        std::sort(times.begin(), times.end());
+        for (uint32_t t : times) {
+            const int16_t ch = int16_t(pick(3)), key = int16_t(36 + pick(12));
+            switch (pick(14)) {
+                case 0: case 1: case 2: case 3: { const int32_t id = nextId++; started.insert(id); ev.push_back(on(t, id, ch, key, 0.1 + 0.9 * pick(10) / 10.0)); break; }
+                case 4: ev.push_back(off(t, pick(2) ? -1 : pick(nextId), pick(2) ? -1 : ch, pick(2) ? -1 : key)); break;
+                case 5: ev.push_back(off(t, int32_t(1 + pick(std::max(1, nextId - 1))), ch, key)); break;
+                case 6: ev.push_back(choke(t, int32_t(1 + pick(std::max(1, nextId - 1))), ch, key)); break;
+                case 7: ev.push_back(choke(t, -1, pick(2) ? -1 : ch, pick(2) ? -1 : key)); break;
+                case 8: ev.push_back(midi(t, uint8_t(0x90 | ch), uint8_t(key), uint8_t(1 + pick(127)))); ++midiOns; break;
+                case 9: ev.push_back(midi(t, uint8_t((pick(2) ? 0x80 : 0x90) | ch), uint8_t(key), 0)); break;
+                case 10: ev.push_back(midi(t, uint8_t(0xb0 | ch), uint8_t(pick(3) == 0 ? 123 : pick(2) ? 64 : 120), uint8_t(pick(128)))); break;
+                case 11: ev.push_back(param(t, clap_id(pick(3)), pick(2) ? 0.2 + pick(8) / 10.0 : double(1 + pick(64)), int16_t(pick(2) ? -1 : ch))); break;
+                case 12: ev.push_back(on(t, nextId, int16_t(pick(2) ? 16 : 0), int16_t(pick(2) ? 128 : key), 0.5, int16_t(pick(2)))); started.insert(nextId++); break;
+                default: ev.push_back(volume(t, int32_t(1 + pick(std::max(1, nextId - 1))), ch, key, pick(5) / 2.0)); break;
+            }
+        }
+        // out of band between blocks
+        if (b % 97 == 13) {
+            sounding(forgotten, forgottenMidi);
+            forgotten.insert(owedIds.begin(), owedIds.end()); forgottenMidi += owedMidi; owedIds.clear(); owedMidi = 0;
+            a.p->reset(a.p);
+        }
+        if (b % 211 == 50) { sounding(owedIds, owedMidi); Stream s; s.data = snap.data; a.contexts->state->load(a.p, &s.in); }
+        if (b % 173 == 7) { Stream s; s.data = st.data; a.state->load(a.p, &s.in); }
+        if (b % 37 == 3) a.contexts->select(a.p, ids[pick(3)] == 0 ? 0 : ids[pick(3)], int16_t(pick(4) == 3 ? -1 : pick(3)));
+        if (b % 61 == 5) {
+            const uint32_t lim = pick(3) ? uint32_t(pick(12)) : 0;
+            oscairn_voice_budget_context_t c{ids[1], uint32_t(pick(4)), uint32_t(pick(3)), uint8_t(pick(11)), 0};
+            a.budget->set_limits(a.p, lim, &c, 1);
+        }
+        a.block(frames, ev);
+        owedIds.clear(); owedMidi = 0;  // a processed block delivered the owed ENDs
+    }
+    // finish: nothing may stay held, everything must have ended
+    a.block(128, {off(0, -1, -1, -1), midi(0, 0xb0, 123, 0), midi(0, 0xb1, 123, 0), midi(0, 0xb2, 123, 0)});
+    a.run(48000);
+    a.block(128, {choke(0, -1, -1, -1)});
+    a.run(4800);
+    CHECK_EQ(a.voices(), 0u);
+    int ids_ended = 0, midiEnds = 0, extra = 0;
+    std::map<int32_t, int> per;
+    for (auto& r : a.log) if (r.type == CLAP_EVENT_NOTE_END) { if (r.id < 0) ++midiEnds; else ++per[r.id]; }
+    for (auto id : started) { if (forgotten.count(id)) { if (per[id] == 0) ++ids_ended; else { ++extra; std::printf("  END for note %d forgotten by a reset\n", id); } } else if (per[id] == 1) ++ids_ended; else { ++extra; if (extra < 5) std::printf("  note %d ended %d times\n", id, per[id]); } }
+    for (auto& [id, k] : per) if (!started.count(id)) { ++extra; std::printf("  END for unknown id %d\n", id); }
+    CHECK_EQ(ids_ended, int(started.size()));
+    CHECK_EQ(extra, 0);
+    CHECK_EQ(midiEnds, midiOns - forgottenMidi);
+    CHECK(!a.badStatus && !a.badTime);
+    std::printf("  seed %u: %d blocks, %zu CLAP notes and %d MIDI notes, each ended once or forgotten by a reset (%zu CLAP, %d MIDI)\n", seed, blocks, started.size(), midiOns, forgotten.size(), forgottenMidi);
+}
+TEST(random_note_lifetime) {
+    randomRun(1, nullptr, 6000);
+    randomRun(2, "5", 6000);
+    randomRun(3, "1", 3000);
+}

@@ -1,0 +1,6 @@
+{
+  "repository": "the sample-engine fork of sfizz (https://github.com/sfztools/sfizz), branch Oscairn",
+  "path": "src/sfizz/oscairn",
+  "commit": "99d4d7ed (origin/Oscairn)",
+  "files": "core/laws.h, core/laws.cpp and core/tables.h carry its element laws (ElementEnvelope, ElementLevel, ElementPitch, ElementFilter, ElementLfo); core/tables.cpp is its ElementTables.cpp with the table data identical (header comment and include differ); core/core.cpp re-implements its element voice code (envelopes, filter design, one-pole, sample-rate handling) and carries the same notice for those parts. Each keeps the BSD-2-Clause notice; this LICENSE is the one that notice names."
+}
