@@ -114,17 +114,20 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
         const pcm::Region& g = d.region[i];
         const Record& rec = s->records[g.sample];
         const sp_record_info& r = rec.info;
-        const uint32_t frames = r.frames, start = 0;
+        // a key bank may play part of its sample: frames [start, end) of the record
+        const uint32_t start = g.start, end = g.end ? g.end : r.frames;
+        if (start >= end || end > r.frames) { error = std::string(d.ref[g.sample]) + ": a region's start or end lies outside its sample"; return nullptr; }
+        const uint32_t frames = end - start, head = start ? kHeadFrames : std::max(kHeadFrames, r.window_frames);  // the window holds frames from 0
         pcm::SampleView& v = s->views[i];
         v.frames = frames; v.channels = uint8_t(r.channels); v.rate = float(r.rate);
         const bool streams = !whole && (r.block_size == 256 || r.block_size == 512 || r.block_size == 1024)  // a unit fits a ring
-                             && frames > std::max(kHeadFrames, r.window_frames);
+                             && frames > head;
         if (!streams) {  // in memory whole, with the zero guards
             v.data = buffer(g.sample, start, frames, pcm::kGuardPre, pcm::kGuardPost);
             v.head = frames;
             continue;
         }
-        v.head = std::max(kHeadFrames, r.window_frames);
+        v.head = head;
         v.data = buffer(g.sample, start, v.head, pcm::kGuardPre, pcm::kOverread);
         StreamSource& src = s->sources[i];
         src.record = rec; src.start = start; src.head = v.head;

@@ -462,7 +462,11 @@ bool expand(const SoundData& in, const WaveformData* w, SoundData& d, char* e, s
             const int t = k.transpose + c;
             g.element = uint16_t(el); g.sample = uint16_t(s);
             g.tune = k.tune + fine; g.level = k.level; g.pan = k.pan;
-            g.loop = k.loop; g.loopStart = k.loopStart; g.loopEnd = k.loopEnd; g.start = k.start; g.end = k.end;
+            // loop points from the region's start; a file passed samplepack's checks has start <= loop start < loop end <= end
+            if ((k.end && k.end <= k.start) || (k.loop && (k.loopStart < k.start || (k.end && k.loopEnd > k.end))))
+                return err(e, cap, "element %ld: a key bank's frames are out of order", long(el)), false;
+            g.loop = k.loop; g.loopStart = k.loop ? k.loopStart - k.start : 0; g.loopEnd = k.loop ? k.loopEnd - k.start : 0;
+            g.start = k.start; g.end = k.end;
             if (t < -127 || t > 127 || checkRegion(g, d.elements, d.samples)) return err(e, cap, "element %ld: a key bank's tuning is out of range", long(el)), false;
             g.transpose = int8_t(t);
             d.region[d.regions++] = g;

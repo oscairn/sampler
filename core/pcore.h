@@ -55,7 +55,7 @@ struct Region {
     int32_t level = 0;      // 1/100 dB (the region's own: a key bank's level)
     int16_t pan = 0;        // -10000..10000: the region's own pan, 1/100 of -100..100
     uint8_t loop = 0;       // 0: plays to the sample's end; 1: forward loop
-    uint32_t loopStart = 0, loopEnd = 0;  // frames of the sample, the end exclusive
+    uint32_t loopStart = 0, loopEnd = 0;  // frames from the region's start, the end exclusive
     uint32_t start = 0, end = 0;          // the sample's frames it plays, the end exclusive (0: the sample's end); not in
                                           // the blob: a waveform's key bank gives them (expand())
 };

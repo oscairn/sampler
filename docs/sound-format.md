@@ -92,6 +92,10 @@ path reference is resolved as the asset `<library>/<path>/<reference>` from the 
 sound comes with (sound contexts' `prepare`, or the state), and names a pack holding one record. Each
 region keeps its first frames in memory and streams the rest (docs/design.md, "Streaming").
 
+A region from a key bank plays the sample's frames from `start` to `end` (exclusive; 0 is the sample's
+end): its frame 0 is the sample's frame `start`. Its loop points count from the sample's frame 0, as
+the waveform specification states (start <= loop start < loop end <= end).
+
 ## What the converter will need
 
 To write this format instead of SFZ for element parts:

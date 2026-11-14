@@ -99,7 +99,9 @@ the windows). Nothing opens a file per sample.
 
 What stays in memory, per region (frames from the region's start):
 
-- a head: the record's preload window, or 4,096 frames decoded at load when the window is shorter,
+- a head: the record's preload window, or 4,096 frames decoded at load when the window is shorter
+  (a region from a key bank whose start is not 0 always keeps 4,096 frames from that start: the window
+  holds the record's first frames; its end, when not 0, bounds the region),
   with 32 zero frames before it; a region no longer than that is all head, with 1,024 zero frames
   after it (the guard the interpolator reads past an end);
 - a forward loop's body, decoded whole at load, when the loop ends past the head and is at most

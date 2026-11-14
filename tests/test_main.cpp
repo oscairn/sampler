@@ -45,6 +45,15 @@ static void makeTones() {
     tone("mono", 96000, 1, 44100, 196, 0.2);
     tone("stereo", 150000, 2, 48000, 261.6, 0.2);
     tone("short", 3000, 2, 48000, 440, 0.2);  // fits its pack window whole
+    // parts of two tones, for key banks that play frames [start, end) of the whole
+    auto trim = [](const char* name, const char* of, uint32_t start, uint32_t end) {
+        TestTone t = g_tones.at(of);
+        t.pcm.assign(t.pcm.begin() + size_t(start) * t.channels, t.pcm.begin() + size_t(end) * t.channels);
+        t.frames = end - start;
+        g_tones[name] = t;
+    };
+    trim("mono-trim", "mono", 1234, 80000);
+    trim("stereo-trim", "stereo", 5000, 140001);
 }
 // Packs the tones with the samplepack tool: <name>.osp each, and store.osp holding them all.
 static bool packTones(const std::string& dir) {

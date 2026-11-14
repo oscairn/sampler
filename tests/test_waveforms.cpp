@@ -145,3 +145,47 @@ TEST(waveform_refusals) {
     std::remove((g_assetDir + "/" + hexOf(id) + ".owf").c_str());
     std::remove((g_assetDir + "/" + wf + ".owf").c_str());
 }
+
+namespace {
+// A note of `sound` (the I/O thread filling every ring before each block, or every region decoded whole).
+std::vector<float> note(const std::string& sound, bool whole, int key) {
+    if (whole) setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1);
+    Inst a;
+    unsetenv("OSCAIRN_PCM_DECODE_WHOLE");
+    if (!a.load(stateWith(sound))) return {};
+    a.block(128, {on(3, 1, 0, int16_t(key))});
+    a.run(72000);
+    a.block(100, {off(7, 1, 0, int16_t(key))});
+    a.run(24000);
+    CHECK_EQ(a.streaming->sheds(a.p), 0u);
+    std::vector<float> out = a.L;
+    out.insert(out.end(), a.R.begin(), a.R.end());
+    return out;
+}
+}  // namespace
+
+// A key bank with a start and an end plays, streamed, exactly what the same frames packed as their own sample play
+// decoded whole: one-shots, a loop in the head, a loop body kept whole, a loop too long to keep; mono and stereo;
+// at the root and transposed up.
+TEST(key_bank_start_and_end) {
+    struct Case { const char *tone, *trimmed; uint32_t start, end, loopStart, loopEnd; };
+    const Case cases[] = {{"stereo", "stereo-trim", 5000, 140001, 0, 0}, {"stereo", "stereo-trim", 5000, 140001, 6000, 7900},
+                          {"stereo", "stereo-trim", 5000, 140001, 60000, 70000}, {"stereo", "stereo-trim", 5000, 140001, 20000, 130000},
+                          {"mono", "mono-trim", 1234, 80000, 0, 0}, {"mono", "mono-trim", 1234, 80000, 50000, 60000},
+                          {"mono", "mono-trim", 1234, 80000, 2000, 79000}};
+    for (const Case& c : cases) {
+        const bool loop = c.loopEnd != 0;
+        sp_key_bank b = bank(0, 127, 1, 127, 60, 0, 0, 0, 0, 0, loop, c.loopStart, c.loopEnd);
+        b.start = c.start; b.end = c.end;
+        const std::string trimmed = writeWaveform({b}, {c.tone}), env = "ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60";
+        const std::string v1 = "oscairn-pcm-sound/1\nwaveform " + trimmed + "\nelement " + env + " waveform=1\n";
+        const std::string v0 = "oscairn-pcm-sound/0\nsample " + sampleRef(c.trimmed) + "\nelement " + env + "\nregion root=60 element=0 sample=0" +
+                               (loop ? " loop=" + std::to_string(c.loopStart - c.start) + "-" + std::to_string(c.loopEnd - c.start) : std::string()) + "\n";
+        for (int key : {60, 79, 96}) {
+            const auto s = note(v1, false, key), w = note(v0, true, key);
+            if (s.empty() || s != w) { std::printf("  %s %u-%u loop %u-%u key %d differs\n", c.tone, c.start, c.end, c.loopStart, c.loopEnd, key); ++g_failures; }
+            CHECK(peak(s) > 0.01f);
+        }
+        std::remove((g_assetDir + "/" + trimmed + ".owf").c_str());
+    }
+}

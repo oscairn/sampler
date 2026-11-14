@@ -93,7 +93,7 @@ static void soundFormatV1() {
     CHECK(b->regions == 3 && b->samples == 2 && !std::strcmp(b->ref[1], refs[0]));
     const Region &r1 = b->region[1], &r2 = b->region[2];
     CHECK(r1.element == 0 && r1.loKey == 0 && r1.hiKey == 35 && r1.root == 30 && r1.transpose == 3 && r1.tune == 500 - 100 && r1.level == -100 && r1.pan == 10 && r1.sample == 1);
-    CHECK(r2.loKey == 36 && r2.hiKey == 127 && r2.hiVel == 50 && r2.loop == 1 && r2.loopStart == 100 && r2.loopEnd == 8000 && r2.start == 7 && r2.end == 9000 && r2.sample == 0);
+    CHECK(r2.loKey == 36 && r2.hiKey == 127 && r2.hiVel == 50 && r2.loop == 1 && r2.loopStart == 93 && r2.loopEnd == 7993 && r2.start == 7 && r2.end == 9000 && r2.sample == 0);
     a->element[0].v[KeyHi] = 30; a->element[0].v[Fine] = 64 - 1;  // 98.4375 cents: 98
     CHECK(expand(*a, wd, *b, err, sizeof err) && b->regions == 2 && b->region[1].hiKey == 30 && b->region[1].tune == 500 + 9800);
     // more than 1,024 regions
