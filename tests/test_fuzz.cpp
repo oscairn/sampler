@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Fuzz through the ABI: random sounds over the full raw range of every element parameter (covered or
-// not) and of the part's (bend range, velocity sensitivity, controller boxes, knob values), random regions, notes, controllers (mod
+// not; half the elements on a built filter type at resonance 0 or 127) and of the part's (bend range, velocity sensitivity, controller boxes, knob values), random regions, notes, controllers (mod
 // wheel, breath, foot, sustain pedal, channel pressure, pitch bend), note volume and chokes, every shell parameter's value
 // (knobs, ribbon, switches, box destinations) and the destinations' modulation, random block sizes, thousands of blocks. The output must stay finite and bounded, and
 // process() must not allocate. (Run on each build: NEON, SSE2, scalar; see docs/cost.md.)
@@ -51,7 +51,13 @@ std::string randomSound(Rng& r) {
     const int elements = r.in(1, 3);
     for (int e = 0; e < elements; ++e) {
         s += "element";
-        for (const P& p : kParams) if (r.in(0, 2)) s += std::string(" ") + p.id + "=" + std::to_string(r.in(p.lo, p.hi));
+        // half the elements on a built filter type with the resonance (width) at an extreme
+        static const int built[9] = {0, 1, 2, 3, 4, 5, 6, 7, 10};
+        const bool filter = r.in(0, 1);
+        if (filter) s += " fil_type=" + std::to_string(built[r.in(0, 8)]) + " fil_resonance=" + std::to_string(r.in(0, 1) ? 127 : 0);
+        for (const P& p : kParams)
+            if (r.in(0, 2) && !(filter && (std::strcmp(p.id, "fil_type") == 0 || std::strcmp(p.id, "fil_resonance") == 0)))
+                s += std::string(" ") + p.id + "=" + std::to_string(r.in(p.lo, p.hi));
         s += "\n";
     }
     const int regions = r.in(1, 6);
