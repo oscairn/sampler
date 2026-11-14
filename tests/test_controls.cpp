@@ -7,7 +7,7 @@
 #include <oscairn-clap/ui.h>
 
 namespace {
-constexpr clap_id kKnob1 = 3, kRibbon = 11, kSwitch1 = 12, kCutoff = 14, kResonance = 15, kLevel1 = 16, kFine = 18;
+constexpr clap_id kKnob1 = 3, kRibbon = 11, kSwitch1 = 12, kCutoff = 14, kResonance = 15, kLevel1 = 16, kFine = 18, kRelease = 24;
 // A saw-like test sound through filter type 0 (the sine through a low cutoff), with optional part settings.
 std::string filtered(const std::string& part) {
     return "oscairn-pcm-sound/0\n" + (part.empty() ? std::string() : "part " + part + "\n") +
@@ -112,10 +112,10 @@ TEST(parameter_hints_and_flags) {
         oscairn_param_hint_t h{};
         CHECK(ui->param_hint(a.p, info.id, &h));
         if (h.role < 64) ++roles[h.role];
-        CHECK_EQ(bool(info.flags & CLAP_PARAM_IS_MODULATABLE), info.id >= kCutoff);
+        CHECK_EQ(bool(info.flags & CLAP_PARAM_IS_MODULATABLE), info.id >= kCutoff && info.id <= kRelease);
     }
     oscairn_param_hint_t none{};
     CHECK(!ui->param_hint(a.p, a.params->count(a.p), &none));
     CHECK(roles[OSCAIRN_ROLE_LEVEL] == 1 && roles[OSCAIRN_ROLE_PAN] == 1 && roles[OSCAIRN_ROLE_CUTOFF] == 1 && roles[OSCAIRN_ROLE_RESONANCE] == 1
-          && roles[OSCAIRN_ROLE_LEVEL_1] == 1);
+          && roles[OSCAIRN_ROLE_LEVEL_1] == 1 && roles[OSCAIRN_ROLE_OUTPUT_BUS] == 1);
 }

@@ -216,9 +216,12 @@ struct Inst {
     bool settle = true;         // before each block, wait until the plugin's I/O thread has filled every ring (deterministic)
     std::vector<Rec> log;       // every event the plugin pushed
     std::vector<float> L, R;    // every sample rendered (the main port)
-    uint32_t outputs = 1;       // audio output ports the test host gives (1 or 3)
-    bool activatePorts = true;  // with 3: activate ports 1 and 2 before the first block
-    std::vector<float> PL[2], PR[2];  // ports 1 and 2 when given
+    uint32_t outputs = 1;       // audio output ports the test host gives (1 to 9)
+    bool activatePorts = true;  // activate the ports past the main one before the first block
+    std::vector<float> PL[8], PR[8];  // ports 1-8 when given
+    const oscairn_plugin_sound_snapshots_t* snapshots = nullptr;
+    bool ring = false;          // give a ring-out buffer before each block (oscairn.sound-snapshots)
+    std::vector<float> RL[2], RR[2];  // its two pairs: the retiring sounds' and the choked ones' main output
     long frame = 0;
     bool guard = false;         // count heap allocations inside process()
     long allocations = 0;
@@ -240,6 +243,7 @@ struct Inst {
         budget = static_cast<const oscairn_plugin_voice_budget_t*>(p->get_extension(p, OSCAIRN_EXT_VOICE_BUDGET));
         memory = static_cast<const oscairn_plugin_memory_t*>(p->get_extension(p, OSCAIRN_EXT_MEMORY));
         streaming = static_cast<const StreamingExt*>(p->get_extension(p, "org.oscairn.pcm.streaming/draft-1"));
+        snapshots = static_cast<const oscairn_plugin_sound_snapshots_t*>(p->get_extension(p, OSCAIRN_EXT_SOUND_SNAPSHOTS));
         if (!streaming) { std::printf("  no streaming extension\n"); ++g_failures; return; }
         if (start) { p->activate(p, kRate, 1, 4096); p->start_processing(p); }
         // The default sound for these tests (kSound), loaded through the CLAP state.
@@ -258,19 +262,23 @@ struct Inst {
         std::vector<float> l(frames, 0.f), r(frames, 0.f);
         for (auto& x : l) x = 123.f;  // the plugin must overwrite, not add
         for (auto& x : r) x = 123.f;
-        std::vector<float> pl[2], pr2[2];
-        float* ch[3][2] = {{l.data(), r.data()}};
-        for (int k = 0; k < 2; ++k) { pl[k].assign(frames, 123.f); pr2[k].assign(frames, 123.f); ch[k + 1][0] = pl[k].data(); ch[k + 1][1] = pr2[k].data(); }
-        clap_audio_buffer_t buf[3]{};
-        for (int k = 0; k < 3; ++k) { buf[k].data32 = ch[k]; buf[k].channel_count = 2; }
+        std::vector<float> pl[8], pr2[8], ring4[4];
+        float* ch[9][2] = {{l.data(), r.data()}};
+        for (int k = 0; k < 8; ++k) { pl[k].assign(frames, 123.f); pr2[k].assign(frames, 123.f); ch[k + 1][0] = pl[k].data(); ch[k + 1][1] = pr2[k].data(); }
+        clap_audio_buffer_t buf[9]{};
+        for (int k = 0; k < 9; ++k) { buf[k].data32 = ch[k]; buf[k].channel_count = 2; }
+        float* rch[4];
+        for (int k = 0; k < 4; ++k) { ring4[k].assign(frames, 0.f); rch[k] = ring4[k].data(); }
+        clap_audio_buffer_t rbuf{}; rbuf.data32 = rch; rbuf.channel_count = 4;
         clap_process_t pr{};
         pr.steady_time = frame; pr.frames_count = frames; pr.in_events = &in.api; pr.out_events = &out.api;
         pr.audio_outputs = buf; pr.audio_outputs_count = outputs;
         if (outputs > 1 && activatePorts && frame == 0) {
             auto act = static_cast<const clap_plugin_audio_ports_activation_t*>(p->get_extension(p, CLAP_EXT_AUDIO_PORTS_ACTIVATION));
-            for (uint32_t k = 1; k < 3; ++k) if (!act || !act->set_active(p, false, k, true, 32)) ++g_failures;
+            for (uint32_t k = 1; k < outputs; ++k) if (!act || !act->set_active(p, false, k, true, 32)) ++g_failures;
         }
         if (settle) streaming->settle(p);
+        if (ring) snapshots->ring_out(p, &rbuf);
         if (guard) allocGuardEnable(true);
         const auto st = p->process(p, &pr);
         if (guard) { allocGuardEnable(false); allocations = allocGuardCount(); }
@@ -279,7 +287,8 @@ struct Inst {
         if (out.dropped) { std::printf("  test log overflowed\n"); ++g_failures; }
         log.insert(log.end(), out.buf.begin(), out.buf.begin() + out.n);
         L.insert(L.end(), l.begin(), l.end()); R.insert(R.end(), r.begin(), r.end());
-        if (outputs > 1) for (int k = 0; k < 2; ++k) { PL[k].insert(PL[k].end(), pl[k].begin(), pl[k].end()); PR[k].insert(PR[k].end(), pr2[k].begin(), pr2[k].end()); }
+        for (uint32_t k = 0; k + 1 < outputs; ++k) { PL[k].insert(PL[k].end(), pl[k].begin(), pl[k].end()); PR[k].insert(PR[k].end(), pr2[k].begin(), pr2[k].end()); }
+        if (ring) for (int k = 0; k < 2; ++k) { RL[k].insert(RL[k].end(), ring4[2 * k].begin(), ring4[2 * k].end()); RR[k].insert(RR[k].end(), ring4[2 * k + 1].begin(), ring4[2 * k + 1].end()); }
         frame += frames;
     }
     void run(long frames, uint32_t blockSize = 128) {

@@ -585,21 +585,6 @@ void designHigh(Pool& p, uint32_t i, float hz, const FilterRate& fr) {
 
 // ==== the engine ====================================================================================
 
-// A lane's output into the mix: R (routed) sends each voice to its output bus by its masks, bus k's
-// samples at acc + k kSub; otherwise everything to acc (bus 0, as before)
-struct Buses { vf m0, m1, m2; };
-template <bool R> PV_INLINE Buses busesOf(const Lane& l) {
-    if constexpr (R) { const vf m1 = l(B1), m2 = l(B2); return {splat(1.f) - m1 - m2, m1, m2}; }
-    else return {splat(1.f), splat(0.f), splat(0.f)};
-}
-template <bool R> PV_INLINE void put(vf* acc, int s, vf y, vf g, const Buses& b) {
-    if constexpr (!R) acc[s] = fma(y, g, acc[s]);
-    else {
-        const vf v = y * g;
-        acc[s] = fma(v, b.m0, acc[s]); acc[kSub + s] = fma(v, b.m1, acc[kSub + s]); acc[2 * kSub + s] = fma(v, b.m2, acc[2 * kSub + s]);
-    }
-}
-
 // A voice no longer reads its stream: the I/O thread may take it back (the Stream rules)
 static void dropStream(VoiceScalar& v) {
     if (v.stream) v.stream->state.store(Stream::Released, std::memory_order_release);
@@ -607,22 +592,35 @@ static void dropStream(VoiceScalar& v) {
 }
 
 struct Kernel {
-    // One piece of n frames (n <= kSub) for the voices of a pool, added into accL/accR (R: per bus).
+    // One piece of n frames (n <= kSub) for the voices of a pool, added into accL/accR; routed (R), a lane mixes into
+    // its own buffers and each of its voices is added into its output bus (sc.outL/outR) from there.
     template <int C, class I, int K, bool R>
     static void run(Pool& p, const Tables& t, Scratch& sc, int n, vf* accL, vf* accR) {
         const int lanes = int(p.n + W - 1) / W;
+        vf own[2][R ? kSub : 1];
+        vf* const mixL = R ? own[0] : accL;
+        vf* const mixR = R ? own[1] : accR;
         for (int ln = 0; ln < lanes; ++ln) {
             const int o = ln * W;
             const float* base[W];
             feedLane<C, I>(p, o, n, sc, base);
             vf buf[C][kSub];
             fetchLane<C, I>(p, t, o, n, base, buf);
+            if constexpr (R) for (int s = 0; s < n; ++s) mixL[s] = mixR[s] = splat(0.f);
             if constexpr (K != 0) {  // and the mix; the element EQ only in lanes that use it
                 bool eq = false;
                 for (int j = 0; j < W && o + j < int(p.n); ++j) eq |= p.v[o + j].eq;
-                if (eq) filterLane<C, K, R, true>(p, o, n, buf, accL, accR);
-                else filterLane<C, K, R, false>(p, o, n, buf, accL, accR);
-            } else mixLane<C, R>(p, o, n, buf, accL, accR);
+                if (eq) filterLane<C, K, true>(p, o, n, buf, mixL, mixR);
+                else filterLane<C, K, false>(p, o, n, buf, mixL, mixR);
+            } else mixLane<C>(p, o, n, buf, mixL, mixR);
+            if constexpr (R) {
+                alignas(16) float x[2][kSub][W];
+                for (int s = 0; s < n; ++s) { store(x[0][s], mixL[s]); store(x[1][s], mixR[s]); }
+                for (int j = 0; j < W && o + j < int(p.n); ++j) {
+                    float* const L = sc.outL[p.v[o + j].bus]; float* const Rt = sc.outR[p.v[o + j].bus];
+                    for (int s = 0; s < n; ++s) { L[s] += x[0][s][j]; Rt[s] += x[1][s][j]; }
+                }
+            }
         }
     }
     // each voice's base pointer for this piece's taps (idle lanes read zeros)
@@ -685,10 +683,9 @@ struct Kernel {
         s2 = e.b2 * x - e.a2 * y;
         return y;
     }
-    template <int C, int K, bool R, bool E> static PCM_STAGE void filterLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
+    template <int C, int K, bool E> static PCM_STAGE void filterLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
         const Lane l{&p, o};
         const Coefs q(l), h(l, K == 1 || K >= 6 ? CINV : HINV);
-        const Buses bs = busesOf<R>(l);
         Eq eq{};
         if constexpr (E) eq = {l(EB0), l(EB1), l(EB2), l(EA1), l(EA2)};
         for (int c = 0; c < C; ++c) {
@@ -703,7 +700,7 @@ struct Kernel {
                     vf y = chain<K>(q, h, x[s], a1, a2, a3, a4, b1, b2, b3, b4);
                     if constexpr (E) y = eqStep(eq, y, e1, e2);
                     gl = gl + dgl; gr = gr + dgr;
-                    put<R>(accL, s, y, gl, bs); put<R>(accR, s, y, gr, bs);
+                    accL[s] = fma(y, gl, accL[s]); accR[s] = fma(y, gr, accR[s]);
                 }
                 l.set(GL, gl); l.set(GR, gr);
             } else {
@@ -713,7 +710,7 @@ struct Kernel {
                     vf y = chain<K>(q, h, x[s], a1, a2, a3, a4, b1, b2, b3, b4);
                     if constexpr (E) y = eqStep(eq, y, e1, e2);
                     g = g + dg;
-                    put<R>(acc, s, y, g, bs);
+                    acc[s] = fma(y, g, acc[s]);
                 }
                 l.set(c ? GR : GL, g);
             }
@@ -722,13 +719,12 @@ struct Kernel {
             if constexpr (E) { l.set(ES0 + 2 * c, e1); l.set(ES0 + 2 * c + 1, e2); }
         }
     }
-    template <int C, bool R> static PCM_STAGE void mixLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
+    template <int C> static PCM_STAGE void mixLane(Pool& p, int o, int n, vf (*buf)[kSub], vf* accL, vf* accR) {
         Lane l{&p, o};
-        const Buses bs = busesOf<R>(l);
         vf gl = l(GL), gr = l(GR); const vf dgl = l(DGL), dgr = l(DGR);
         for (int s = 0; s < n; ++s) {
             gl = gl + dgl; gr = gr + dgr;
-            put<R>(accL, s, buf[0][s], gl, bs); put<R>(accR, s, buf[C - 1][s], gr, bs);
+            accL[s] = fma(buf[0][s], gl, accL[s]); accR[s] = fma(buf[C - 1][s], gr, accR[s]);
         }
         l.set(GL, gl); l.set(GR, gr);
     }
@@ -832,6 +828,7 @@ const RunFn kKernels[2][2][2][kFilters] = {PCM_KERNELS(false), PCM_KERNELS(true)
 }  // namespace
 
 Core::Core() {
+    for (auto& e : elements_) e = true;
     // the interpolation kernels: Kaiser beta 7.5, one per cutoff (kernelCut)
     constexpr double beta = PCM_KERNEL_BETA;
     for (int k = 0; k < kKernelBank; ++k) {
@@ -886,6 +883,20 @@ void Core::install(uint32_t s, const Compiled* c) {
     lfoStart_[s] = -1;  // the part LFO starts with the next note
     for (auto& g : cycle_[s]) g = 0;
     draw_[s] = 0x2545f491u;
+}
+
+// The voice's output bus: its sound's, or with the sound's elements on, the element's connection 1 or 2 when the sound
+// splits its outputs
+uint8_t Core::busOf(const VoiceScalar& v) const {
+    const Compiled* s = sound_[v.sound];
+    const int conn = s && s->splitOutputs && v.element && elements_[v.sound] ? v.element[ElementConnection] : 0;
+    return conn == 1 || conn == 2 ? uint8_t(conn) : bus_[v.sound];
+}
+
+void Core::route(uint32_t s, uint32_t bus, bool elements) {
+    if (s >= kMaxSounds || bus >= kOutputs || (bus_[s] == bus && elements_[s] == elements)) return;
+    bus_[s] = uint8_t(bus); elements_[s] = elements;
+    for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) p.v[i].bus = busOf(p.v[i]);
 }
 
 void Core::setGain(uint32_t s, float gain, float pan) {
@@ -952,9 +963,8 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     v.id = nextId_++; if (!nextId_) nextId_ = 1;
     sl.pool[sl.layers] = uint8_t(&p - pool_); sl.id[sl.layers] = v.id; ++sl.layers;
     v.slot = uint8_t(voice); v.sound = sl.sound; v.channel = uint8_t(channel & 15); v.key = uint8_t(key);
-    // the output bus: the element's connection (thru, insertion A, B) when the sound splits its outputs
-    v.bus = s.splitOutputs ? uint8_t(e[ElementConnection]) : 0;
-    p.f[B1][i] = v.bus == 1 ? 1.f : 0.f; p.f[B2][i] = v.bus == 2 ? 1.f : 0.f;
+    v.element = e;  // (set again with the filter below)
+    v.bus = busOf(v);
     v.start = clock_;
     // the region's audio: the cached span starts as data (feed() finds the rest)
     v.src = &sv; v.loop = sv.looped;
@@ -1298,7 +1308,7 @@ void Core::free_(Pool& p, uint32_t i) {
     // the vacated slot renders silence through finite coefficients
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][last] = 0;
     p.f[G][last] = p.f[GL][last] = p.f[GR][last] = p.f[DGL][last] = p.f[DGR][last] = 0;
-    p.f[C0][last] = p.f[CENTS][last] = 0; p.f[DAMP][last] = 2; p.f[B1][last] = p.f[B2][last] = 0;
+    p.f[C0][last] = p.f[CENTS][last] = 0; p.f[DAMP][last] = 2;
     p.f[EB0][last] = 1; for (int k = EB1; k < NFIELDS; ++k) p.f[k][last] = 0;  // the EQ: identity, silent states
 }
 
@@ -1573,20 +1583,25 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
 
 void Core::render(float* L, float* R, uint32_t frames, uint32_t from) {
     if (!pendingSlots_ && !live_) { clock_ += frames; return; }  // the rest cost: nothing more than this when silent
-    float* const l3[3] = {L, L, L};
-    float* const r3[3] = {R, R, R};
-    render(l3, r3, frames, from);
+    float* l[kOutputs]; float* r[kOutputs];
+    for (uint32_t b = 0; b < kOutputs; ++b) l[b] = L, r[b] = R;
+    render(l, r, frames, from);
 }
 
 void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t from) {
     uint32_t done = 0;
     if (!pendingSlots_ && !live_) { clock_ += frames; return; }
-    // routed: the outputs differ, and a pool has voices on bus 1 or 2 (voices start only between calls)
-    const bool split = L[1] != L[0] || L[2] != L[0] || R[1] != R[0] || R[2] != R[0];
-    bool routed[2 * kFilters] = {}, anyRouted = false;
-    if (split)
+    // routed: the outputs differ, and a pool has voices off bus 0 (voices start only between calls)
+    bool split = false;
+    for (uint32_t b = 1; b < kOutputs; ++b) split |= L[b] != L[0] || R[b] != R[0];
+    bool routed[2 * kFilters] = {};
+    auto scan = [&] {
         for (int k = 0; k < 2 * kFilters; ++k)
-            for (uint32_t i = 0; i < pool_[k].n; ++i) if (pool_[k].v[i].bus) { routed[k] = anyRouted = true; break; }
+            for (uint32_t i = 0; i < pool_[k].n && !routed[k]; ++i) routed[k] = pool_[k].v[i].bus != 0;
+    };
+    if (split) scan();
+    float* outL[kOutputs]; float* outR[kOutputs];
+    scratch_.outL = outL; scratch_.outR = outR;
     FtzScope ftz;
     while (done < frames) {
         const uint32_t phase = (from + done) % kSub;
@@ -1595,13 +1610,11 @@ void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t fr
         if (pendingSlots_) {  // a held-back layer starts on its own frame: the piece ends there
             const int64_t next = startPending_();
             if (next - clock_ < int64_t(n)) n = uint32_t(next - clock_);
-            if (split)  // a layer started here may play on output bus 1 or 2
-                for (int k = 0; k < 2 * kFilters; ++k)
-                    for (uint32_t i = 0; i < pool_[k].n && !routed[k]; ++i) if (pool_[k].v[i].bus) routed[k] = anyRouted = true;
+            if (split) scan();  // a layer started here may play off bus 0
         }
-        vf accL[3 * kSub], accR[3 * kSub];
-        for (int b = 0; b < (anyRouted ? 3 : 1); ++b)
-            for (uint32_t s = 0; s < n; ++s) accL[b * kSub + s] = accR[b * kSub + s] = splat(0.f);
+        if (split) for (uint32_t b = 0; b < kOutputs; ++b) outL[b] = L[b] + done, outR[b] = R[b] + done;
+        vf accL[kSub], accR[kSub];
+        for (uint32_t s = 0; s < n; ++s) accL[s] = accR[s] = splat(0.f);
         for (auto& p : pool_) {
             if (!p.n) continue;
             // control: snap the gain ramps of the last step, then each voice
@@ -1623,8 +1636,7 @@ void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t fr
             const int c = p.plan.channels == 2 ? 1 : 0;
             kKernels[routed[&p - pool_]][c][interp_ == Interp::Sinc ? 1 : 0][int(p.plan.filter)](p, tables_, scratch_, int(n), accL, accR);
         }
-        for (int b = 0; b < (anyRouted ? 3 : 1); ++b)
-            for (uint32_t s = 0; s < n; ++s) { L[b][done + s] += hsum(accL[b * kSub + s]); R[b][done + s] += hsum(accR[b * kSub + s]); }
+        for (uint32_t s = 0; s < n; ++s) { L[0][done + s] += hsum(accL[s]); R[0][done + s] += hsum(accR[s]); }
         clock_ += n;
         done += n;
         reap_();

@@ -19,8 +19,8 @@ TEST(descriptor_and_ports) {
     Inst a(false);
     auto* ap = static_cast<const clap_plugin_audio_ports_t*>(a.p->get_extension(a.p, CLAP_EXT_AUDIO_PORTS));
     auto* np = static_cast<const clap_plugin_note_ports_t*>(a.p->get_extension(a.p, CLAP_EXT_NOTE_PORTS));
-    CHECK(ap && ap->count(a.p, false) == 3 && ap->count(a.p, true) == 0);
-    for (uint32_t k = 0; k < 3; ++k) {  // main (thru), to insertion A, to insertion B: stable ids 0-2
+    CHECK(ap && ap->count(a.p, false) == 9 && ap->count(a.p, true) == 0);
+    for (uint32_t k = 0; k < 9; ++k) {  // main, sound buses 1-8 (1 and 2 also to insertion A and B): stable ids 0-8
         clap_audio_port_info_t ai{};
         CHECK(ap && ap->get(a.p, k, false, &ai) && ai.channel_count == 2 && ai.id == k && bool(ai.flags & CLAP_AUDIO_PORT_IS_MAIN) == (k == 0));
     }

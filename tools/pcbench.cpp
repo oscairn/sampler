@@ -8,7 +8,8 @@
 //                         <id>.owf, a path reference the one-record pack STORE/reference; every region decoded whole
 //   pcbench rawq INTERP SEMITONES IN.s16 OUT.f32   a mono 16-bit 44.1 kHz file played (thru filter,
 //                         flat envelope) SEMITONES from its root at 48 kHz, mono float32 (the noise test)
-//   pcbench cg CASE PLAN INTERP WARM MEAS TSV      one callgrind dump per measured block (PC_WHOLE=1: one for all)
+//   pcbench cg CASE PLAN INTERP WARM MEAS TSV      one callgrind dump per measured block (PC_WHOLE=1: one for all;
+//                         PC_SOUNDS=N: the sound in N slots, slot k on its own output bus k + 1, notes taken in turn)
 //   pcbench time [CPU]    thread-CPU and wall time per block for every case
 //   pcbench check         NaN/Inf/subnormal check over random notes (exit 1 on failure)
 //   pcbench coverage SOUND [STORE]   what the sound uses that the core does not cover (a sound with waveforms needs
@@ -92,13 +93,19 @@ struct Host {
     int keyOf[kMaxVoices];
     bool pedalHeld[kMaxVoices] = {};
     int pedal = 0;
+    uint32_t sounds = 1, started = 0;  // the sound installed in this many slots, notes taken in turn (PC_SOUNDS)
+    std::vector<float> buses;          // then each slot's output bus: B frames left, B right, a bus each
     Host(double sr, Interp in) { core->prepare(sr); core->setInterp(in); std::fill(keyOf, keyOf + kMaxVoices, -1); }
     bool load(const SampleView* sampleViews, bool perRegion = false) {  // one a sample reference (or one a region)
         char err[256];
         std::vector<SampleView> views(data->regions);
         for (uint32_t i = 0; i < data->regions; ++i) views[i] = sampleViews[perRegion ? i : data->region[i].sample];
         if (!compile(*data, views.data(), *sound, err, sizeof err)) { fprintf(stderr, "compile: %s\n", err); return false; }
-        core->install(0, sound.get()); core->setGain(0, 1, 0);
+        for (uint32_t k = 0; k < sounds; ++k) {
+            core->install(k, sound.get()); core->setGain(k, 1, 0);
+            if (sounds > 1) core->route(k, k + 1, true);
+        }
+        if (sounds > 1) buses.assign(2 * B * kOutputs, 0.f);
         return true;
     }
     void apply(const Ev& e) {
@@ -112,7 +119,7 @@ struct Host {
         }
         if (e.on) {
             for (uint32_t v = 0; v < kMaxVoices; ++v)
-                if (!core->voice(v).sounding) { core->noteOn(v, 0, 0, e.key, float(e.vel) / 127.f); keyOf[v] = e.key; return; }
+                if (!core->voice(v).sounding) { core->noteOn(v, started++ % sounds, 0, e.key, float(e.vel) / 127.f); keyOf[v] = e.key; return; }
         } else {
             for (uint32_t v = 0; v < kMaxVoices; ++v)
                 if (keyOf[v] == e.key && !pedalHeld[v] && core->voice(v).sounding && !core->voice(v).releasing) {
@@ -129,6 +136,23 @@ struct Host {
             apply(ev[i]);
         }
         if (at < B) core->render(L + at, R + at, uint32_t(B - at), uint32_t(at));
+    }
+    // the same with each slot on its own bus, the buses then summed into L and R (for the hash)
+    void blockOnBuses(float* L, float* R, const Ev* ev, size_t n) {
+        std::memset(L, 0, 2 * B * 4);
+        std::memset(buses.data(), 0, buses.size() * 4);
+        long at = 0;
+        auto render = [&](long to) {
+            float* l[kOutputs]; float* r[kOutputs];
+            for (uint32_t k = 0; k < kOutputs; ++k) { l[k] = buses.data() + 2 * B * k + at; r[k] = l[k] + B; }
+            core->render(l, r, uint32_t(to - at), uint32_t(at));
+        };
+        for (size_t i = 0; i < n; ++i) {
+            if (ev[i].frame > at) { render(ev[i].frame); at = ev[i].frame; }
+            apply(ev[i]);
+        }
+        if (at < B) render(B);
+        for (uint32_t k = 0; k < kOutputs; ++k) for (int i = 0; i < B; ++i) { L[i] += buses[2 * B * k + i]; R[i] += buses[2 * B * k + B + i]; }
     }
 };
 
@@ -315,6 +339,7 @@ static int cg(int argc, char** argv) {
     FILE* tsv = fopen(argv[argc - 1], "w");
     static Builtin s;
     Host h(48000, in);
+    if (const char* e = getenv("PC_SOUNDS")) h.sounds = uint32_t(std::max(1, std::min(int(kMaxSounds), atoi(e))));
     if (!caseSound(h, plan, s)) return 2;
     const long first = long(warm * 48000 / B), total = first + long(meas * 48000 / B);
     std::vector<Ev> evs = held(n), bev;
@@ -328,7 +353,8 @@ static int cg(int argc, char** argv) {
         if (c == "shed" && b == first) h.core->shed(uint32_t(n));
         if (c == "release" && b == first) for (uint32_t v = 0; v < kMaxVoices; ++v) if (h.core->voice(v).sounding) h.core->noteOff(v);
         if (m && (!whole || b == first)) CALLGRIND_ZERO_STATS;
-        h.block(L, R, bev.data(), bev.size());
+        if (h.sounds > 1) h.blockOnBuses(L, R, bev.data(), bev.size());
+        else h.block(L, R, bev.data(), bev.size());
         if (m && !whole) CALLGRIND_DUMP_STATS;
         if (m) fprintf(tsv, "%ld\t%u\n", b - first, h.core->elementVoices());
         for (int i = 0; i < B; ++i) for (float x : {L[i], R[i]}) { uint32_t bits; memcpy(&bits, &x, 4); hash = (hash ^ bits) * 1099511628211ULL; }

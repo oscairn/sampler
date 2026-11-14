@@ -86,6 +86,7 @@ public:
     void keyUp(uint32_t v) override { core_->keyUp(v); }
     void setSustain(int16_t ch, double x) override { core_->setSustain(ch, float(x)); }
     void render(float* const* l, float* const* r, uint32_t n, uint32_t from) override { sync(); core_->render(l, r, n, from); }
+    void route(uint32_t c, uint32_t bus, bool elements) override { core_->route(c, bus, elements); }
     uint32_t voiceCount() const override { return core_->voiceCount(); }
     VoiceInfo voice(uint32_t v) const override {
         const auto s = core_->voice(v);

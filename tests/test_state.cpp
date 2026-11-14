@@ -6,7 +6,7 @@
 TEST(parameter_metadata) {
     Inst a(false);
     const uint32_t n = a.params->count(a.p);
-    CHECK_EQ(n, 25u);
+    CHECK_EQ(n, 26u);
     std::vector<clap_id> seen;
     for (uint32_t i = 0; i < n; ++i) {
         clap_param_info_t info{};
@@ -45,7 +45,7 @@ TEST(state_round_trip_is_byte_identical) {
     Inst a;
     a.block(128, {param(0, 0, 0.3), param(0, 1, -0.5), param(0, 2, 10)});
     const std::string s = a.save();
-    CHECK(s.rfind("oscairn-pcm-state 2\n", 0) == 0);
+    CHECK(s.rfind("oscairn-pcm-state 3\n", 0) == 0);
     Inst b;
     CHECK(b.load(s));
     CHECK_EQ(b.save() == s, true);
@@ -90,7 +90,7 @@ TEST(sound_context_snapshot_round_trip) {
     a.block(128);
     Stream s;
     CHECK(a.contexts->state->save(a.p, &s.out));
-    CHECK(s.data.rfind("oscairn-pcm-contexts/2\n", 0) == 0);
+    CHECK(s.data.rfind("oscairn-pcm-contexts/3\n", 0) == 0);
     Inst c;
     Stream in; in.data = s.data;
     CHECK(c.contexts->state->load(c.p, &in.in));

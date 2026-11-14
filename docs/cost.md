@@ -97,6 +97,29 @@ layout and the design's dispatch); the silent test counts the voices instead of 
 section's offset and type 3's top); the core's code 371,641 bytes of text against 259,409 (macOS arm64, -O3, the core's
 objects; each plan adds its kernels for both widths, interpolators and routings; type 10 runs type 4's). No new table.
 
+## Sounds on their own output buses (0.8.0)
+
+Parts sharing an instance put each sound on its own output bus (`docs/parameters.md`, output ports). A pool whose
+voices are all on bus 0 renders as before (the gated cases). Once a pool has a voice off bus 0 and the buses are
+distinct buffers, each lane mixes into its own buffer and each of its voices is added into its bus from there, scalar:
+about 8 more instructions a voice a frame, whatever the number of buses. `PC_SOUNDS=N pcbench cg ...` installs the
+pads' sound in N slots, slot k on bus k + 1, the notes taken in turn (so every lane holds voices of different sounds,
+the worst case). Last run (0.8.0, aarch64 container, per element voice from 8 to 32 held voices):
+
+| plan | one sound | 5 sounds | 8 sounds |
+|---|---|---|---|
+| mono, 20-tap | 10,728 | 11,984 (+11.7 %) | 11,984 (+11.7 %) |
+| stereo, 20-tap | 15,216 | 16,382 (+7.7 %) | 16,382 (+7.7 %) |
+
+8 voices over 5 sounds: 101,900 instructions a block against 91,374 for the same 8 voices in one sound (+11.5 %; the
+bench's own zeroing and summing of its 11 bus buffers, 4,812 a block measured at rest, taken off). At rest nothing of
+this runs: the core returns before it looks at a bus, 192 instructions a block with 1, 5 or 8 sounds installed. The
+shell adds, per process call, a pass over the 16 channels and over the sounds in use (choosing each one's bus), and
+zeroes the ports the host activated; ports never activated are not touched. Gates on the same run: mono 10,728,
+stereo 15,216, streamed mono 10,772, streamed stereo 15,255, rest 192, shedding 1,895 and 1,698 a voice. Memory: the
+two per-voice routing fields of 0.7 are gone (16,384 bytes less in the pools); the instance estimate
+(`oscairn.memory`) went from 4,762,480 to 4,744,088 shared bytes.
+
 ## Shedding
 
 `Core::shed(n)` fades the n quietest element voices out over 16 frames (one control step) and frees

@@ -27,14 +27,16 @@ namespace pcmshell {
 
 constexpr uint32_t kVoices = pcm::kMaxVoices;  // the pool: the most notes the core can sound at once
 constexpr uint32_t kContexts = 8;              // sound contexts (slot 0 is the default sound)
+constexpr uint32_t kPorts = kContexts + 1;     // stereo output ports: main and a sound bus for each sound
 
 // The parameters, per sound (docs/parameters.md). level: linear, 1 = the sound's own level; polyphony: the most voices
 // this sound may keep (1..kVoices); the knobs, ribbon and switches: the part's own controller box sources, 0..1 (a
 // knob starts at the sound's stored value); from kDest0: the box destinations the core moves, an offset in the
-// destination's raw steps (cents for the tunings) added to its boxes, modulatable. Ids are stable: new ones go last.
+// destination's raw steps (cents for the tunings) added to its boxes, modulatable; bus: the output port the sound plays
+// on (0 main, n sound bus n). Ids are stable: new ones go last.
 enum Param : uint32_t { kLevel, kPan, kPolyphony, kKnob1, kKnob8 = kKnob1 + 7, kRibbon, kSwitch1, kSwitch2,
                         kDest0, kDestCutoff = kDest0, kDestResonance, kDestLevel, kDestCoarse, kDestFine, kDestHpf, kDestFegDepth, kDestElfoPitch, kDestElfoAmp, kDestAttack, kDestRelease, kDestLast = kDestRelease,
-                        kParamCount };
+                        kBus, kParamCount };
 struct ParamInfo { const char* name; const char* key; double min, max, def; bool stepped; };
 inline constexpr double kKnobDefault = 512.0 / 1023;  // the reference's default knob value
 inline constexpr ParamInfo kParams[kParamCount] = {
@@ -49,7 +51,8 @@ inline constexpr ParamInfo kParams[kParamCount] = {
     {"Fine Tune", "fine", -100, 100, 0, false}, {"High-Pass Cutoff", "hpf_cutoff", -1024, 1024, 0, false},
     {"Filter EG Depth", "feg_depth", -64, 64, 0, false},
     {"Element LFO Pitch Depth", "elfo_pitch_mod", -8192, 8192, 0, false}, {"Element LFO Amp Depth", "elfo_amp_mod", -8192, 8192, 0, false},
-    {"AEG Attack", "attack", -128, 128, 0, false}, {"AEG Release", "release", -128, 128, 0, false}};
+    {"AEG Attack", "attack", -128, 128, 0, false}, {"AEG Release", "release", -128, 128, 0, false},
+    {"Output Bus", "bus", 0, kContexts, 0, true}};
 
 // A float that can be copied (a Patch is copied) and read by one thread while another writes it.
 struct Cell {
@@ -123,9 +126,11 @@ public:
     virtual void setSource(int16_t channel, int source, double value) = 0;  // a box source, 0..1: 2 pressure, 3 CC 11, 7 CC 2
     // Adds the sound of every voice of every context into left/right; `from` is the frame of the
     // host's block the segment starts at (control steps keep to the block's grid).
-    // left[k], right[k]: output bus k (0 thru, 1 to insertion A, 2 to insertion B; the same buffers as
-    // bus 0 when that port is absent: everything sums there).
+    // left[k], right[k]: output bus k, pcm::kOutputs of them (the same buffers as bus 0 when that port is absent:
+    // everything sums there); each context plays on the bus route() gave it.
     virtual void render(float* const* left, float* const* right, uint32_t frames, uint32_t from) = 0;
+    // A context's output bus, and whether its sound's elements may split off to buses 1 and 2 (pcm::Core::route)
+    virtual void route(uint32_t context, uint32_t bus, bool elements) = 0;
     virtual uint32_t voiceCount() const = 0;                        // voices sounding, fading ones included
     virtual VoiceInfo voice(uint32_t voice) const = 0;
     virtual SoundCost cost(uint32_t context) const = 0;              // any thread

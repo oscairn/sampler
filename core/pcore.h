@@ -207,6 +207,7 @@ constexpr uint32_t kMaxSounds = 8;    // sound slots
 constexpr uint32_t kMaxLayers = 16;   // regions a note may start
 constexpr uint32_t kPoolVoices = 128; // element voices of one plan
 constexpr int kSub = 16;              // frames between control steps, from each block's start
+constexpr uint32_t kOutputs = 11;     // render's output buses: 0-8 the caller's ports, 9 and 10 two more (see route)
 
 struct VoiceState { bool sounding, releasing; float level; uint64_t age; };
 
@@ -225,6 +226,10 @@ public:
     void install(uint32_t sound, const Compiled* s);
     void setGain(uint32_t sound, float gain, float pan);  // the caller's level (linear) and pan (-1..1)
     void setInterp(Interp i) { interp_ = i; }              // default Sinc; Hermite for comparisons
+    // Where a sound plays: output bus `bus` (0..kOutputs-1), and with `elements` an element of a sound that splits its
+    // outputs plays on its connection's bus 1 or 2 instead (connection 0 on `bus`). Its voices move at once. Default:
+    // bus 0, elements on. Audio thread.
+    void route(uint32_t sound, uint32_t bus, bool elements);
 
     // Events, between render calls; `at` is the frame of the coming render calls' block (see render).
     void noteOn(uint32_t voice, uint32_t sound, int channel, int key, float velocity);  // velocity 0..1
@@ -248,9 +253,8 @@ public:
     // block. Control steps (envelopes, filter coefficients) fall every kSub frames from the block's
     // start, whatever the segments, so a block split by events renders as the unsplit one.
     void render(float* left, float* right, uint32_t frames, uint32_t from);
-    // The same with three stereo output buses: 0 thru, 1 to insertion A, 2 to insertion B (an element
-    // whose sound splits its outputs plays on its connection's bus; the rest on bus 0). Buses given the
-    // same buffers as bus 0 sum into it, exactly as render(left, right, ...).
+    // The same with kOutputs stereo output buses, each voice on its sound's bus (route): buses given the same buffers
+    // as bus 0 sum into it, exactly as render(left, right, ...).
     void render(float* const* left, float* const* right, uint32_t frames, uint32_t from);
     // Sheds n voices now: the quietest element voices fade out over one control step's frames.
     void shed(uint32_t n);
@@ -299,6 +303,9 @@ private:
     uint32_t live_ = 0;  // element voices in all pools (the silent test: the pools are many)
     uint32_t rand_ = 0x9e3779b9u;            // random pitch draws              // slots with layers held back by a key-on delay
     float gain_[kMaxSounds], panL_[kMaxSounds], panR_[kMaxSounds];
+    uint8_t bus_[kMaxSounds] = {};           // route(): each sound's bus
+    bool elements_[kMaxSounds];              // and whether its elements may split off
+    uint8_t busOf(const VoiceScalar&) const;
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];
     FilterRate rate_;

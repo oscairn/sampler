@@ -33,9 +33,10 @@
 namespace pcmshell {
 namespace {
 
-constexpr const char* kStateHeader = "oscairn-pcm-state 2";      // the CLAP state: the default sound (state 1, with the
-constexpr const char* kStateHeader1 = "oscairn-pcm-state 1";     // first three values only, still reads)
-constexpr const char* kSnapshotHeader = "oscairn-pcm-contexts/2"; // the sound-contexts snapshot (one token)
+constexpr const char* kStateHeader = "oscairn-pcm-state 3";      // the CLAP state: the default sound (states 1 and 2,
+constexpr const char* kStateHeader2 = "oscairn-pcm-state 2";     // with the values before the knobs or before the bus
+constexpr const char* kStateHeader1 = "oscairn-pcm-state 1";     // only, still read)
+constexpr const char* kSnapshotHeader = "oscairn-pcm-contexts/3"; // the sound-contexts snapshot (one token)
 constexpr const char* kBlobHeader = "oscairn-pcm-blob/0";         // patch text: a blob in base64
 constexpr size_t kMaxStateBytes = 1 << 22;  // eight sounds' blobs in base64
 constexpr uint32_t kMaxDeviceVoices = kVoices, kMaxDeviceVoicesPerSound = kVoices;
@@ -99,7 +100,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     const uint32_t deviceCap = envCap(kEnvMaxVoices, kMaxDeviceVoices);
     const uint32_t soundCap = envCap(kEnvMaxVoicesPerSound, kMaxDeviceVoicesPerSound);
     const bool decodeWhole = [] { const char* e = std::getenv(kEnvDecodeWhole); return e && !std::strcmp(e, "1"); }();
-    std::array<std::atomic<bool>, 3> portActive{};  // output ports 1 and 2 as the host set them (not saved); 0 is always used
+    std::array<std::atomic<bool>, kPorts> portActive{};  // output ports 1-8 as the host set them (not saved); 0 is always used
     std::array<bool, kVoices> choking{};  // the core was told to fade this voice
     std::array<bool, kVoices> keyUpSent{};  // the core was told the key is up under the pedal
     struct Owed { int32_t id; int16_t channel, key; };
@@ -360,13 +361,29 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             }
         float* const* out = pr->audio_outputs_count ? pr->audio_outputs[0].data32 : nullptr;
         if (!out || !out[0] || !out[1]) return;
-        // ports 1 and 2 (to insertion A and B) where the host gives and activated them; else their sound joins the main port
-        float* left[3]; float* right[3];
-        for (uint32_t k = 0; k < 3; ++k) {
+        // ports 1-8 where the host gives and activated them, else their sound joins the main port; then the ring-out
+        // buffer's two pairs (oscairn.sound-snapshots), else the main port
+        float* left[pcm::kOutputs]; float* right[pcm::kOutputs];
+        for (uint32_t k = 0; k < kPorts; ++k) {
             float* const* o = k < pr->audio_outputs_count ? pr->audio_outputs[k].data32 : nullptr;
             const bool own = o && o[0] && o[1] && pr->audio_outputs[k].channel_count >= 2 && (k == 0 || portActive[k].load(std::memory_order_relaxed));
             left[k] = (own ? o[0] : out[0]) + from; right[k] = (own ? o[1] : out[1]) + from;
             if (own) { std::memset(o[0] + from, 0, (to - from) * sizeof(float)); std::memset(o[1] + from, 0, (to - from) * sizeof(float)); }
+        }
+        for (uint32_t k = 0; k < 2; ++k) {
+            left[kPorts + k] = ringOut ? ringOut[2 * k] + from : left[0];
+            right[kPorts + k] = ringOut ? ringOut[2 * k + 1] + from : right[0];
+        }
+        // Each sound in use on its bus. Port n is sound bus n, except while one sound alone is selected on the channels
+        // and it plays on bus 0: then a sound that splits its outputs sends its elements to 1 (insertion A) and 2
+        // (insertion B). A retiring sound's main output rings out.
+        bool alone = true;
+        for (uint32_t ch = 1; ch < 16; ++ch) alone &= selected[ch] == selected[0];
+        for (uint32_t slot = 0; slot < kContexts; ++slot) {
+            if (!contexts[slot].users.load(std::memory_order_acquire)) continue;
+            const uint32_t bus = uint32_t(clampParam(kBus, contexts[slot].patch.p[kBus].get()));
+            const auto* ring = bus ? nullptr : retiring(slot);
+            core->route(slot, ring ? kPorts + uint32_t(ring != ringOut) : bus, alone && !bus);
         }
         core->render(left, right, to - from, from);
         for (uint32_t i = 0; i < kVoices; ++i)  // a voice the core finished: its note ends here
@@ -416,6 +433,13 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             ev.param_id = i; ev.note_id = -1; ev.port_index = -1; ev.channel = -1; ev.key = -1; ev.value = v;
             out->try_push(out, &ev.header);
         }
+    }
+
+    // oscairn.sound-snapshots draft 4: a sound saved on its own plays on the main port; its values, every writable one
+    void alone(Patch& p) { p.p[kBus].set(0); }
+    uint32_t patchValues(const Patch& p, oscairn_sound_parameter_t* out, uint32_t capacity) {
+        for (uint32_t i = 0; i < kParamCount && i < capacity; ++i) out[i] = {i, p.p[i].get()};
+        return kParamCount;
     }
 
     // ---- patches and state --------------------------------------------------------------
@@ -494,9 +518,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
         std::istringstream in(data); in.imbue(std::locale::classic());
         std::string line;
-        if (!std::getline(in, line) || (line != kStateHeader && line != kStateHeader1)) return false;
+        if (!std::getline(in, line) || (line != kStateHeader && line != kStateHeader2 && line != kStateHeader1)) return false;
         Patch patch;
-        if (!s.readPatch(in, patch, line == kStateHeader ? kParamCount : kKnob1)) return false;
+        if (!s.readPatch(in, patch, line == kStateHeader ? kParamCount : line == kStateHeader2 ? kBus : kKnob1)) return false;
         in >> std::ws;
         if (!in.eof()) return false;
         for (uint32_t i = 0; i < kParamCount; ++i) {
@@ -505,6 +529,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
         s.contexts[0].patch.sound = patch.sound;
         s.core->loadPatch(0, patch);
+        select(p, 0, -1);  // the state's sound plays on every channel (from the next block)
         return true;
     }
 
@@ -659,7 +684,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (i >= kParamCount) return false;
         *info = {};
         info->id = i;
-        info->flags = CLAP_PARAM_IS_AUTOMATABLE | (kParams[i].stepped ? CLAP_PARAM_IS_STEPPED : 0) | (i >= kDest0 ? CLAP_PARAM_IS_MODULATABLE : 0);
+        info->flags = CLAP_PARAM_IS_AUTOMATABLE | (kParams[i].stepped ? CLAP_PARAM_IS_STEPPED : 0) | (i >= kDest0 && i <= kDestLast ? CLAP_PARAM_IS_MODULATABLE : 0);
         std::snprintf(info->name, sizeof info->name, "%s", kParams[i].name);
         info->min_value = kParams[i].min; info->max_value = kParams[i].max; info->default_value = kParams[i].def;
         return true;
@@ -704,6 +729,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         case kDestElfoPitch: case kDestElfoAmp: h->group = 4; break;
         case kDestAttack: h->role = OSCAIRN_ROLE_ATTACK; h->priority = 5; break;
         case kDestRelease: h->role = OSCAIRN_ROLE_RELEASE; h->priority = 6; break;
+        case kBus: h->role = OSCAIRN_ROLE_OUTPUT_BUS; break;
         default: if (id >= kKnob1 && id <= kKnob8) h->group = 1; break;
         }
         return true;
@@ -720,24 +746,25 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static const void* getExtension(const clap_plugin_t*, const char* id);
 };
 
-// Three stereo outputs with stable ids: 0 main (thru, and everything a sound does not split off), 1 to
-// insertion A, 2 to insertion B (a sound's elements reach 1 and 2 only with its split_outputs set)
+// Nine stereo outputs with stable ids: 0 main, n sound bus n (a sound with its output bus at n plays there). While one
+// sound alone is selected and on bus 0, 1 and 2 take its elements to insertion A and B instead (with split_outputs set).
 const clap_plugin_audio_ports_t kAudioPorts = {
-    [](const clap_plugin_t*, bool isInput) -> uint32_t { return isInput ? 0 : 3; },
+    [](const clap_plugin_t*, bool isInput) -> uint32_t { return isInput ? 0 : kPorts; },
     [](const clap_plugin_t*, uint32_t i, bool isInput, clap_audio_port_info_t* info) {
-        if (isInput || i > 2) return false;
-        static const char* const names[3] = {"Main", "To Insert A", "To Insert B"};
+        if (isInput || i >= kPorts) return false;
         *info = {};
-        info->id = i; std::snprintf(info->name, sizeof info->name, "%s", names[i]);
+        info->id = i;
+        if (i < 3) std::snprintf(info->name, sizeof info->name, "%s", i ? i == 1 ? "Bus 1 / To Insert A" : "Bus 2 / To Insert B" : "Main");
+        else std::snprintf(info->name, sizeof info->name, "Bus %u", i);
         info->flags = i == 0 ? CLAP_AUDIO_PORT_IS_MAIN : 0; info->channel_count = 2; info->port_type = CLAP_PORT_STEREO; info->in_place_pair = CLAP_INVALID_ID;
         return true;
     }};
-// A port takes its elements only once the host has activated it (clap.audio-ports-activation); until then, or when it
-// is deactivated, they play on the main port.
+// A port takes its sound only once the host has activated it (clap.audio-ports-activation); until then, or when it is
+// deactivated, it plays on the main port, and the port costs nothing.
 const clap_plugin_audio_ports_activation_t kPortsActivation = {
     [](const clap_plugin_t*) { return true; },
     [](const clap_plugin_t* p, bool isInput, uint32_t i, bool on, uint32_t) {
-        if (isInput || i > 2) return false;
+        if (isInput || i >= kPorts) return false;
         if (i) Plugin::self(p).portActive[i].store(on, std::memory_order_relaxed);
         return true;
     }};
@@ -754,6 +781,7 @@ const clap_plugin_params_t kParamsExt = {Plugin::paramCount, Plugin::paramInfo, 
 const clap_plugin_state_t kState = {Plugin::saveState, Plugin::loadState};
 const clap_plugin_state_t kSnapshot = {Plugin::saveSnapshot, Plugin::loadSnapshot};
 const oscairn_plugin_sound_contexts_t kSoundContexts = {Plugin::capacity, Plugin::get, Plugin::prepare, Plugin::select, Plugin::discard, &kSnapshot, nullptr};
+const oscairn_plugin_sound_snapshots_t kSoundSnapshots = {Plugin::prepareSnapshot, Plugin::setRingOut, Plugin::chokeRetiring, Plugin::saveSound, Plugin::soundValues};
 const oscairn_plugin_voice_budget_t kVoiceBudget = {Plugin::honorsVolume, Plugin::setLimits, Plugin::activeVoices, Plugin::voiceNotes};
 const oscairn_plugin_memory_t kMemory = {Plugin::memoryEstimate, Plugin::memoryCurrent};
 const oscairn_plugin_asset_dependencies_t kDependencies = {Plugin::dependencyCount, Plugin::dependencyGet, nullptr};
@@ -776,6 +804,7 @@ const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &kParamsExt;
     if (!std::strcmp(id, CLAP_EXT_STATE)) return &kState;
     if (!std::strcmp(id, OSCAIRN_EXT_SOUND_CONTEXTS)) return &kSoundContexts;
+    if (!std::strcmp(id, OSCAIRN_EXT_SOUND_SNAPSHOTS)) return &kSoundSnapshots;
     if (!std::strcmp(id, OSCAIRN_EXT_VOICE_BUDGET)) return &kVoiceBudget;
     if (!std::strcmp(id, OSCAIRN_EXT_MEMORY)) return &kMemory;
     if (!std::strcmp(id, OSCAIRN_EXT_UI) || !std::strcmp(id, OSCAIRN_EXT_UI_DRAFT_4)) return &kUi;

@@ -21,6 +21,7 @@ automatable; the box destinations (ids 14-24) are also modulatable (`CLAP_PARAM_
 | 20 | Filter EG Depth | `feg_depth` | -64..64 | 0 | the box destination filter envelope depth, raw steps; read when a note starts (as the reference reads its box) |
 | 21, 22 | Element LFO Pitch Depth, Element LFO Amp Depth | `elfo_pitch_mod`, `elfo_amp_mod` | -8192..8192 | 0 | the box destinations element LFO pitch / amplitude depth in box-output units (a full box is 8192), added to the boxes' outputs and the mod wheel's element LFO ratios before the depth law |
 | 23, 24 | AEG Attack, AEG Release | `attack`, `release` | -128..128 | 0 | the box destinations amplitude envelope attack (read at note-on) and release (read at the note-off), index steps |
+| 25 | Output Bus | `bus` | 0..8, stepped | 0 | the output port the sound plays on: 0 main, n sound bus n (see [Output ports](#output-ports)) |
 
 A host passes no MIDI controller for the ribbon, the knobs or the switches (only CC 1, 2, 4, 11, 64-67, 120, 123 and
 pitch bend reach a plugin), so they are parameters. The maps were measured on the reference through a box on the fine
@@ -46,13 +47,33 @@ express: the reference's curve shapes, several boxes summed and clamped, the bip
 Coverage (`pcm::notCovered`) judges the sound with its boxes; a value or modulation set from outside can take a
 destination beyond what was measured, as a knob can.
 
+## Output ports
+
+Nine stereo output ports with stable ids: 0 Main and 1-8 sound bus 1-8 (port n has id n). A sound whose Output Bus is
+n plays all of its voices on port n; a change moves its voices at once. Ports 1 and 2 have a second reading, the part's
+element routing: while one sound alone is selected on the MIDI channels and its Output Bus is 0, a sound that splits
+its outputs (part parameter `split_outputs`) sends each element on its connection, 1 to insertion A (port 1) and 2 to
+insertion B (port 2), the rest to Main. In every other case port n is sound bus n. A host that shares the instance
+among parts never groups a sound that splits its outputs with others; if a second sound is selected anyway, the first
+sound's elements fall back to its own bus with the rest of it (and split again once it is alone). With
+`clap.audio-ports-activation` a port plays only once the host has activated it: a port never activated costs nothing
+and its sound plays on Main.
+
+Parts sharing one instance (`oscairn.sound-snapshots/draft-4`): each part's sound has its own channel and Output Bus.
+`save_sound` writes one sound alone, as the Default of a whole snapshot, on every channel and on Main (Output Bus 0);
+`sound_values` gives ids 0-25 of a sound no channel selects. A loaded state or snapshot selects its sound on every
+channel (a CLAP state: from the next block). While a sound retires (no channel selects it) and the host gives a
+ring-out buffer, what it plays on Main goes into the buffer's channels 0 and 1, or 2 and 3 once `choke_retiring` fades
+it out over the choke time; what it plays on other ports stays there.
+
 ## Editor hints (`oscairn.ui`)
 
 Every parameter has a hint: Level (role level, priority 1), Pan (pan), Cutoff (cutoff, 2), Resonance (resonance, 3),
 Element Level (level 1), Filter EG Depth (filter envelope, 4); the element LFO depths are a group, AEG Attack (attack, 5), AEG Release (release, 6); the knobs are one group, the ribbon with the switches another (the switches as switches), the
-tunings with the high-pass cutoff a third.
+tunings with the high-pass cutoff a third; Output Bus has the output bus role (`OSCAIRN_ROLE_OUTPUT_BUS`).
 
 ## State
 
-The CLAP state `oscairn-pcm-state 2` and the sound-contexts snapshot `oscairn-pcm-contexts/2` save ids 0-24 (not the
-modulation), then the sound. A state 1 (ids 0-2 only) still loads, its knobs at the sound's values.
+The CLAP state `oscairn-pcm-state 3` and the sound-contexts snapshot `oscairn-pcm-contexts/3` save ids 0-25 (not the
+modulation), then the sound. A state 2 (ids 0-24) and a state 1 (ids 0-2 only) still load, on Main and with their
+knobs at the sound's values; an older snapshot does not.

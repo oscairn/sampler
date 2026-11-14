@@ -136,7 +136,8 @@ TEST(fuzz_random_sounds_and_events) {
 
 // Every note ends: random sounds (their releases and half damper times at most index 90, no time shifts, so the longest
 // release falls to the voice end within about 7.2 s; the sustain pedal moves at random among the events), random notes, controllers and chokes; then every key up, the pedal up and
-// 12 s: no voice remains and each note-on got exactly one NOTE_END (refused ones included).
+// 12 s: no voice remains and each note-on got exactly one NOTE_END (refused ones included). Sounds come and go on four
+// channels, each on a random output bus, discarded once idle; every other round rings out (oscairn.sound-snapshots).
 TEST(fuzz_every_note_ends) {
     Rng r{777};
     auto bounded = [](std::string s) {
@@ -155,23 +156,38 @@ TEST(fuzz_every_note_ends) {
     int total = 0; uint32_t sounding = 0, left = 0; uint64_t sheds = 0;
     for (int round = 0; round < 8; ++round) {
         Inst a;
+        a.outputs = 9;
+        a.ring = round % 2;  // a ring-out buffer in every other round, with chokeRetiring at random
         char msg[256] = {};
-        uint32_t ctx[2];
-        for (int c = 0; c < 2; ++c) {
-            ctx[c] = a.contexts->prepare(a.p, ("s" + std::to_string(c)).c_str(), nullptr, 0, patchWith("level=1", bounded(randomSound(r)).c_str()).c_str(), testBase(), msg, sizeof msg);
-            CHECK(ctx[c] != 0);
-            a.contexts->select(a.p, ctx[c], c);
-        }
+        std::vector<uint32_t> made;
+        // a new sound for channel c on a random bus; then every sound no channel selects and that has no voice left goes
+        auto fresh = [&](int16_t c) {
+            const std::string shell = "level=1 bus=" + std::to_string(r.in(0, 8));
+            const uint32_t id = a.contexts->prepare(a.p, "s", nullptr, 0, patchWith(shell, bounded(randomSound(r)).c_str()).c_str(), testBase(), msg, sizeof msg);
+            if (id == CLAP_INVALID_ID) return;  // every context in use
+            CHECK(id != 0);
+            a.contexts->select(a.p, id, c);
+            made.push_back(id);
+        };
+        auto discardIdle = [&] {
+            for (size_t i = 0; i < made.size();) {
+                if (a.contexts->discard(a.p, made[i])) made.erase(made.begin() + long(i)); else ++i;
+            }
+            a.p->on_main_thread(a.p);
+        };
+        for (int16_t c = 0; c < 4; ++c) fresh(c);
         int32_t id = 1;
         uint32_t most = 0;
         bool stalled = false;
         for (int b = 0; b < 150; ++b) {
             if (r.in(0, 9) == 0) { stalled = !stalled; a.streaming->stall(a.p, stalled); a.settle = !stalled; }  // the I/O thread stalls at random
+            if (r.in(0, 7) == 0) { if (a.ring && r.in(0, 2) == 0) a.snapshots->choke_retiring(a.p); fresh(int16_t(r.in(0, 3))); }  // sounds come
+            if (r.in(0, 7) == 0) discardIdle();                                                                                     // and go
             const uint32_t frames = uint32_t(r.in(1, 128));
             std::vector<Bytes> ev;
             for (int k = r.in(0, 4); k > 0; --k) {
                 const uint32_t t = uint32_t(r.in(0, int(frames) - 1));
-                const int16_t ch = int16_t(r.in(0, 1)), key = int16_t(r.in(0, 127));
+                const int16_t ch = int16_t(r.in(0, 3)), key = int16_t(r.in(0, 127));
                 switch (r.in(0, 5)) {
                 case 0: case 1: ev.push_back(on(t, id++, ch, key, r.unit())); break;
                 case 2: case 3: ev.push_back(off(t, -1, ch, key)); break;
@@ -187,11 +203,13 @@ TEST(fuzz_every_note_ends) {
         a.streaming->stall(a.p, false); a.settle = true;
         sheds += a.streaming->sheds(a.p);
         const uint32_t held = a.voices();
-        std::vector<Bytes> up = {midi(0, 0xb0, 64, 0), midi(0, 0xb1, 64, 0)};
-        for (int16_t ch = 0; ch < 2; ++ch) for (int16_t k = 0; k < 128; ++k) up.push_back(off(0, -1, ch, k));
+        std::vector<Bytes> up;
+        for (int16_t ch = 0; ch < 4; ++ch) up.push_back(midi(0, uint8_t(0xb0 | ch), 64, 0));
+        for (int16_t ch = 0; ch < 4; ++ch) for (int16_t k = 0; k < 128; ++k) up.push_back(off(0, -1, ch, k));
         a.block(128, up);
         a.run(48000 * 12);
         const int notes = id - 1;
+        for (int k = 0; k < 2; ++k) for (const auto* port : {&a.PL[k], &a.RL[k]}) for (float x : *port) if (!std::isfinite(x) || std::fabs(x) > 8) { ++g_failures; std::printf("  round %d: output %g\n", round, double(x)); break; }
         for (float x : a.L) if (!std::isfinite(x) || std::fabs(x) > 8) { ++g_failures; std::printf("  round %d: output %g\n", round, double(x)); break; }
         for (int32_t n = 1; n <= notes; ++n) if (a.ends(n) != 1) { ++g_failures; std::printf("  round %d: note %d ended %d times\n", round, n, a.ends(n)); break; }
         if (!(a.voices() == 0 && a.endsTotal() == notes)) { ++g_failures; std::printf("  round %d: %u voices left, %d NOTE_ENDs for %d notes\n", round, a.voices(), a.endsTotal(), notes); }

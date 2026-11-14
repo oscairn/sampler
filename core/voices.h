@@ -19,7 +19,6 @@ enum Field {
                                                           // with the first; 2, 3: the one-pole)
     ST0,                   // filter states: [section][channel][low1, low2, band1, band2]
     DAMP = ST0 + 16,       // damping of the resonance (before the limit)
-    B1, B2,                // 1 on output bus 1 (to insertion A) / bus 2 (to insertion B), else 0
     EB0, EB1, EB2, EA1, EA2,  // the element EQ's biquad (identity when it is flat)
     ES0,                   // its states: [channel][s1, s2] (transposed direct form II)
     NFIELDS = ES0 + 4
@@ -136,6 +135,8 @@ struct Tables {
 constexpr int kWindowFrames = kSub * 33 + 64;
 struct Scratch {
     alignas(16) float win[4][kWindowFrames * 2 + 8];
+    float* const* outL = nullptr;  // routed pieces: the output buses (Core::render), at the piece's first frame
+    float* const* outR = nullptr;
 };
 
 }  // namespace pcm
