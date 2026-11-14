@@ -32,8 +32,8 @@ int velocityFrom2048(int32_t velocity2048) noexcept;
 
 // ---- interpolation ----
 // The interpolation kernel's cutoff, as a share of the source's Nyquist, for a transposition (source
-// frames per output frame at 44.1 kHz): measured on the reference (docs/acceptance.md (f)). At and
-// just below the root the reference passes the source unchanged (1.0); further down 0.95 (measured);
+// frames per output frame at 44.1 kHz): measured on the reference (docs/acceptance.md (f)). At the
+// root the reference passes the source unchanged and below it keeps one response (1.0 for both);
 // above the root the cutoff follows the step.
 float kernelCutoff(double transposition) noexcept;
 

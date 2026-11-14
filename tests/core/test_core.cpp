@@ -696,15 +696,30 @@ static void elementEq() {
     }
 }
 
-// Interpolation: at the root (a 44.1 kHz source at 44.1 kHz) the 20-tap kernel passes the source
-// unchanged, as the reference does; above the root its cutoff follows the step, below it 0.95 (both
-// measured: laws::kernelCutoff).
+// Interpolation: at the root (a 44.1 kHz source at 44.1 kHz) the kernel passes the source unchanged, as
+// the reference does; above the root its cutoff follows the step, below it stays 1.0 (both measured:
+// laws::kernelCutoff). The bank in core/kernels.cpp is kernelTap()'s (`pcbench kernels`), rows summing to 1.
 static void kernelByTransposition() {
     NEAR(laws::kernelCutoff(1.0), 1.0, 1e-6);
     NEAR(laws::kernelCutoff(0.97), 1.0, 1e-6);
-    NEAR(laws::kernelCutoff(0.8), 0.95, 1e-6);
-    NEAR(laws::kernelCutoff(1.498), 0.455, 1e-6);
-    NEAR(laws::kernelCutoff(1.888 * 2), 0.2025, 1e-6);
+    NEAR(laws::kernelCutoff(0.5), 1.0, 1e-6);
+    NEAR(laws::kernelCutoff(1.498), 0.33, 1e-6);
+    NEAR(laws::kernelCutoff(1.944), 0.065, 1e-6);
+    NEAR(laws::kernelCutoff(4.0), 0.05, 1e-6);
+    double worstTap = 0, worstSum = 0;
+    for (int k = 0; k < kKernelBank; ++k)
+        for (int ph = 0; ph <= kPhases; ++ph) {
+            double sum = 0;
+            for (int i = 0; i < kTaps; ++i) {
+                const float t = kSinc[k * kKernelFloats + ph * kTaps + i];
+                worstTap = std::max(worstTap, std::fabs(t - kernelTap(k, ph, i)));
+                sum += t;
+            }
+            worstSum = std::max(worstSum, std::fabs(sum - 1));
+        }
+    NEAR(worstTap, 0.0, 1e-7);
+    NEAR(worstSum, 0.0, 1e-6);
+    for (int i = 0; i < kTaps; ++i) CHECK(kSinc[i] == (i == kTaps / 2 - 1 ? 1.0f : 0.0f));
     std::vector<int16_t> noise(30000);
     uint32_t s = 7;
     for (auto& x : noise) { s = s * 1664525u + 1013904223u; x = int16_t(int32_t(s) >> 17); }

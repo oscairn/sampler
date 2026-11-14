@@ -61,10 +61,6 @@ struct FtzScope {  // flush denormals to zero while rendering
 #endif
 };
 
-// A kernel row holds the taps in groups of four, each followed by its four differences to the next
-// phase's row, so one vector pair load serves a group.
-constexpr int coefAt(int tap) { return (tap / 4) * 8 + tap % 4; }
-
 double besselI0(double x) { double s = 1, t = 1; for (int k = 1; k < 40; ++k) { t *= (x / (2 * k)) * (x / (2 * k)); s += t; } return s; }
 
 // ---- control-rate vector helpers ----
@@ -97,9 +93,10 @@ Cost estimateCost(const PlanDesc& p) {
     // Measured with tools/cost/cg.sh (docs/cost.md): one element voice a 128-frame block, from 8 to 32
     // voices; the filtered plans while the filter envelope moves the cutoff (the costlier case).
     // [channels - 1][interp][filter]; the Hermite plans without the filter are derived, not measured.
-    // (0.7.0: the plans of types 1, 2-3, 6, 7 and 10 measured with the 20-tap kernel, their Hermite figures by type 0's difference)
-    static const double kVoice[2][2][kFilters] = {{{5785, 9080, 9241, 8364, 9703, 9161, 9347, 8617, 9511}, {8865, 12160, 12321, 11444, 12783, 12241, 12427, 11697, 12591}},
-                                                  {{6811, 12128, 12284, 10882, 12793, 11767, 12337, 10783, 12667}, {11313, 16630, 16786, 15384, 17295, 16269, 16839, 15285, 17169}}};
+    // (the kernel's figures measured with the 8-tap bank at 0.9.0; the Hermite figures as at 0.7.0, those of types 1, 2-3, 6, 7
+    // and 10 by type 0's difference)
+    static const double kVoice[2][2][kFilters] = {{{5785, 9080, 9241, 8364, 9703, 9161, 9347, 8617, 9511}, {7502, 10985, 11157, 10343, 11499, 10947, 10987, 10249, 11357}},
+                                                  {{6811, 12128, 12284, 10882, 12793, 11767, 12337, 10783, 12667}, {8826, 13879, 14109, 12663, 14415, 13385, 13815, 12455, 14309}}};
     return {kVoice[p.channels == 2][p.interp == Interp::Sinc][int(p.filter)], 192};
 }
 
@@ -372,7 +369,7 @@ struct Herm {
         vf c3 = fma(splat(0.5f), x2 - xm1, splat(1.5f) * (x0 - x1));
         return fma(fma(fma(c3, f, c2), f, c1), f, x0);
     }
-    template <int C> static PV_INLINE void at(const Tables&, const float* const* b, vp pos, const int32_t*, vf* o) {
+    template <int C> static PV_INLINE void at(const float* const* b, vp pos, const int32_t*, vf* o) {
         alignas(16) int32_t ix[W];
         pidx(pos, ix);
         const vf fr = pfrac(pos);
@@ -390,29 +387,27 @@ struct Herm {
     }
 };
 
-// 20-tap Kaiser-windowed sinc, cutoff at 0.9 of the source's Nyquist, 256 phases with linear
-// interpolation between phases (docs/design.md: the length and cutoff that meet the reference's
-// measured image rejection at the lowest cost).
+// 8-tap Kaiser-windowed sinc from the bank (kSinc), 64 phases with linear interpolation between them
+// (docs/design.md: the reference's response shape, and the rows a voice touches fit the first-level cache).
 struct Sinc {
     static constexpr int N = kTaps, H = N / 2 - 1, A = N / 2;
-    template <int C> static PV_INLINE void at(const Tables& t, const float* const* b, vp pos, const int32_t* kernel, vf* o) {
+    template <int C> static PV_INLINE void at(const float* const* b, vp pos, const int32_t* kernel, vf* o) {
         alignas(16) int32_t ix[W], row[W];
         pidx(pos, ix);
         vf u;
-        prow(pos, 2 * N, row, u);
-        for (int j = 0; j < W; ++j) row[j] += kernel[j];  // each voice's kernel row (the top 8 fraction bits) and the rest of the fraction
-        static_assert(kPhases == 256, "prow takes the top 8 fraction bits");
+        prow<kPhaseBits>(pos, N, row, u);
+        for (int j = 0; j < W; ++j) row[j] += kernel[j];  // each voice's kernel row (the top fraction bits) and the rest of the fraction
 #if !PV_SCALAR
         alignas(16) float up[4];
         store(up, u);
         vf acc[C][4];
         for (int j = 0; j < 4; ++j) {
-            const float* r = t.sinc + row[j];
+            const float* r = kSinc + row[j];
             const float* p = b[j] + (ix[j] - H) * C;
             const vf uj = splat(up[j]);
             vf a0 = splat(0.f), a1 = splat(0.f);
             for (int k = 0; k < N; k += 4) {
-                vf cf = fma(uj, load(r + 2 * k + 4), load(r + 2 * k));
+                const vf c0 = load(r + k), cf = fma(uj, load(r + N + k) - c0, c0);
                 if constexpr (C == 1) a0 = fma(ld4(p + k), cf, a0);
                 else { vf l, rr; ld4x2(p + 2 * k, l, rr); a0 = fma(l, cf, a0); a1 = fma(rr, cf, a1); }
             }
@@ -420,11 +415,11 @@ struct Sinc {
         }
         for (int c = 0; c < C; ++c) o[c] = hsum4(acc[c][0], acc[c][1], acc[c][2], acc[c][3]);
 #else
-        const float* r = t.sinc + row[0];
+        const float* r = kSinc + row[0];
         const float* p = b[0] + (ix[0] - H) * C;
         for (int c = 0; c < C; ++c) {
             float a = 0;
-            for (int k = 0; k < N; ++k) a += p[k * C + c] * (r[coefAt(k)] + u.v * r[coefAt(k) + 4]);
+            for (int k = 0; k < N; ++k) a += p[k * C + c] * (r[k] + u.v * (r[N + k] - r[k]));
             o[c] = {a};
         }
 #endif
@@ -595,7 +590,7 @@ struct Kernel {
     // One piece of n frames (n <= kSub) for the voices of a pool, added into accL/accR; routed (R), a lane mixes into
     // its own buffers and each of its voices is added into its output bus (sc.outL/outR) from there.
     template <int C, class I, int K, bool R>
-    static void run(Pool& p, const Tables& t, Scratch& sc, int n, vf* accL, vf* accR) {
+    static void run(Pool& p, Scratch& sc, int n, vf* accL, vf* accR) {
         const int lanes = int(p.n + W - 1) / W;
         vf own[2][R ? kSub : 1];
         vf* const mixL = R ? own[0] : accL;
@@ -605,7 +600,7 @@ struct Kernel {
             const float* base[W];
             feedLane<C, I>(p, o, n, sc, base);
             vf buf[C][kSub];
-            fetchLane<C, I>(p, t, o, n, base, buf);
+            fetchLane<C, I>(p, o, n, base, buf);
             if constexpr (R) for (int s = 0; s < n; ++s) mixL[s] = mixR[s] = splat(0.f);
             if constexpr (K != 0) {  // and the mix; the element EQ only in lanes that use it
                 bool eq = false;
@@ -635,7 +630,7 @@ struct Kernel {
     // the interpolated source, per sample, the pitch ramped per sample
     // the interpolated source times the amplitude envelope, per sample: g = min(max(g m + a, lo), hi);
     // the pitch ramped per sample while it moves
-    template <int C, class I> static PCM_STAGE void fetchLane(Pool& p, const Tables& t, int o, int n, const float* const* base, vf (*buf)[kSub]) {
+    template <int C, class I> static PCM_STAGE void fetchLane(Pool& p, int o, int n, const float* const* base, vf (*buf)[kSub]) {
         const Lane l{&p, o};
         vf g = l(G); const vf m = l(M), a = l(A), lo = l(LO), hi = l(HI);
         vp pos = pload(&p.pos[o]), stp = pload(&p.step[o]);
@@ -645,7 +640,7 @@ struct Kernel {
             const vp ds = pload(&p.dstep[o]);
             for (int s = 0; s < n; ++s) {
                 vf out[C];
-                I::template at<C>(t, base, pos, &p.kernel[o], out);
+                I::template at<C>(base, pos, &p.kernel[o], out);
                 g = vmin(vmax(fma(g, m, a), lo), hi);
                 for (int c = 0; c < C; ++c) buf[c][s] = out[c] * g;
                 stp = stp + ds; pos = pos + stp;
@@ -654,7 +649,7 @@ struct Kernel {
         } else {
             for (int s = 0; s < n; ++s) {
                 vf out[C];
-                I::template at<C>(t, base, pos, &p.kernel[o], out);
+                I::template at<C>(base, pos, &p.kernel[o], out);
                 g = vmin(vmax(fma(g, m, a), lo), hi);
                 for (int c = 0; c < C; ++c) buf[c][s] = out[c] * g;
                 pos = pos + stp;
@@ -816,8 +811,8 @@ struct Kernel {
 };
 
 namespace {
-using RunFn = void (*)(Pool&, const Tables&, Scratch&, int, vf*, vf*);
-template <int C, class I, int K, bool R> void runOf(Pool& p, const Tables& t, Scratch& s, int n, vf* l, vf* r) { Kernel::run<C, I, K, R>(p, t, s, n, l, r); }
+using RunFn = void (*)(Pool&, Scratch&, int, vf*, vf*);
+template <int C, class I, int K, bool R> void runOf(Pool& p, Scratch& s, int n, vf* l, vf* r) { Kernel::run<C, I, K, R>(p, s, n, l, r); }
 // [routed][channels - 1][interp][filter]
 #define PCM_FILTERS(C, I, R) {runOf<C, I, 0, R>, runOf<C, I, 1, R>, runOf<C, I, 2, R>, runOf<C, I, 3, R>, runOf<C, I, 4, R>, runOf<C, I, 5, R>, \
                              runOf<C, I, 6, R>, runOf<C, I, 7, R>, runOf<C, I, 2, R>}  /* Band runs type 4's chain */
@@ -827,25 +822,23 @@ const RunFn kKernels[2][2][2][kFilters] = {PCM_KERNELS(false), PCM_KERNELS(true)
 #undef PCM_FILTERS
 }  // namespace
 
+// Tap i of kernel k's row ph: the Kaiser-windowed sinc at the kernel's cutoff, each row scaled to sum to 1
+// (no gain ripple across the phases; the 1.0 kernel's row 0 is the identity).
+double kernelTap(int k, int ph, int i) {
+    const double cut = kernelCut(k);
+    auto at = [&](int j) {
+        const double x = double(ph) / kPhases + kTaps / 2 - 1 - j, u = x / (kTaps / 2);
+        const double w = std::fabs(u) >= 1 ? 0 : besselI0(kKernelBeta * std::sqrt(1 - u * u)) / besselI0(kKernelBeta);
+        const double cx = cut * x;
+        return (cx == 0 ? 1 : cx == std::floor(cx) ? 0 : std::sin(kPi * cx) / (kPi * cx)) * w;  // exact zeros: the 1.0 kernel's row 0 is the identity
+    };
+    double sum = 0;
+    for (int j = 0; j < kTaps; ++j) sum += at(j);
+    return at(i) / sum;
+}
+
 Core::Core() {
     for (auto& e : elements_) e = true;
-    // the interpolation kernels: Kaiser beta 7.5, one per cutoff (kernelCut)
-    constexpr double beta = PCM_KERNEL_BETA;
-    for (int k = 0; k < kKernelBank; ++k) {
-        float* tab = tables_.sinc + k * kKernelFloats;
-        const double cut = kernelCut(k);
-        for (int ph = 0; ph <= kPhases; ++ph)
-            for (int i = 0; i < kTaps; ++i) {
-                const double x = double(ph) / kPhases + kTaps / 2 - 1 - i;
-                const double u = x / (kTaps / 2);
-                const double w = std::fabs(u) >= 1 ? 0 : besselI0(beta * std::sqrt(1 - u * u)) / besselI0(beta);
-                const double s = x == 0 ? 1 : std::sin(kPi * cut * x) / (kPi * cut * x);
-                tab[ph * 2 * kTaps + coefAt(i)] = float(cut * s * w);
-            }
-        for (int ph = 0; ph <= kPhases; ++ph)
-            for (int i = 0; i < kTaps; ++i)
-                tab[ph * 2 * kTaps + coefAt(i) + 4] = ph < kPhases ? tab[(ph + 1) * 2 * kTaps + coefAt(i)] - tab[ph * 2 * kTaps + coefAt(i)] : 0.0f;
-    }
     for (uint32_t s = 0; s < kMaxSounds; ++s) {
         gain_[s] = panL_[s] = panR_[s] = 1;
         for (int k = 0; k < kControls; ++k) control_[s][k] = k >= 8 && k <= 15 ? 512.0f / 1023.0f : 0.0f;  // knobs at the reference's default
@@ -1666,7 +1659,7 @@ void Core::render(float* const* L, float* const* R, uint32_t frames, uint32_t fr
                     else design(Lane{&p, int(o)}, rate_);
                 }
             const int c = p.plan.channels == 2 ? 1 : 0;
-            kKernels[routed[&p - pool_]][c][interp_ == Interp::Sinc ? 1 : 0][int(p.plan.filter)](p, tables_, scratch_, int(n), accL, accR);
+            kKernels[routed[&p - pool_]][c][interp_ == Interp::Sinc ? 1 : 0][int(p.plan.filter)](p, scratch_, int(n), accL, accR);
         }
         for (uint32_t s = 0; s < n; ++s) { L[0][done + s] += hsum(accL[s]); R[0][done + s] += hsum(accR[s]); }
         clock_ += n;

@@ -180,7 +180,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Region pan | the key bank's pan added to the element pan in raw steps, then the balance law | acceptance c (hard-panned key banks); intermediate key-bank pans not measured |
 | Region level (a key bank's) | yes, dB | pads (the stereo region at -7.12 dB) |
 | Output staging | the reference's: -9.43 dB per channel for a full-scale sample at centre | acceptance b, c |
-| Interpolation | 20-tap windowed sinc from a bank of 17 cutoffs, picked by the transposition (exact at the root, the cutoff following the step above it, 0.95 below it; Hermite for comparisons) | acceptance f (a saw source wave at the root and 1-11 semitones above) |
+| Interpolation | 8-tap windowed sinc from a bank of 20 cutoffs, picked by the transposition (exact at the root, 1.0 below it, the cutoff following the step above it; Hermite for comparisons) | acceptance f (a saw source wave at the root, 1-24 semitones above and 1-24 below, its images below the root) |
 | Host sample rates | 44.1 kHz (the plain sections), and rates between 44.1 and 132.3 kHz that are no whole multiple of 44.1 (48, 96 kHz: the allpass form). 88.2 kHz and above 132.3 kHz play the plain 44.1 kHz sections: not covered | core tests at 44.1, 48, 96 kHz |
 | Voice end at the release's floor | -96.45 dB below full scale, the release's rate unchanged | acceptance e (releases 96-112) |
 | Note-on events | on their exact frame | core tests |

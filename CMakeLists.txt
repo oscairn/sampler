@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # The DSP core: a plain C++ library with no plugin API, OS, threads, files or heap (core/pcore.h).
-add_library(pcmcore STATIC core/core.cpp core/laws.cpp core/measured.cpp core/sound.cpp core/tables.cpp)
+add_library(pcmcore STATIC core/core.cpp core/kernels.cpp core/laws.cpp core/measured.cpp core/sound.cpp core/tables.cpp)
 target_include_directories(pcmcore PUBLIC core)
 if(MSVC)
     target_compile_options(pcmcore PRIVATE /W4)

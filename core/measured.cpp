@@ -37,21 +37,17 @@ int velocityFrom2048(int32_t s) noexcept
 
 float kernelCutoff(double r) noexcept
 {
-    // Above the root: the cutoff of this engine's 20-tap kernel whose response best fits the
-    // reference's at each measured transposition (saw source loops, harmonics to the source's
-    // Nyquist): rms 2.2, 2.2, 3.5, 0.2, 0.05 dB at 1.059, 1.122, 1.335, 1.498, 1.888 (the
-    // reference's slope is gentler than a sinc's); linear between, 1 / r beyond.
-    static constexpr double at[6] = { 1.0, 1.059, 1.122, 1.335, 1.498, 1.888 };
-    static constexpr double cut[6] = { 1.0, 0.905, 0.81, 0.625, 0.455, 0.405 };
-    // Below the root (measured through the pitch bend, 1-12 semitones down, so the sample is not picked
-    // again): the bank's 0.95 fits the reference's gentler slope best, rms 1.15 dB, at most 2.27 (0.9:
-    // 2.67 / 7.03; 1.0: 1.61 / 3.01)
-    if (r < 0.95)
-        return 0.95f;
+    // Above the root: the cutoff of this engine's 8-tap kernel whose response best fits the reference's
+    // at each measured transposition (saw source loops, harmonics to the source's Nyquist; docs/acceptance.md
+    // (f)); linear between; from 2.0 (12 semitones, also measured at 24) the narrowest, 0.05, where an 8-tap
+    // kernel is all window. At and below the root the 1.0 kernel (measured through the pitch bend 1-12
+    // semitones down: the reference's response is the same at every step and the 1.0 kernel fits it).
+    static constexpr double at[7] = { 1.0, 1.059, 1.122, 1.335, 1.498, 1.888, 2.0 };
+    static constexpr double cut[7] = { 1.0, 0.88, 0.78, 0.495, 0.33, 0.08, 0.05 };
     if (r <= 1.0)
         return 1.0f;
-    if (r >= at[5])
-        return static_cast<float>(std::max(0.2, cut[5] * at[5] / r));
+    if (r >= at[6])
+        return static_cast<float>(cut[6]);
     int i = 1;
     while (r > at[i])
         ++i;

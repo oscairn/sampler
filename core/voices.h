@@ -100,7 +100,7 @@ struct Pool {
     uint32_t n = 0;  // voices 0..n-1 are live
     alignas(64) float f[NFIELDS][kPoolVoices];
     alignas(64) int64_t pos[kPoolVoices], step[kPoolVoices], dstep[kPoolVoices];
-    alignas(16) int32_t kernel[kPoolVoices + 4];  // each voice's kernel: its offset into Tables::sinc
+    alignas(16) int32_t kernel[kPoolVoices + 4];  // each voice's kernel: its offset into kSinc
     VoiceScalar v[kPoolVoices];
 };
 
@@ -114,22 +114,17 @@ struct FilterRate {
     bool covered = true;
 };
 
-// The 20-tap interpolation kernel: kPhases + 1 rows, each the taps in groups of four, every group
-// followed by its differences to the next row.
-// (PCM_KERNEL_TAPS and _BETA build the comparison kernels of docs/design.md; the default is the
-// engine's.)
-#ifndef PCM_KERNEL_TAPS
-#define PCM_KERNEL_TAPS 20
-#define PCM_KERNEL_BETA 7.5
-#endif
-constexpr int kTaps = PCM_KERNEL_TAPS, kPhases = 256;
-// The kernels at cutoffs 1.0, 0.95, ..., 0.2 of the source's Nyquist (kernelCut()): a voice takes the
-// one its transposition asks for (laws::kernelCutoff), as an offset into `sinc`
-constexpr int kKernelBank = 17, kKernelFloats = (kPhases + 1) * 2 * kTaps;
+// The interpolation kernels (docs/design.md): 8-tap Kaiser-windowed sincs, kPhases + 1 rows of the taps
+// each (a voice interpolates linearly between a row and the next), one kernel per cutoff 1.0, 0.95, ...,
+// 0.05 of the source's Nyquist (kernelCut()); a voice takes the one its transposition asks for
+// (laws::kernelCutoff), as an offset into kSinc. The bank is constant data (core/kernels.cpp, written by
+// `pcbench kernels` from kernelTap()), one copy for every instance and process that maps the binary.
+constexpr int kTaps = 8, kPhaseBits = 6, kPhases = 1 << kPhaseBits;
+constexpr double kKernelBeta = 9.5;
+constexpr int kKernelBank = 20, kKernelFloats = ((kPhases + 1) * kTaps + 15) / 16 * 16;  // each kernel on its own cache lines
 inline double kernelCut(int k) { return 1.0 - 0.05 * k; }
-struct Tables {
-    alignas(16) float sinc[kKernelBank * kKernelFloats];
-};
+double kernelTap(int kernel, int phase, int tap);  // the bank's formula (each row's taps sum to 1)
+extern const float kSinc[kKernelBank * kKernelFloats];
 
 // Per-render scratch: each lane voice's tap window for the piece, as float (at most kSub steps of
 // the largest step plus the taps).

@@ -310,7 +310,6 @@ private:
     const Compiled* sound_[kMaxSounds] = {};
     Slot slot_[kMaxVoices];
     FilterRate rate_;
-    Tables tables_;
     Pool pool_[2 * kFilters];  // channels 1, 2 x the filters
     Scratch scratch_;
     Stream streams_[kStreams];

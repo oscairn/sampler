@@ -151,11 +151,11 @@ PV_INLINE vp pfix(vf s) { // float (|s| < 128) to 32.32, 24 fraction bits kept
     int32x4_t i = vcvtq_n_s32_f32(s.v, 24);
     return {vshll_n_s32(vget_low_s32(i), 8), vshll_high_n_s32(i, 8)};
 }
-// a kernel row's offset (the top 8 fraction bits times `stride`, < 32768) and the other 24 bits as [0,1)
-PV_INLINE void prow(vp x, int32_t stride, int32_t *row, vf &u) {
+// a kernel row's offset (the top B fraction bits times `stride`, < 32768) and the next 24 bits as [0,1)
+template <int B> PV_INLINE void prow(vp x, int32_t stride, int32_t *row, vf &u) {
     uint32x4_t lo = vcombine_u32(vmovn_u64(vreinterpretq_u64_s64(x.a)), vmovn_u64(vreinterpretq_u64_s64(x.b)));
-    vst1q_s32(row, vreinterpretq_s32_u32(vmulq_n_u32(vshrq_n_u32(lo, 24), uint32_t(stride))));
-    u = {vcvtq_n_f32_u32(vandq_u32(lo, vdupq_n_u32(0xffffff)), 24)};
+    vst1q_s32(row, vreinterpretq_s32_u32(vmulq_n_u32(vshrq_n_u32(lo, 32 - B), uint32_t(stride))));
+    u = {vcvtq_n_f32_u32(vandq_u32(vshrq_n_u32(lo, 8 - B), vdupq_n_u32(0xffffff)), 24)};
 }
 PV_INLINE vf ld4(const int16_t *p) { return {vcvtq_f32_s32(vmovl_s16(vld1_s16(p)))}; }
 PV_INLINE vf ld4(const float *p) { return {vld1q_f32(p)}; }
@@ -185,10 +185,10 @@ PV_INLINE vp pfix(vf s) {
     __m128i i = _mm_cvtps_epi32(_mm_mul_ps(s.v, _mm_set1_ps(16777216.f))), sg = _mm_srai_epi32(i, 31);
     return {_mm_slli_epi64(_mm_unpacklo_epi32(i, sg), 8), _mm_slli_epi64(_mm_unpackhi_epi32(i, sg), 8)};
 }
-PV_INLINE void prow(vp x, int32_t stride, int32_t *row, vf &u) {
+template <int B> PV_INLINE void prow(vp x, int32_t stride, int32_t *row, vf &u) {
     __m128i lo = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(x.a), _mm_castsi128_ps(x.b), _MM_SHUFFLE(2, 0, 2, 0)));
-    _mm_store_si128((__m128i *)row, _mm_madd_epi16(_mm_srli_epi32(lo, 24), _mm_set1_epi32(stride)));  // 16-bit products: phase x stride
-    u = {_mm_mul_ps(_mm_cvtepi32_ps(_mm_and_si128(lo, _mm_set1_epi32(0xffffff))), _mm_set1_ps(1.f / 16777216.f))};
+    _mm_store_si128((__m128i *)row, _mm_madd_epi16(_mm_srli_epi32(lo, 32 - B), _mm_set1_epi32(stride)));  // 16-bit products: phase x stride
+    u = {_mm_mul_ps(_mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(lo, 8 - B), _mm_set1_epi32(0xffffff))), _mm_set1_ps(1.f / 16777216.f))};
 }
 PV_INLINE vf ld4(const int16_t *p) { __m128i x = _mm_loadl_epi64((const __m128i *)p); return {_mm_cvtepi32_ps(_mm_srai_epi32(_mm_unpacklo_epi16(x, x), 16))}; }
 PV_INLINE vf ld4(const float *p) { return {_mm_loadu_ps(p)}; }
@@ -210,7 +210,7 @@ PV_INLINE vp pload(const int64_t *p) { return {*p}; }
 PV_INLINE void pstore(int64_t *p, vp x) { *p = x.a; }
 PV_INLINE void pidx(vp x, int32_t *o) { *o = int32_t(x.a >> 32); }
 PV_INLINE vf pfrac(vp x) { return {float(uint32_t(x.a) >> 8) * (1.f / 16777216.f)}; }
-PV_INLINE void prow(vp x, int32_t stride, int32_t *row, vf &u) { const uint32_t lo = uint32_t(x.a); *row = int32_t(lo >> 24) * stride; u = {float(lo & 0xffffff) * (1.f / 16777216.f)}; }
+template <int B> PV_INLINE void prow(vp x, int32_t stride, int32_t *row, vf &u) { const uint32_t lo = uint32_t(x.a); *row = int32_t(lo >> (32 - B)) * stride; u = {float((lo >> (8 - B)) & 0xffffff) * (1.f / 16777216.f)}; }
 PV_INLINE vp pfix(vf s) { return {int64_t(int32_t(std::lrintf(s.v * 16777216.f))) * 256}; }
 PV_INLINE float lane(vf a, int) { return a.v; }
 #endif

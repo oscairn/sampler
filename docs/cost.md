@@ -12,14 +12,16 @@ released (the filter envelope moving the cutoff every control step, the costlier
 every held voice shed in one block.
 
 **Gates** (`cg.sh SRC OUT check`, exit 1 on a break): per element voice, from 8 to 32 held voices,
-mono at most 11,000 and stereo at most 19,500 instructions a block with the 20-tap kernel; rest at
+mono at most 11,000 and stereo at most 19,500 instructions a block with the interpolation kernel; rest at
 most 200; shedding at most 2,000 a shed voice (the shed block and the next over two blocks at rest);
 and no case more than 10 % over `tools/cost/baseline.txt`. It needs valgrind, so it is a documented
 script run in the aarch64 container
 (`docker run --rm -v "$PWD":/src:ro --tmpfs /out:exec IMAGE sh /src/tools/cost/cg.sh /src /out check`),
 not a CTest test. The streamed plans (`mono-stream`, `stereo-stream`: a 4,096-frame head in memory, the rest and
 the loop from the core's stream rings, filled between blocks outside the measured window) are held to the same
-per-voice gates: they measure what reading streamed audio costs the audio thread. Last run (0.7.0 code before its
+per-voice gates: they measure what reading streamed audio costs the audio thread. Last run (0.9.0, the 8-tap kernel):
+every gate passes (mono 9,272, stereo 12,166, streamed mono 9,304, streamed stereo 12,195, rest 174, shedding 1,751 and
+1,537 a voice for 16 and 32 voices). (0.7.0 code before its
 kernel sharing for type 10): every gate passes (mono 10,746, stereo 15,220, streamed mono 10,791, streamed stereo 15,259,
 rest 160, shedding 1,989 and 1,747 a voice for 16 and 32 voices). (0.6.0, 9fcec60: mono 10,734, stereo 15,222, streamed
 mono 10,778, streamed stereo 15,261, rest 193, shedding 1,907 and 1,704.) (0.5.0: 10,595, 15,065, 193, 1,904 and 1,688; 0.4.0: 10,557, 15,027, 192,
@@ -27,16 +29,22 @@ mono 10,778, streamed stereo 15,261, rest 193, shedding 1,907 and 1,704.) (0.5.0
 
 ## Instructions per block (aarch64, NEON)
 
-| voices | mono, 20-tap | mono, Hermite | stereo, 20-tap | stereo, Hermite |
+| voices | mono, 8-tap | mono, Hermite | stereo, 8-tap | stereo, Hermite |
 |---|---|---|---|---|
-| 0 (rest) | 192 | 192 | 192 | 192 |
-| 1 | 37,340 | 25,532 | 53,980 | 37,148 |
-| 4 | 47,993 | 35,561 | 65,662 | 47,654 |
-| 8 | 89,983 | 65,231 | 125,267 | 89,251 |
-| 16 | 174,264 | 124,872 | 245,185 | 173,153 |
-| 32 | 343,344 | 244,672 | 485,916 | 341,852 |
-| 64 | 680,872 | 483,640 | 966,246 | 678,118 |
-| **a voice (8 to 32)** | **10,557** | 7,477 | **15,027** | 10,525 |
+| 0 (rest) | 174 | 174 | 174 | 174 |
+| 1 | 32,638 | 25,486 | 43,193 | 36,985 |
+| 4 | 43,117 | 35,797 | 54,383 | 47,839 |
+| 8 | 79,928 | 65,384 | 102,462 | 89,390 |
+| 16 | 153,903 | 124,911 | 199,444 | 173,316 |
+| 32 | 302,455 | 244,567 | 394,454 | 342,214 |
+| 64 | 598,824 | 483,144 | 783,153 | 678,689 |
+| **a voice (8 to 32)** | **9,272** | 7,466 | **12,166** | 10,534 |
+
+(0.9.0, the 8-tap bank. 0.4.0 with the 20-tap bank: 37,340 / 25,532 / 53,980 / 37,148 for one voice, 10,557 / 7,477 /
+15,027 / 10,525 a voice. Other cases, a voice from 8 to 32, 8-tap: without the filter mono 7,502, stereo 8,826; with the
+element EQ's peak mono 9,516, stereo 12,718; just released, types 0 / 1 / 2-3 / 4 / 5 / 6 / 7 / 10: mono 10,985 / 11,499 /
+10,947 / 11,157 / 10,343 / 10,987 / 10,249 / 11,357, stereo 13,879 / 14,415 / 13,385 / 14,109 / 12,663 / 13,815 / 12,455 /
+14,309: the voice-budget estimate's figures.)
 
 (0.3.0: 10,741 / 7,661 / 15,211 / 10,709 a voice; 0.4.0 lets a voice that nothing can modulate skip the box and element
 LFO work at its control steps, which also takes back what the controller boxes' fields had added.) (0.2.0: 10,657 / 7,403 / 14,829 / 10,283 a voice; 0.3.0 adds the element EQ's per-lane check and the controller boxes'

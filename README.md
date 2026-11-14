@@ -7,7 +7,7 @@ Licence: AGPL-3.0-or-later (`LICENSE`); third-party material keeps its own licen
 
 Status (milestone 1): the DSP core (`core/`, a plain C++ library) plays the element voice of the first
 probe sound (a 17-region pad with mono and stereo sources): 16-bit PCM samples held in memory (mono and
-stereo, any source rate, forward loops), a 20-tap table interpolator, filter type 0 (two low-pass
+stereo, any source rate, forward loops), an 8-tap table interpolator, filter type 0 (two low-pass
 sections), the amplitude, filter and pitch envelopes with the reference's measured segment shapes,
 the element LFO's reference mode, velocity, key and level laws, pan and level, sample-accurate
 note starts, voice ends and shedding. A sound is the reference's raw parameter values in sound

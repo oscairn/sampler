@@ -1,8 +1,8 @@
 # Instructions per 128-frame block (mean over the measured blocks) at 48 kHz, the pads' element on the
 # built-in samples, from tools/cost/cg.sh on aarch64 Linux (g++ 13.3 -O3 -mcpu=cortex-a53, NEON).
 # `cg.sh SRC OUT check` fails when a case is more than 10 % over its line here, or a gate is broken.
-rest 182
-mono-sinc-8 89427
-mono-sinc-32 344756
-stereo-sinc-8 120239
-stereo-sinc-32 469416
+rest 174
+mono-sinc-8 79928
+mono-sinc-32 302455
+stereo-sinc-8 102462
+stereo-sinc-32 394454

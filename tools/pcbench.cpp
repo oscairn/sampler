@@ -12,6 +12,7 @@
 //                         PC_SOUNDS=N: the sound in N slots, slot k on its own output bus k + 1, notes taken in turn)
 //   pcbench time [CPU]    thread-CPU and wall time per block for every case
 //   pcbench check         NaN/Inf/subnormal check over random notes (exit 1 on failure)
+//   pcbench kernels       prints core/kernels.cpp, the interpolation bank from kernelTap()
 //   pcbench coverage SOUND [STORE]   what the sound uses that the core does not cover (a sound with waveforms needs
 //                         STORE, as render, to expand them), one line each:
 //                         "not covered: element E ID=VALUE: why", "not covered: part ID=VALUE: why" (exit 1 if any)
@@ -432,6 +433,20 @@ int main(int argc, char** argv) {
     if (m == "cg") return cg(argc, argv);
     if (m == "time") return timeAll(argc, argv);
     if (m == "check") return check();
+    if (m == "kernels") {
+        printf("// SPDX-License-Identifier: AGPL-3.0-or-later\n// Written by `pcbench kernels` from kernelTap() (core/core.cpp): the interpolation bank (core/voices.h).\n"
+               "#include \"pcore.h\"\n\nnamespace pcm {\n\nalignas(64) const float kSinc[kKernelBank * kKernelFloats] = {\n");
+        for (int k = 0; k < kKernelBank; ++k) {
+            printf("    // cutoff %.2f\n", kernelCut(k));
+            for (int ph = 0; ph < kKernelFloats / kTaps; ++ph) {
+                printf("   ");
+                for (int i = 0; i < kTaps; ++i) printf(" %.8ef,", ph <= kPhases ? double(float(kernelTap(k, ph, i))) : 0.0);
+                printf("\n");
+            }
+        }
+        printf("};\n\n}  // namespace pcm\n");
+        return 0;
+    }
     if (m == "coverage" && argc > 2) {
         std::unique_ptr<SoundData> d(new SoundData);
 #ifdef PCM_PACKS

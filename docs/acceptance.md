@@ -63,6 +63,32 @@ of the loudest is within 0.92 dB of the fork; the bands further down hold Hermit
 | null, early window, Hermite | -40 dB or lower | pass (worst -41.4 dB, key 76) |
 | null, late window | reported, not gated (limited by the fork's own block dependence) | - |
 
+0.9.0, the 8-tap kernel (docs/design.md): the same sequences rendered by `pcbench render` (every region decoded
+whole: the plugin's renders through a host stream and are not repeatable run to run), the kernel against Hermite
+in the same build (Hermite, the fork's interpolation, is unchanged and equal in both builds; its level is the
+fork's within 0.001 dB above), 0.8.0's 20-tap kernel / 0.9.0's 8-tap kernel:
+
+| sequence | level re Hermite (dB) | release slope Hermite / 20-tap / 8-tap (dB/s) | bands to the 8 kHz octave, largest difference (dB) | 16 kHz octave re Hermite (dB) |
+|---|---|---|---|---|
+| key 30 | +0.000 / +0.000 | -0.404 / -0.404 / -0.404 | 0.01 / 0.01 | -8.1 / -1.8 |
+| key 50 | +0.000 / +0.000 | -0.913 / -0.913 / -0.913 | 0.00 / 0.00 | -5.5 / -4.3 |
+| key 60 | +0.004 / +0.003 | -1.611 / -1.612 / -1.612 | 0.34 / 0.23 | +1.1 / +0.0 |
+| key 76 | +0.029 / -0.063 | -3.213 / -3.215 / -3.210 | 0.65 / 0.86 | -3.3 / -6.7 |
+| key 95 | +0.104 / +0.060 | -9.009 / -9.080 / -9.046 | 1.09 / 0.57 | -2.5 / -1.3 |
+| key 110 (stereo) | +0.278 / +0.234 | -14.829 / -14.886 / -14.877 | 0.28 / 0.24 | -54.7 / -16.9 |
+| key 60, velocity 30 | -0.000 / +0.000 | -3.764 / -3.764 / -3.764 | 0.00 / 0.00 | -8.2 / -0.7 |
+| key 60, velocity 127 | +0.028 / +0.016 | -1.401 / -1.408 / -1.405 | 0.72 / 0.38 | +1.5 / +0.1 |
+| chord | +0.001 / -0.000 | -1.659 / -1.659 / -1.659 | 0.18 / 0.09 | -5.9 / -5.2 |
+
+| check | tolerance | 20-tap (0.8.0) | 8-tap (0.9.0) |
+|---|---|---|---|
+| level against Hermite | ±0.3 dB | pass (+0.278) | pass (+0.234) |
+| release slope against Hermite | ±1 % | pass (0.79 %) | pass (0.41 %) |
+| octave bands up to the 8 kHz octave within 40 dB of the loudest, against Hermite | ±1 dB | 1.09 dB (key 95) | pass (0.86 dB) |
+
+The 16 kHz octave is above most of these sources' bands: at key 110 the 20-tap kernel removed what the
+transposition folds there, the 8-tap kernel keeps part of it as the reference does ((f), above the root).
+
 Not reproduced on purpose (known differences from the fork): its one-frame position stall at each
 voice's second block, its block-dependent float positions, and its reads past a sample's end at a
 loop crossing (these samples end exactly at their loop ends; the engine stitches the loop). The
@@ -199,48 +225,72 @@ harmonics (images, aliases) is read against the total. (The white-noise Thru pro
 the reference, see (d); the root-24 region's analysis did not resolve, so below the root the
 reference was measured in round 3 instead, below.)
 
-Response at 0.5 / 0.7 / 0.8 / 0.85 / 0.9 / 0.95 of the source's Nyquist (dB), and off-harmonic power:
+Response at 0.5 / 0.7 / 0.8 / 0.85 / 0.9 / 0.95 of the source's Nyquist (dB), and off-harmonic power (rerun for
+0.9.0 with both builds; 0.8.0's 20-tap bank, 0.9.0's 8-tap bank, docs/design.md):
 
-| transposition | reference | engine before (20 taps at 0.9) | engine now, 44.1 kHz | engine now, 48 kHz host |
+| transposition | reference | 20 taps (0.8.0), 44.1 kHz | 8 taps, 44.1 kHz | 8 taps, 48 kHz host |
 |---|---|---|---|---|
-| root (1.000) | 0.0 -0.7 -0.7 -0.4 -0.2 0.0; -78 dB | 0.0 -0.7 -1.9 -3.2 -6.0 -9.8; -90 | 0.0 -0.7 -0.7 -0.4 -0.1 0.0; -90 | 0.0 -1.0 -0.4 -0.4 -1.1 -2.9; -84 |
-| +1 (1.059) | -0.4 -2.1 -4.1 -5.6 -6.7 -7.9; -69 | 0.0 -0.4 -2.2 -3.6 -6.4 -9.7; -81 | as before (cutoff 0.9) | -0.0 -0.8 -1.7 -3.1 -6.0 -10.8; -87 |
-| +2 (1.122) | -1.6 -4.5 -6.5 -8.1; -70 | -0.4 -0.9 -2.3 -3.9; -74 | -0.4 -2.0 -7.2 -11.8; -87 | -1.0 -1.7 -6.4 -10.9; -92 |
-| +5 (1.335) | -5.5 -13.6; -73 | -0.2 -0.3; -61 | -0.5 -11.2; -81 | -0.3 -11.7; -84 |
-| +7 (1.498) | -10.5; -75 | -0.3; -62 | -11.1; -89 | -11.2; -86 |
-| +11 (1.888) | -17.3; -75 | 0.0; -52 | -17.9; -84 | -18.2; -91 |
+| root (1.000) | 0.0 -0.7 -0.7 -0.4 -0.2 0.0; -78 dB | 0.0 -0.7 -0.7 -0.4 -0.1 0.0; -90 | 0.0 -0.7 -0.7 -0.4 -0.1 0.0; -90 | -0.1 -2.0 -2.4 -2.9 -3.6 -4.7; -70 |
+| +1 (1.059) | -0.4 -2.1 -4.1 -5.6 -6.7 -7.9; -69 | 0.0 -0.4 -2.2 -3.6 -6.4 -9.7; -81 | -0.4 -2.4 -4.7 -5.4 -6.4 -7.4; -72 | -0.4 -2.8 -4.2 -5.0 -6.1 -7.5; -74 |
+| +2 (1.122) | -1.6 -4.5 -6.5 -8.1; -70 | -0.4 -2.0 -7.2 -11.8; -87 | -1.4 -4.5 -7.1 -8.5; -74 | -1.9 -4.2 -6.3 -7.7; -77 |
+| +5 (1.335) | -5.5 -13.6; -73 | -0.5 -11.2; -81 | -5.9 -13.5; -78 | -5.7 -14.1; -85 |
+| +7 (1.498) | -10.5; -75 | -11.1; -89 | -10.1; -83 | -10.2; -84 |
+| +11 (1.888) | -17.3; -75 | -17.9; -84 | -16.8; -78 | -17.2; -84 |
 
-- At the root the reference passes the source unchanged: the measured ripple (-0.7 dB at 0.7-0.8) is
-  the same in the engine's identity output, so it is the analysis's (the cycle's own spectrum), not a
-  kernel. The engine's 0.9 kernel was audibly darker there (-1.9 dB at 17.6 kHz, -6 dB at 19.8 kHz,
-  -9.8 dB at 21 kHz), confirmed on noise through types 4 and 5 ((d): the 16 kHz octave 0.4-1.1 dB low).
-- Above the root the reference's cutoff follows the step: it rolls off progressively (at half the
-  source's Nyquist -0.4 dB at one semitone, -10.5 at seven, -17.3 at eleven) and leaves no aliases
-  (-69 to -75 dB off the harmonics, its floor); the fork's and the old kernel's upward transposition
-  was not band-limited (aliases up to -52 dB).
-- The engine now keeps a bank of 17 kernels (20 taps, Kaiser 7.5, cutoffs 1.0 to 0.2 of the source's
-  Nyquist in steps of 0.05) and picks, at each pitch change, the one for the voice's transposition at
-  44.1 kHz (`laws::kernelCutoff`): 1.0 from 0.95 to 1.0 (exact at the root: the 1.0 kernel's phase 0
-  is the identity), 0.9 below 0.95 (the old design and its image rejection, where the reference is
-  not measured), and above 1.0 the cutoff fitted to the reference at each measured transposition,
-  linear between, 1 / step beyond. The fit errors are the reference's gentler slope: rms 2.2 dB at one
-  and two semitones, 3.5 dB at five, 0.2 and 0.05 dB at seven and eleven. Images of the 1.0 kernel from
-  0.95 to 1.0 land above 20 kHz (and at a 48 kHz host between 22.05 and 24 kHz).
+Further up (round 0.9.0, run pcm-interp8-2026-11-14, takes `x_up*`): the root-48 cycle at note 48 raised by the
+pitch bend alone, response at 0.1 / 0.2 / 0.3 / 0.5 of the source's Nyquist:
+
+| transposition | reference | 20 taps (0.8.0), 44.1 kHz | 8 taps, 44.1 kHz | 8 taps, 48 kHz host |
+|---|---|---|---|---|
+| +12 (2.0) | -0.5 -2.6 -6.2 -18.3; -73.3 | -0.0 -0.2 -1.5 -17.9; -75.9 | -0.5 -2.6 -6.2 -18.2; -73.8 | -0.5 -2.5 -5.9 -18.0; -82.9 |
+| +24 (4.0) | -0.5 -2.4; -46.7 | -0.9 -5.6; -56.6 | -0.5 -2.4; -46.6 | -0.5 -2.4; -48.4 |
+| +36 (8.0) | not measured | -0.9; -38.0 | -0.5; -35.6 | -0.6; -36.1 |
+
+- At the root the reference passes the source unchanged; so does the engine at 44.1 kHz (the 1.0 kernel's row 0
+  is the identity). At a 48 kHz host the root is a transposition of 0.919 at the output rate and plays through
+  the kernel: its droop is the reference's own below the root, and the off-harmonic -70 dB are its images that a
+  48 kHz output folds off the harmonics (above 22 kHz mostly; the 20-tap bank: -84).
+- Above the root the reference's cutoff follows the step, with an 8-tap kernel's slope: the 8-tap bank fits it
+  within 0.75 dB at every measured point from 1 to 24 semitones (the 20-tap bank was off by up to 5 dB) and
+  aliases as it does: less than the reference from 1 to 12 semitones, as much at 24 (-46.6 against -46.7 dB; the
+  20-tap bank 10 dB less). The cutoff for each transposition (`laws::kernelCutoff`): 0.88, 0.78, 0.495, 0.33, 0.08
+  at 1, 2, 5, 7, 11 semitones, the best fits of the continuous 8-tap kernel to the reference's response (within
+  0.5 dB rms each), linear between, and 0.05 from 12 semitones (the reference at 12 and 24 fits 0.01-0.05: an
+  8-tap kernel narrower than that is all window).
+- +36: the reference's take (note 59, 11 semitones above the root, bend +24) played 24 semitones above the root,
+  as the +24 take: in that take its pitch stops there (register D23); no reference take at +36.
 
 Below the root (round 3, run pcm-round3-2026-11-14, takes `q_bend*`): the root-48 cycle at note 48 bent
 down by the pitch bend (range -1 to -12; a coarse tune would pick another sample: the reference selects
 by key plus coarse tune). The reference's response is the same at 1, 5, 7 and 12 semitones down: 0.3 /
 0.5 / 0.7 / 0.8 / 0.85 / 0.9 / 0.95 of the source's Nyquist about -0.4 / -0.2 / -1.2 / -2.2 / -2.6 / -3.9 /
--5.0 dB, off-harmonic power -72 to -83 dB. Of the bank's kernels 0.95 fits best (rms 1.15 dB, at most
-2.27 dB, at 0.95 of Nyquist 1.3-2.2 dB below); 0.9, the engine's before, was off by up to 7.0 dB, and 1.0
-by up to 3.0. The engine now takes 0.95 below 0.95 of the root's step.
+-5.0 dB, off-harmonic power -72 to -83 dB. The 8-tap 1.0 kernel fits it within 0.19 / 0.35 / 0.15 / 0.06 dB
+rms at 1 / 5 / 7 / 12 semitones down (44.1 kHz; at most 0.59 dB), the 20-tap bank's 0.95 within 1.04 / 1.42 /
+1.00 / 1.07 (at most 2.27). At 24 semitones down (take `x_down24`, band levels against the reference's at the
+same points) the 8-tap kernel is within 0.06 dB rms (at most 0.09), the 20-tap 1.06 (at most 1.63). The take at
+2 semitones down does not resolve in this analysis for either.
 
-| check | tolerance | result |
-|---|---|---|
-| root, 0.5-0.95 of the source's Nyquist, 44.1 kHz | ±0.5 dB of the reference | pass (largest 0.04 dB) |
-| above the root, aliases | at or below the reference's | pass (-81 to -89 dB against -69 to -75) |
-| below the root, response | reported (fit rms above) | 0.95: rms 1.15 dB, at most 2.27 dB |
-| above the root, response | reported (fit rms above) | the shape differs by up to 4.6 dB at one point (+5 semitones, 0.5 of Nyquist: -0.5 against -5.5) |
+Images below the root (0.9.0, the same `q_bend*` takes): a single-cycle loop has no harmonic above its
+length's half, so the output's harmonics above it are images alone (harmonic m is the image of source harmonic
+L - m); their level against the source harmonic's, banded by where the image sits, 1.0-1.1 / 1.1-1.2 / 1.2-1.4 /
+1.4-1.6 of the source's Nyquist (dB):
+
+| down | reference | 20 taps (0.8.0), 44.1 kHz | 8 taps, 44.1 kHz | 8 taps, 48 kHz host |
+|---|---|---|---|---|
+| 7 | -8.2 -11.3 -18.5 -31.7 | -17.1 -37.2 -68.0 -80.8 | -8.2 -11.3 -18.3 -31.3 | -8.0 -12.0 -18.3 -32.9 |
+| 12 | -8.1 -12.3 -18.9 -34.8 | -16.7 -38.4 -80.3 -79.3 | -8.0 -12.0 -18.3 -32.9 | -8.3 -11.7 -18.2 -33.3 |
+
+| check | tolerance | 20 taps (0.8.0) | 8 taps (0.9.0) |
+|---|---|---|---|
+| root, 0.5-0.95 of the source's Nyquist, 44.1 kHz | ±0.5 dB of the reference | pass (0.04 dB) | pass (0.04 dB) |
+| above the root, aliases, 1-11 semitones | at or below the reference's | pass (-81 to -89 against -69 to -75) | pass (-72 to -83, 48 kHz host -74 to -85) |
+| +12, aliases | at or below the reference's (-73.3) | pass (-75.9) | pass (-73.8; 48 kHz host -82.9) |
+| +24, aliases | the reference's within 0.5 dB, or below (-46.7) | pass (-56.6) | pass (-46.6; 48 kHz host -48.4) |
+| +36, aliases | reported (no reference take) | -38.0 | -35.6 |
+| below the root, response, 1-12 semitones | reported (fit rms) | 1.00-1.42 dB rms, at most 2.27 | 0.06-0.35 dB rms, at most 0.59 |
+| 24 semitones down, response | reported (rms against the reference) | 1.06 dB, at most 1.63 | 0.06 dB, at most 0.09 |
+| below the root, images | the reference's within 2 dB | fail (8.6-61 dB fewer) | pass (within 1.9 dB) |
+| above the root, response | reported | up to 5.0 dB off (+5: -0.5 against -5.5 at 0.5 of Nyquist) | within 0.75 dB at every point, 1-24 semitones |
 
 ## (g) Probe sounds B (a piano) and C (a bass) against the reference
 
@@ -705,8 +755,8 @@ widths 0-127).
 | D3 | The filter envelope's release starts 15-150 ms later on the reference (growing with the index) | path within 31 cents rms (d) | open; the cutoff table below 264 and the release times within an octave are now measured |
 | D4 | Velocity: the pads convert with sensitivity 0; the reference plays velocity 30 0.4 dB softer relative to 100 | 0.4 dB | open (converter or law) |
 | D5 | A segment's end waits for the next control step | at most 15 frames | by design |
-| D6 | Upward transposition | the cutoff follows the step (f); the reference's slope is gentler than the kernel's (fit rms 2.2-3.5 dB at 1-5 semitones) | open (shape) |
-| D7 | Passband at and below the root | - | resolved: flat at the root (f); below it the bank's 0.95, fitted (f, round 3: rms 1.15 dB; the reference's slope is gentler) |
+| D6 | Upward transposition | the cutoff follows the step (f) | resolved (0.9.0): the 8-tap bank fits the reference within 0.75 dB at every measured point, 1-24 semitones, and aliases as it does |
+| D7 | Passband at and below the root | - | resolved: flat at the root (f); below it the 8-tap 1.0 kernel, the reference's response within 0.06-0.35 dB rms and its images within 1.9 dB (f, 0.9.0) |
 | D8 | Voice end | - | resolved: -96.45 dB, measured (e) |
 | D10 | Part Velocity Sensitivity Depth / Offset | - | resolved: measured and built (`vel_depth`, `vel_offset`; (h)); the converter must write them |
 | D11 | Probe sound C, the bass (two layers an octave apart) | - | resolved: the converter's (an element's sample is picked by key plus coarse tune, (g)); the first 0.5 s 0.6-1.6 dB low above 2 kHz, open |
@@ -722,6 +772,7 @@ widths 0-127).
 | D20 | Type 3's section where it passes the top of the table with resonance 56 and above, and at cutoff 512 | up to 22 dB beside the peak at cutoffs 592-688, 17.7 dB at 512 (t) | open: the reference's section above 7290 Hz is not a stable 44.1 kHz section |
 | D21 | Type 10's passband | the engine 0.5-1.2 dB louder at width 64 in three takes (t) | open (the fork's law) |
 | D22 | A released voice ends once its output gain is below -96 dBFS (`docs/design.md`, the quiet end) | the reference plays on to -96.45 dB below the held level; output below -96 dBFS cut | by design (approved departure) |
+| D23 | Pitch more than 24 semitones above the root | one reference take (11 semitones by key, 24 by the bend) played 24 above the root (f); the engine plays the full pitch | open (one take; the engine sets no pitch ceiling) |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,
 `refcmp.py`); not in this repository.

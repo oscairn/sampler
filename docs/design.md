@@ -55,7 +55,7 @@ its element level at the top (127) when a controller box or the part LFO moves i
 the part's offset included), the note's volume expression, the sound's level, the louder side of the element's and
 the sound's pans (both at 1 when the part LFO pans), the filter's resonant peak taken as (1 / damping)^2 for any filter
 (two sections at the resonance's damping, the resonance at the top, 127, when a box or the part LFO moves it) and the
-element EQ's two bands' boosts added. The element LFO's amplitude only lowers it and the 20-tap interpolator's
+element EQ's two bands' boosts added. The element LFO's amplitude only lowers it and the interpolator's
 overshoot is not counted. When a release starts, and again when one of these terms changes (the sound's level, the
 note's volume, a moved level or resonance), the voice stores the envelope level at which the product reaches -96 dBFS;
 the existing end test (after each piece) compares the envelope with it, so it costs one comparison a voice a piece and
@@ -69,36 +69,47 @@ before it), a note-off enters the releases there, a choke fades in a straight li
 
 ## The interpolator
 
-Requirement: the image rejection the reference measures on transposed broadband noise (the noise test
-of run interp-2026-11-13: the reference's white-noise source wave transposed down; the fair
-row is the ratio of about 0.42, where the reference leaves its images at -87 to -99 dB over the
-11-22 kHz output bands, -74 dB at 9.5-11 kHz). The same test on the engine (`pcbench rawq`, a source
-shaped like the reference's wave, 44.1 kHz played at 48 kHz, bands in dB re the 1-3 kHz band):
+An 8-tap Kaiser-windowed sinc (beta 9.5), each phase row scaled so its taps sum to 1, 64 phases with linear
+interpolation between a row and the next, from a bank of 20 kernels at cutoffs 1.0, 0.95, ..., 0.05 of the
+source's Nyquist (`kSinc`, core/kernels.cpp, written by `pcbench kernels` from `kernelTap()`). A voice takes the
+kernel its transposition at 44.1 kHz asks for (`laws::kernelCutoff`): 1.0 at and below the root (its row 0 is the
+identity, so a 44.1 kHz source at its root plays unchanged), above the root the cutoff fitted to the reference at
+each measured transposition (0.88 at one semitone, 0.78 at two, 0.495 at five, 0.33 at seven, 0.08 at eleven,
+linear between) and from twelve semitones up 0.05, where an 8-tap kernel is all window. The kernel is picked at
+each pitch change (a control step, every 16 frames) and switches there without a fade, as the 20-tap bank did: the
+step is the difference of two neighbouring kernels' outputs, at most -25 dB rms against the signal on white noise and
+-43 dB on a saw (the 20-tap bank's: -21 and -31 dB), computed from the kernels; deterministic, not cross-faded, and
+only while the pitch moves above the root (every kernel below it is the same).
 
-| kernel | 9-11 kHz | 11-13 | 13-15 | 15-17 | 17-19 | 19-20.5 | 20.5-21.5 kHz | cost a voice-block, mono / stereo |
-|---|---|---|---|---|---|---|---|---|
-| reference (measured) | -74 | -87 .. -99 over 11-22 kHz | | | | | | |
-| Hermite | -38.9 | -29.2 | -30.4 | -39.2 | -58.2 | -63.5 | -53.5 | 7,339 / 10,219 |
-| 16 taps, Kaiser 4.5, full band | -57.0 | -69.8 | -67.0 | -65.4 | -67.0 | -70.6 | -71.8 | 9,863 / 13,749 |
-| 24 taps, Kaiser 6.9, full band | -60.7 | -91.0 | -88.8 | -88.0 | -88.8 | -92.0 | -95.4 | 11,239 / 17,733 |
-| **20 taps, Kaiser 7.5, cutoff 0.9 (the engine's)** | **-76.3** | **-96.2** | **-93.8** | **-91.9** | **-93.3** | **-96.9** | **-98.3** | **10,639 / 14,549** |
+Why 8 taps: the reference behaves as one. Its measured responses (docs/acceptance.md (f)) fit this kernel within
+0.06-0.35 dB rms below the root (1-12 semitones), within 0.75 dB at every measured point above it (1-24
+semitones) and 0.06 dB rms at 24 semitones down; its images below the root (the output harmonics a single-cycle
+loop cannot hold, which only images fill) are about -8, -11, -19 and -32 to -35 dB at 1.0-1.1, 1.1-1.2, 1.2-1.4
+and 1.4-1.6 of the source's Nyquist, and this kernel's are within 0.6 dB of them up to 1.4 and within 1.9 dB
+beyond, where the 20-tap kernel left 9 to 61 dB less. Longer kernels band-limit more steeply than the reference
+and fit its droop worse (the continuous kernels' best fits: 8 taps 0.2 dB rms, 12 taps 0.45, 20 taps 1.0). The noise test of run interp-2026-11-13, which once chose 20 taps (the
+reference's images -74 to -99 dB on its white-noise wave 15 semitones down), contradicts every saw measurement;
+its premise (that wave's source band and root at that key) was inferred, not measured, and an 8-tap
+reference cannot produce it from a full-band source, so it is no longer a requirement. On that test the kernel
+leaves -41 / -34 / -41 / -63 dB over 9-17 kHz (the 20-tap bank: -66 / -93 / -89 / -88).
 
-Costs: callgrind instructions per element voice per 128-frame block, the pads' plan (filter type 0),
-(From 0.2.0 the cutoff is chosen per voice by its transposition from a bank of 17: 1.0 at the root,
-0.9 below, following the step above, as measured on the reference: docs/acceptance.md (f).)
-8 to 32 held voices (`docs/cost.md`; the 16- and 24-tap rows from builds with `PCM_KERNEL_*`). The 20-tap kernel with its cutoff at 0.9 of the source's Nyquist
-meets the reference's rejection in every band of the fair row (24 full-band taps only just do) at
-5 % less than 24 taps mono and 18 % less stereo; 16 taps miss it by about 20 dB. Its price is passband
-droop near the source's top: the continuous kernel's response is -1.2 dB at 0.8 of the source's
-Nyquist and -6 dB at 0.9 (24 full-band taps: 0.0 and -0.6 dB). The reference's droop could not be
-isolated (its source rolls off; README of the measurement), so this is a known difference, not a
-verified one. 256 phases with linear interpolation between them; a kernel row holds the taps in groups
-of four, each followed by its differences to the next phase, one pair load a group. Upward
-transposition is not band-limited (as in the fork); the reference's upward behaviour is unresolved by
-its measurements (its noise up at notes 84 and above shows no band limit).
+Why 64 phases and coefficient rows: 128 phases measure the same on every row (to 0.01 dB), and a row of the
+taps alone (32 bytes; the next row gives the slope) halves the bytes against storing differences. The bank
+is 20 x 2,112 bytes = 42,240 bytes of constant data, one copy for every instance and every process that maps
+the binary (the 20-tap bank was 699,040 bytes built on the heap in each instance). A voice touches at most
+its kernel's 65 rows a block (2,080 bytes, 33 cache lines), 64 bytes at a ratio whose fraction does not move
+(an exact octave, the root at the source's rate), and in a pitch sweep at most the rows of the kernels its 8
+control steps pick (docs/cost.md).
 
-`PCM_KERNEL_TAPS`, `_BETA` and `_CUT` build the comparison kernels; Hermite is the core's other
-interpolator (`Core::setInterp`), used to null against the fork; the plugin plays it only when
+The cheap path: none. Hermite was tried against the same recordings: below the root it leaves 1 to 9 dB more
+images than the reference (and up to 0.7 dB of droop error), above it it aliases 4 to 22 dB above the
+reference's (-50 to -66 against -69 to -75 dB off the harmonics); so it is exact enough nowhere a voice can
+be put before it plays, and a voice that changed interpolator mid-note would change pools (a plan holds its
+interpolator). A released voice's output-gain bound (the quiet-release rule) does not help either: the
+Hermite-to-kernel difference is up to the signal's own level near the source's Nyquist, so it is below the
+-96 dBFS end only within a few dB of the voice's end. The kernel costs 9,272 instructions a mono voice-block
+against Hermite's 7,466 (docs/cost.md) and 2 KB of table. Hermite stays the core's other interpolator
+(`Core::setInterp`), used to null against the fork; the plugin plays it only when
 `OSCAIRN_PCM_INTERPOLATION=hermite` is set (a measurement switch).
 
 ## Memory and threads
