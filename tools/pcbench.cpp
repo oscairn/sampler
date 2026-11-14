@@ -17,7 +17,8 @@
 // CASE: rest | held N | shed N (N held voices shed in one block) | release N (N held voices released,
 // their filter envelopes moving the cutoff every control step); PLAN: mono | stereo (the pads'
 // element: filter type 0, the pads' envelopes) | mono-thru | stereo-thru | mono-t4 | stereo-t4 | mono-t5 |
-// stereo-t5 (types 4 and 5 with the pads' envelopes); any of them with -eq (the element EQ's peak); 48 kHz;
+// stereo-t5 (types 4 and 5 with the pads' envelopes); any of them with -eq (the element EQ's peak) or -stream (a
+// 4,096-frame head in memory, the rest and the loop read from stream rings filled between blocks); 48 kHz;
 // built-in samples.
 #include <algorithm>
 #include <cmath>
@@ -255,6 +256,30 @@ static int rawq(int argc, char** argv) {
 }
 
 // The cost cases' sound: one region over every key with the pads' element (or thru), mono or stereo.
+// A streamed plan's I/O thread, run between blocks (outside the measured window): every active ring filled as far as
+// it may be, the region's frames from its head on, its loop (too long to keep: it streams) wrapped.
+struct Feed {
+    SampleView view;
+    void serve(Core& core) const {
+        const int c = view.channels;
+        for (uint32_t k = 0; k < kStreams; ++k) {
+            Stream& st = core.streams()[k];
+            const uint8_t state = st.state.load(std::memory_order_acquire);
+            if (state == Stream::Released) { st.written = 0; st.consumed = 0; st.state.store(Stream::Free, std::memory_order_release); continue; }
+            if (state != Stream::Active || st.source != this) continue;
+            int64_t w = st.written.load();
+            for (const int64_t until = st.consumed.load(std::memory_order_acquire) + kStreamFrames; w < until; ++w) {
+                int64_t r = view.head + w;
+                if (r >= view.loopEnd) r = view.loopStart + (r - view.loopStart) % (view.loopEnd - view.loopStart);
+                for (int ch = 0; ch < c; ++ch) st.ring[(w % kStreamFrames) * c + ch] = view.data[r * c + ch];
+            }
+            st.written.store(w, std::memory_order_release);
+        }
+    }
+};
+static Feed g_feed;
+static bool g_streamed = false;
+
 static bool caseSound(Host& h, const std::string& plan, const Builtin& s) {
     const bool stereo = plan.rfind("stereo", 0) == 0, thru = plan.find("thru") != std::string::npos;
     std::string el = kPadElement;
@@ -264,7 +289,13 @@ static bool caseSound(Host& h, const std::string& plan, const Builtin& s) {
     if (plan.find("eq") != std::string::npos) el += " eq_type=1 eq_freq1=157 eq_gain1=88 eq_q=8";  // the element EQ (a peak)
     const std::string text = "oscairn-pcm-sound/0\nsample builtin\n" + el + "\nregion key=0-127 root=60 element=0 sample=0 loop=1000-59000\n";
     if (!parseSound(text, *h.data)) return false;
-    return h.load(stereo ? &s.sv : &s.mv);
+    if (plan.find("stream") == std::string::npos) return h.load(stereo ? &s.sv : &s.mv);
+    g_streamed = true;  // "-stream": a 4,096-frame head in memory, the rest (the loop too) from the rings
+    g_feed.view = stereo ? s.sv : s.mv;
+    g_feed.view.loopStart = 1000; g_feed.view.loopEnd = 59000; g_feed.view.head = 4096;
+    SampleView v = g_feed.view;
+    v.stream = &g_feed;
+    return h.load(&v);
 }
 static std::vector<Ev> held(int n) {
     std::vector<Ev> evs;
@@ -291,6 +322,7 @@ static int cg(int argc, char** argv) {
     size_t ei = 0; uint64_t hash = 1469598103934665603ULL;
     for (long b = 0; b < total; ++b) {
         blockEvents(evs, ei, b, bev);
+        if (g_streamed) g_feed.serve(*h.core);
         const bool m = b >= first;
         if (c == "shed" && b == first) h.core->shed(uint32_t(n));
         if (c == "release" && b == first) for (uint32_t v = 0; v < kMaxVoices; ++v) if (h.core->voice(v).sounding) h.core->noteOff(v);

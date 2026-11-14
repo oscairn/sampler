@@ -24,13 +24,13 @@ run() {  # name args...
 {
 run rest rest mono sinc 0.3 0.3
 if [ "$MODE" = check ]; then
-  for p in mono stereo; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
+  for p in mono stereo mono-stream stereo-stream; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
 else
   for p in mono stereo; do for i in sinc herm; do for v in 1 4 8 16 32 64; do run "$p-$i-$v" held $v $p $i 0.3 0.3; done; done; done
   for p in mono-thru stereo-thru; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
   for p in mono stereo; do for v in 8 32; do run "$p-release-$v" release $v $p sinc 0.3 0.3; done; done
   for p in mono-t4 stereo-t4 mono-t5 stereo-t5; do for v in 8 32; do run "$p-release-$v" release $v $p sinc 0.3 0.3; done; done
-  for p in mono-eq stereo-eq; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
+  for p in mono-eq stereo-eq mono-stream stereo-stream; do for v in 8 32; do run "$p-sinc-$v" held $v $p sinc 0.3 0.3; done; done
 fi
 for v in 16 32; do run "shed$v" shed $v mono sinc 0.3 0.05; done
 } | tee "$OUT/summary.txt"
@@ -44,9 +44,9 @@ if [ "$MODE" = check ]; then
     else echo "ok $name: $got (baseline $base)"; fi
   done < "$SRC/tools/cost/baseline.txt"
   # the per-voice gates, from 8 to 32 held voices
-  for p in mono stereo; do
+  for p in mono stereo mono-stream stereo-stream; do
     a=$(awk -v n="$p-sinc-8" '$1==n {print $5}' "$OUT/summary.txt"); b=$(awk -v n="$p-sinc-32" '$1==n {print $5}' "$OUT/summary.txt")
-    gate=11000; [ $p = stereo ] && gate=19500
+    gate=11000; case $p in stereo*) gate=19500;; esac
     per=$(awk -v a="$a" -v b="$b" 'BEGIN {printf "%.0f", (b - a) / 24}')
     if [ "$per" -gt "$gate" ]; then echo "GATE $p: $per instructions a voice, gate $gate"; fail=1; else echo "ok gate $p: $per a voice (gate $gate)"; fi
   done
