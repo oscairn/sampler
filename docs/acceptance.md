@@ -357,6 +357,23 @@ the same level (-20.364, -20.364, -20.369 dB; the waveforms equal after the reco
 residual -66 dB), so `element_connection` changes only the output port (with `split_outputs`); the
 engine within 0.2 dB of the reference on all three (the type 0 gain of D17).
 
+## (j) Cutoff velocity sensitivity against the reference
+
+Recordings `t_cv_*` (run pcm-round3-2026-11-14): a saw at key 36 through type 0, resonance 0, key follow 0,
+envelope depth 0, at base cutoffs 150-700 and sensitivities -64 to +63 (11 pairs), 11 velocities each. Each
+note's octave bands (0.15-0.45 s after its note-on) are matched against the engine's at every base cutoff
+(sensitivity 0) to give the cutoff index the note played.
+
+- The fork's law holds wherever the moved index stays at or above 0: the index moves by 0.115 x
+  sensitivity x (velocity - 115) (+63 counting as 64, negative sensitivities mirroring the velocity as
+  128 - v). Per unit of sensitivity the reference moves -12.95, -10.9, -8.65, -5.83, -4.06, -1.8, 0 and
+  +1.26 to +1.58 at velocities 1, 20, 40, 64, 80, 100, 115 and 127 (the law: -13.1, -10.9, -8.6, -5.9, -4.0,
+  -1.7, 0, +1.4), the same for every sensitivity and base cutoff.
+- Engine against reference, note by note: every note within 40 dB of its take's loudest within 2.1 dB in
+  level and 2.5 dB in octave bands (76 notes). Where base plus shift falls below index 0 the reference
+  keeps going darker but not as the engine's table (which stops at index 0); those notes are 40-140 dB
+  below the take's loudest (D15).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |
@@ -374,7 +391,7 @@ engine within 0.2 dB of the reference on all three (the type 0 gain of D17).
 | D12 | The release after the sustain pedal goes up | - | resolved: key-off elements start at the pedal's release (g) |
 | D13 | A half damper element under the pedal releases only from its sustain | inferred from two cases (g) | unverified beyond them |
 | D14 | Key-off elements release 2.0 s after their start whatever their settings | the fork's K42, measured once | as the fork |
-| D15 | Cutoff velocity sensitivity (the fork's law) at low velocities | a saw at +63, cutoff 400: 23-26 dB too quiet at velocities 20-40 (h) | open |
+| D15 | Cutoff velocity sensitivity where the moved cutoff index falls below 0 | notes 40-140 dB below the loudest differ by up to tens of dB; every note within 40 dB within 2.1 dB (j) | resolved above index 0 (the fork's law verified, j); below it not modeled |
 | D16 | Elements 2-8 with the filter thru | - | resolved: 5.625 dB below element 1 by `element_number` (i); the converter must write the number |
 | D17 | Filter gain 230 with type 0 wide open | the engine 0.21 dB above the reference (i) | open (the fork's law) |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |

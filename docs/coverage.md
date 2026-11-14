@@ -97,7 +97,7 @@ starting with "no" are reported at every value but the default (any other start:
 | PEG Time Key Follow Sensitivity Center Note | C-2 – G8 | yes: `pitcheg_veltime*`, `pitcheg_keytime*`, `pitcheg_veldepth*` | K13 | law only |
 | Filter Type | LPF24D, LPF24A, LPF18, LPF18s, LPF12+HPF12, LPF6+HPF12, HPF24D, HPF12, BPF12D, BPFw, BPF6, BEF12, BEF6, DualLPF, DualHPF, DualBPF, DualBEF, LPF12+BPF6, Thru | `fil_type`: types 0, 4, 5 and 18 (thru); every other type is reported by notCovered() | K23 (the fork's models, BSD) | type 0: pads (acceptance a, b); 4 and 5: noise against the reference (acceptance d) |
 | Filter Cutoff Frequency | 0 – 1023 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29; 0-256 measured here (acceptance d) | pads (acceptance a) (244, 6, 230, 74) |
-| Filter Cutoff Velocity Sensitivity | −64 – +63 | yes: `fil_velsens` | K34 | core test `level_scaling_and_velocity` (time shift); pads 0 |
+| Filter Cutoff Velocity Sensitivity | −64 – +63 | yes: `fil_velsens` | K34, verified here (acceptance j); below cutoff index 0 not modeled (D15) | 11 base cutoff / sensitivity pairs at 11 velocities: every note within 40 dB of the loudest within 2.1 dB (acceptance j) |
 | Filter Resonance/ Width | 0 – 127 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29 | pads (acceptance a) (244, 6, 230, 74) |
 | Filter Resonance Velocity Sensitivity | −64 – +63 | no | - | - |
 | HPF Cutoff Frequency | 0 – 1023 | yes: `fil_hpf_cutoff` in types 4 and 5 (a fixed section, damping 1, no key follow) | K23 | acceptance d (0-512) |
