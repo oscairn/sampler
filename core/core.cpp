@@ -1126,6 +1126,9 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
 }
 
 void Core::render(float* L, float* R, uint32_t frames, uint32_t from) {
+    bool any = false;
+    for (auto& p : pool_) any |= p.n > 0;
+    if (!any) { clock_ += frames; return; }  // the rest cost: nothing more than this when silent
     float* const l3[3] = {L, L, L};
     float* const r3[3] = {R, R, R};
     render(l3, r3, frames, from);
