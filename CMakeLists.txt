@@ -20,8 +20,14 @@ endif()
 add_library(clap_headers INTERFACE)
 target_include_directories(clap_headers INTERFACE third_party/clap/include third_party/oscairn-clap/include)
 
+# Oscairn Sample Packs (third_party/samplepack, a Rust library with a C interface, a submodule at a pinned
+# commit; its CMake module runs cargo with the toolchain its rust-toolchain.toml pins): the pack reader and
+# decoder for the shell's loader. The DSP core never sees it.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/samplepack/cmake")
+include(SamplePack)
+
 add_library(oscairn_pcm MODULE src/plugin.cpp src/core_engine.cpp src/samples.cpp)
-target_link_libraries(oscairn_pcm PRIVATE pcmcore)
+target_link_libraries(oscairn_pcm PRIVATE pcmcore samplepack::samplepack)
 target_link_libraries(oscairn_pcm PRIVATE clap_headers)
 target_include_directories(oscairn_pcm PRIVATE third_party/dr_libs)
 if(NOT MSVC)
@@ -51,8 +57,9 @@ target_compile_definitions(pcbench PRIVATE PCM_DECODE)
 
 # The tests see only the built .clap, through the CLAP ABI (dlopen); they link no plugin code.
 add_executable(pcm_tests tests/test_main.cpp tests/alloc_guard.cpp tests/test_notes.cpp tests/test_budget.cpp
-    tests/test_state.cpp tests/test_contexts.cpp tests/test_alloc.cpp tests/test_threads.cpp tests/test_fuzz.cpp tests/test_controls.cpp)
-target_link_libraries(pcm_tests PRIVATE clap_headers ${CMAKE_DL_LIBS})
+    tests/test_state.cpp tests/test_contexts.cpp tests/test_alloc.cpp tests/test_threads.cpp tests/test_fuzz.cpp tests/test_controls.cpp
+    tests/test_packs.cpp)
+target_link_libraries(pcm_tests PRIVATE clap_headers samplepack::samplepack ${CMAKE_DL_LIBS})
 if(APPLE)
     # Counts allocations in every image of the process, the plugin's included (alloc_guard.cpp).
     add_library(pcm_alloc_interpose SHARED tests/alloc_interpose.c)

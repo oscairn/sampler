@@ -34,6 +34,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Rust toolchain (pinned by third_party/samplepack/rust-toolchain.toml)
+        working-directory: third_party/samplepack
+        run: rustup show active-toolchain
       - name: Plugin version equals CMake project version
         if: runner.os != 'Windows'
         run: |
@@ -72,6 +77,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Rust toolchain (pinned by third_party/samplepack/rust-toolchain.toml)
+        working-directory: third_party/samplepack
+        run: rustup show active-toolchain
       # ThreadSanitizer cannot map its shadow memory with the runner kernel's default ASLR entropy.
       - name: Lower ASLR entropy
         run: sudo sysctl vm.mmap_rnd_bits=28

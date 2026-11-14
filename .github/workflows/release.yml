@@ -42,6 +42,11 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Rust toolchain (pinned by third_party/samplepack/rust-toolchain.toml)
+        working-directory: third_party/samplepack
+        run: rustup show active-toolchain
       - name: Build
         run: |
           set -euo pipefail
@@ -68,6 +73,8 @@ jobs:
       contents: write   # gh release create
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Tag
         id: tag
         run: |
