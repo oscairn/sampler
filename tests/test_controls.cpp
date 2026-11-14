@@ -11,7 +11,7 @@ constexpr clap_id kKnob1 = 3, kRibbon = 11, kSwitch1 = 12, kCutoff = 14, kResona
 // A saw-like test sound through filter type 0 (the sine through a low cutoff), with optional part settings.
 std::string filtered(const std::string& part) {
     return "oscairn-pcm-sound/0\n" + (part.empty() ? std::string() : "part " + part + "\n") +
-           "sample sine.wav\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50 fil_type=0 fil_cutoff=200 fil_keyfollow=64\n"
+           "sample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50 fil_type=0 fil_cutoff=200 fil_keyfollow=64\n"
            "region key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
 }
 }  // namespace

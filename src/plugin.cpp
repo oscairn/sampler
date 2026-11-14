@@ -6,10 +6,10 @@
 // (oscairn-clap/sound-contexts-plugin.hpp and voice-budget-plugin.hpp); what is written here is
 // what is specific to this plugin.
 //
-// A sound is a sound-format-v0 blob (core/sound.cpp) whose sample references are paths relative to a
-// base asset reference (a library and a folder in it). Every sample is resolved through the host's
-// oscairn.assets and decoded whole into memory when the sound is prepared or loaded; the state
-// stores the blob and the base, never a local path.
+// A sound is a sound-format-v0 blob (core/sound.cpp). A sample reference is "sample:<id>", which the host's
+// oscairn.assets resolve_sample (draft 4) turns into a record of a pack, or a path relative to a base asset reference
+// (a library and a folder in it) naming a one-record pack file. The loader (loader.h) reads what the core needs from
+// the records when the sound is prepared or loaded; the state stores the blob and the base, never a local path.
 #include <oscairn-clap/memory.h>
 #include <oscairn-clap/sound-contexts-plugin.hpp>
 #include <oscairn-clap/ui.h>
@@ -25,6 +25,7 @@
 #include <set>
 #include <sstream>
 
+#include "assets-draft.h"
 #include "engine.h"
 #include "identity.h"
 
@@ -89,7 +90,8 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static constexpr bool volumeExpressions = true;  // the core multiplies by the note's volume
 
     const clap_host_t* host;
-    const oscairn_host_assets_t* assets = nullptr;
+    const oscairn_host_assets_draft4_t* assets = nullptr;
+    bool assets4 = false;  // the host answered draft 4 (resolve_sample)
     std::unique_ptr<pcmshell::Engine> core = makeEngine();
     std::array<std::atomic<float>, kParamCount> values{};  // what get_value shows: the sound on channel 0
     oscairn::voices::Limits budget;                         // audio thread: as set_limits gave them
@@ -103,9 +105,6 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     uint32_t shownSlot = 0;               // the sound whose values `values` holds
     double sampleRate = 48000;
     uint32_t maxBlock = 0;
-    // decoded samples, shared between this instance's sounds while any of them uses one
-    std::mutex cacheLock;
-    std::map<std::string, std::weak_ptr<const SampleBuffer>> cache;
 
     explicit Plugin(const clap_host_t* h) : host(h) {
         plugin = {&kDescriptor, this, init, destroy, activate, deactivate, startProcessing, stopProcessing, reset, process, getExtension, onMainThread};
@@ -115,7 +114,29 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     }
 
     // ---- sounds and their samples (main thread) ------------------------------------------
-    // A sound from its blob and base: parse and validate, resolve and decode every sample, compile.
+    // A sample reference to its record: "sample:<id>" through resolve_sample, a path through resolve (a one-record pack).
+    bool resolveSample(const char* ref, const std::string& library, const std::string& path, Record& out, std::string& error) {
+        char local[4096] = {}, msg[256] = {};
+        oscairn_asset_ref_t r{};
+        uint8_t id[SP_SAMPLE_ID_BYTES];
+        if (sampleId(ref, id)) {
+            if (!assets4 || !assets->resolve_sample) { error = "the host cannot resolve sample references (oscairn.assets draft 4)"; return false; }
+            std::snprintf(r.library, sizeof r.library, "%s", library.c_str());
+            std::snprintf(r.path, sizeof r.path, "%s", ref);
+            std::snprintf(r.sha256, sizeof r.sha256, "%s", ref + 7);
+            uint64_t offset = 0;
+            if (!assets->resolve_sample(host, &r, local, sizeof local, &offset, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
+            return recordAt(local, offset, id, out, error);
+        }
+        if (library.empty()) { error = "a sample path needs a base asset reference"; return false; }
+        const std::string full = (path.empty() ? std::string() : path + "/") + ref;
+        if (full.size() >= sizeof r.path) { error = "sample path too long"; return false; }
+        std::snprintf(r.library, sizeof r.library, "%s", library.c_str());
+        std::snprintf(r.path, sizeof r.path, "%s", full.c_str());
+        if (!assets->resolve(host, &r, local, sizeof local, msg, sizeof msg)) { error = std::string("cannot resolve: ") + msg; return false; }
+        return onlyRecord(local, out, error);
+    }
+    // A sound from its blob and base: parse and validate, resolve every sample and load what the core needs, compile.
     std::shared_ptr<const Sound> buildSound(std::vector<uint8_t> blob, const std::string& library, const std::string& path, std::string& error) {
         auto s = std::make_shared<Sound>();
         s->data.reset(new pcm::SoundData);
@@ -123,44 +144,18 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!pcm::readBlob(blob.data(), blob.size(), *s->data, why, sizeof why)) { error = why; return nullptr; }
         s->blob = std::move(blob); s->library = library; s->path = path;
         if (!assets || !assets->resolve) { error = "the host offers no oscairn.assets to resolve samples"; return nullptr; }
-        if (library.empty()) { error = "samples need a base asset reference"; return nullptr; }
-        std::vector<pcm::SampleView> views(s->data->samples);
-        for (uint32_t i = 0; i < s->data->samples; ++i) {
-            oscairn_asset_ref_t ref{};
-            std::snprintf(ref.library, sizeof ref.library, "%s", library.c_str());
-            const std::string full = (path.empty() ? std::string() : path + "/") + s->data->ref[i];
-            if (full.size() >= sizeof ref.path) { error = std::string("sample path too long: ") + s->data->ref[i]; return nullptr; }
-            std::snprintf(ref.path, sizeof ref.path, "%s", full.c_str());
-            char local[4096] = {}, msg[256] = {};
-            if (!assets->resolve(host, &ref, local, sizeof local, msg, sizeof msg)) { error = std::string("cannot resolve ") + s->data->ref[i] + ": " + msg; return nullptr; }
-            std::shared_ptr<const SampleBuffer> buf;
-            {
-                std::lock_guard<std::mutex> g(cacheLock);
-                buf = cache[local].lock();
-            }
-            if (!buf) {
-                auto fresh = std::make_shared<SampleBuffer>();
-                std::string e;
-                if (!decodeFile(local, *fresh, e)) { error = std::string(s->data->ref[i]) + ": " + e; return nullptr; }
-                buf = fresh;
-                std::lock_guard<std::mutex> g(cacheLock);
-                cache[local] = buf;
-            }
-            views[i] = buf->view();
-            s->samples.push_back(buf);
-            s->assets.push_back(ref);
-        }
+        s->samples = loadSamples(*s->data, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, error);
+        if (!s->samples) return nullptr;
         s->compiled.reset(new pcm::Compiled);
-        if (!pcm::compile(*s->data, views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
+        if (!pcm::compile(*s->data, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
         return s;
     }
-    uint64_t assetBytes() {
-        std::lock_guard<std::mutex> g(cacheLock);
+    // Decoded audio the prepared sounds hold.
+    uint64_t assetBytes() const {
+        std::set<const Samples*> seen;
         uint64_t n = 0;
-        for (auto it = cache.begin(); it != cache.end();) {
-            if (auto b = it->second.lock()) { n += b->pcm.size() * sizeof(int16_t); ++it; }
-            else it = cache.erase(it);
-        }
+        for (const auto& c : contexts)
+            if (c.prepared && c.patch.sound && c.patch.sound->samples && seen.insert(c.patch.sound->samples.get()).second) n += c.patch.sound->samples->bytes;
         return n;
     }
 
@@ -556,10 +551,19 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     std::vector<oscairn_asset_ref_t> dependencies() const {
         std::vector<oscairn_asset_ref_t> v;
         std::set<std::pair<std::string, std::string>> seen;
-        for (const auto& c : contexts)
-            if (c.prepared && c.patch.sound)
-                for (const auto& a : c.patch.sound->assets)
-                    if (seen.insert({a.library, a.path}).second) v.push_back(a);
+        for (const auto& c : contexts) {
+            if (!c.prepared || !c.patch.sound) continue;
+            const Sound& s = *c.patch.sound;
+            for (uint32_t i = 0; i < s.data->samples; ++i) {
+                oscairn_asset_ref_t a{};
+                const char* ref = s.data->ref[i];
+                const bool id = std::strncmp(ref, "sample:", 7) == 0;
+                std::snprintf(a.library, sizeof a.library, "%s", s.library.c_str());
+                std::snprintf(a.path, sizeof a.path, "%s%s%s", id || s.path.empty() ? "" : s.path.c_str(), id || s.path.empty() ? "" : "/", ref);
+                if (id) std::snprintf(a.sha256, sizeof a.sha256, "%s", ref + 7);
+                if (seen.insert({a.library, a.path}).second) v.push_back(a);
+            }
+        }
         return v;
     }
     static uint32_t dependencyCount(const clap_plugin_t* p) { return uint32_t(self(p).dependencies().size()); }
@@ -573,7 +577,11 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     // ---- CLAP plugin ----------------------------------------------------------------------
     static bool init(const clap_plugin_t* p) {
         auto& s = self(p);
-        if (s.host && s.host->get_extension) s.assets = static_cast<const oscairn_host_assets_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS));
+        if (s.host && s.host->get_extension) {
+            s.assets = static_cast<const oscairn_host_assets_draft4_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS_DRAFT_4));
+            s.assets4 = s.assets != nullptr;
+            if (!s.assets) s.assets = static_cast<const oscairn_host_assets_draft4_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS));
+        }
         return true;
     }
     static void destroy(const clap_plugin_t* p) { delete &self(p); }

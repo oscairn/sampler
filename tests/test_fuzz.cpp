@@ -45,7 +45,7 @@ std::string randomSound(Rng& r) {
     for (int k = 1; k <= 3; ++k)
         s += " plfo_dst" + std::to_string(k) + "=" + std::to_string(r.in(0, 2) ? r.in(64, 68) : r.in(0, 127)) + " plfo_depth" + std::to_string(k) + "=" + std::to_string(r.in(0, 1) ? r.in(0, 127) : 0);
     for (int k = 1; k <= 16; ++k) s += " plfo_user_step" + std::to_string(k) + "=" + std::to_string(r.in(-64, 63));
-    s += "\nsample sine.wav\n";
+    s += "\nsample sine.osp\n";
     const int elements = r.in(1, 3);
     for (int e = 0; e < elements; ++e) {
         s += "element";

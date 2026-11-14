@@ -129,7 +129,7 @@ TEST(a_sound_plays_only_its_key_range) {
     char msg[160] = {};
     const uint32_t b = prepare(a, "zone", patchWith("level=1", kZoneSound).c_str(), msg, sizeof msg);
     CHECK(b != CLAP_INVALID_ID);
-    CHECK_EQ(prepare(a, "x", "oscairn-pcm-sound/0\nsample sine.wav\nelement fil_cutoff=5000\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);  // a raw value out of range
+    CHECK_EQ(prepare(a, "x", "oscairn-pcm-sound/0\nsample sine.osp\nelement fil_cutoff=5000\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);  // a raw value out of range
     CHECK(std::strstr(msg, "line 3") != nullptr && std::strstr(msg, "fil_cutoff=5000") != nullptr);
     a.contexts->select(a.p, b, 0);
     a.block(128);

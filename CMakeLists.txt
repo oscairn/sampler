@@ -26,10 +26,9 @@ target_include_directories(clap_headers INTERFACE third_party/clap/include third
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/samplepack/cmake")
 include(SamplePack)
 
-add_library(oscairn_pcm MODULE src/plugin.cpp src/core_engine.cpp src/samples.cpp)
+add_library(oscairn_pcm MODULE src/plugin.cpp src/core_engine.cpp src/loader.cpp src/packs.cpp)
 target_link_libraries(oscairn_pcm PRIVATE pcmcore samplepack::samplepack)
 target_link_libraries(oscairn_pcm PRIVATE clap_headers)
-target_include_directories(oscairn_pcm PRIVATE third_party/dr_libs)
 if(NOT MSVC)
     target_compile_options(oscairn_pcm PRIVATE -Wall -Wextra)
 endif()
@@ -66,4 +65,10 @@ if(APPLE)
     target_link_libraries(pcm_tests PRIVATE pcm_alloc_interpose)
 endif()
 add_dependencies(pcm_tests oscairn_pcm)
+# The samplepack tool makes the tests' packs from generated tones (the host's toolchain, not the plugin's target).
+set(SAMPLEPACK_CLI "${CMAKE_BINARY_DIR}/samplepack-cli/release/samplepack")
+add_custom_target(samplepack_cli ${SAMPLEPACK_CARGO} build --release --locked --offline -p samplepack-cli --target-dir "${CMAKE_BINARY_DIR}/samplepack-cli"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/third_party/samplepack" BYPRODUCTS "${SAMPLEPACK_CLI}" COMMENT "cargo build samplepack (the tool)" VERBATIM)
+add_dependencies(pcm_tests samplepack_cli)
+target_compile_definitions(pcm_tests PRIVATE "SAMPLEPACK_CLI=\"${SAMPLEPACK_CLI}\"")
 add_test(NAME abi COMMAND pcm_tests $<TARGET_FILE:oscairn_pcm>)

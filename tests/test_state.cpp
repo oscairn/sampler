@@ -73,7 +73,7 @@ TEST(state_refuses_what_is_malformed) {
                                "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" -\ngarbage\n", "not a state",
                                "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + b64(std::string(kSound).substr(0, std::strlen(kSound) - 30)) + "\n",  // a cut sound
                                "oscairn-pcm-state 1\n0.5 0 8 \"elsewhere\" \"\" " + sound + "\n",                         // samples that do not resolve
-                               "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + b64("oscairn-pcm-sound/0\nsample sine.wav\n") + "\n",  // no region
+                               "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + b64("oscairn-pcm-sound/0\nsample sine.osp\n") + "\n",  // no region
                                "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + sound.substr(0, sound.size() - 1) + "\n"};  // not base64
     for (auto& s : bad) { CHECK(!b.load(s)); CHECK(b.save() == before); }
     CHECK(!b.load(std::string(1 << 20, 'x')));

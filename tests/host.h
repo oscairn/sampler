@@ -9,6 +9,7 @@
 #include <oscairn-clap/memory.h>
 #include <oscairn-clap/sound-contexts.h>
 #include <oscairn-clap/voice-budget.h>
+#include "../src/assets-draft.h"  // the draft copy of oscairn.assets draft 4 (resolve_sample)
 
 #include <algorithm>
 #include <array>
@@ -23,7 +24,14 @@
 #include "check.h"
 
 extern const char* g_pluginPath;
-extern std::string g_assetDir;  // test_main.cpp: where the "test" library's files are (generated WAVs)
+extern std::string g_assetDir;  // test_main.cpp: where the "test" library's files are (one-record packs of the tones)
+// The generated tones (test_main.cpp), by name, and the test host's store: sample id (hex) -> pack and record offset.
+struct TestTone { std::vector<int16_t> pcm; uint32_t frames = 0, channels = 1, rate = 44100; std::string id; };
+struct StoreEntry { std::string pack; uint64_t offset = 0; };
+extern std::map<std::string, TestTone> g_tones;
+extern std::map<std::string, StoreEntry> g_store;
+// The reference "sample:<id>" of a tone.
+inline std::string sampleRef(const char* tone) { return "sample:" + g_tones.at(tone).id; }
 
 // alloc_guard.cpp: counts heap allocations made by any code in the process (the plugin included,
 // whatever language it is written in) while enabled. Returns false when the platform has no
@@ -35,14 +43,14 @@ long allocGuardCount();
 
 constexpr double kRate = 48000;
 constexpr const char* kId = "org.oscairn.pcm";
-// The default sound for these tests: a looped 220 Hz sine (sine.wav in the test library) over every
+// The default sound for these tests: a looped 220 Hz sine (sine.osp in the test library) over every
 // key, flat envelope, release 50 (from full level the voice ends about 155 ms after the note-off).
 constexpr const char* kSound =
-    "oscairn-pcm-sound/0\nsample sine.wav\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
+    "oscairn-pcm-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
     "region key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
 // The same sound on a key range only.
 constexpr const char* kZoneSound =
-    "oscairn-pcm-sound/0\nsample sine.wav\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
+    "oscairn-pcm-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
     "region key=84-96 root=57 element=0 sample=0 loop=0-44100\n";
 inline std::string b64(const std::string& s) {
     static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -156,9 +164,10 @@ struct Library {
 };
 inline Library& library() { static Library l; return l; }
 
-// The host's oscairn.assets: library "test" is g_assetDir; anything else is unknown.
-inline const oscairn_host_assets_t* testAssets() {
-    static const oscairn_host_assets_t a = {
+// The host's oscairn.assets (draft 4): library "test" is g_assetDir; anything else is unknown; resolve_sample answers
+// from the store pack (g_store).
+inline const oscairn_host_assets_draft4_t* testAssets() {
+    static const oscairn_host_assets_draft4_t a = {
         [](const clap_host_t*, oscairn_asset_ref_t* ref, char* path, uint32_t cap, char* msg, uint32_t mcap) {
             if (std::strcmp(ref->library, "test")) { std::snprintf(msg, mcap, "no library '%s'", ref->library); return false; }
             const std::string p = g_assetDir + "/" + ref->path;
@@ -167,12 +176,19 @@ inline const oscairn_host_assets_t* testAssets() {
             std::snprintf(path, cap, "%s", p.c_str());
             return true;
         },
-        nullptr, nullptr};
+        nullptr, nullptr,
+        [](const clap_host_t*, const oscairn_asset_ref_t* ref, char* path, uint32_t cap, uint64_t* offset, char* msg, uint32_t mcap) {
+            auto it = std::strncmp(ref->path, "sample:", 7) ? g_store.end() : g_store.find(ref->path + 7);
+            if (it == g_store.end()) { std::snprintf(msg, mcap, "no sample '%s'", ref->path); return false; }
+            std::snprintf(path, cap, "%s", it->second.pack.c_str());
+            *offset = it->second.offset;
+            return true;
+        }};
     return &a;
 }
 inline const clap_host_t* testHost() {
     static const clap_host_t h = {CLAP_VERSION, nullptr, "pcm-tests", "oscairn", "", "1",
-                                  [](const clap_host_t*, const char* id) -> const void* { return !std::strcmp(id, OSCAIRN_EXT_ASSETS) ? testAssets() : nullptr; },
+                                  [](const clap_host_t*, const char* id) -> const void* { return !std::strcmp(id, OSCAIRN_EXT_ASSETS_DRAFT_4) || !std::strcmp(id, OSCAIRN_EXT_ASSETS) ? testAssets() : nullptr; },
                                   [](const clap_host_t*) {}, [](const clap_host_t*) {}, [](const clap_host_t*) {}};
     return &h;
 }
