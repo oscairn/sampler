@@ -37,6 +37,7 @@ constexpr const char* kStateHeader = "oscairn-pcm-state 3";      // the CLAP sta
 constexpr const char* kStateHeader2 = "oscairn-pcm-state 2";     // with the values before the knobs or before the bus
 constexpr const char* kStateHeader1 = "oscairn-pcm-state 1";     // only, still read)
 constexpr const char* kSnapshotHeader = "oscairn-pcm-contexts/3"; // the sound-contexts snapshot (one token)
+constexpr clap_id kShedsParam = kParamCount;  // read-only: voices shed for late streams (the streaming extension's count)
 constexpr const char* kBlobHeader = "oscairn-pcm-blob/0";         // patch text: a blob in base64
 constexpr size_t kMaxStateBytes = 1 << 22;  // eight sounds' blobs in base64
 constexpr uint32_t kMaxDeviceVoices = kVoices, kMaxDeviceVoicesPerSound = kVoices;
@@ -679,8 +680,15 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         return status;
     }
 
-    static uint32_t paramCount(const clap_plugin_t*) { return kParamCount; }
+    static uint32_t paramCount(const clap_plugin_t*) { return kParamCount + 1; }
     static bool paramInfo(const clap_plugin_t*, uint32_t i, clap_param_info_t* info) {
+        if (i == kShedsParam) {
+            *info = {};
+            info->id = i; info->flags = CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED;
+            std::snprintf(info->name, sizeof info->name, "Late Stream Sheds");
+            info->max_value = 4294967295.0;
+            return true;
+        }
         if (i >= kParamCount) return false;
         *info = {};
         info->id = i;
@@ -690,17 +698,18 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         return true;
     }
     static bool paramValue(const clap_plugin_t* p, clap_id id, double* v) {
+        if (id == kShedsParam) { *v = double(self(p).core->streamSheds()); return true; }
         if (id >= kParamCount) return false;
         *v = self(p).values[id].load(std::memory_order_relaxed);
         return true;
     }
     static bool paramText(const clap_plugin_t*, clap_id id, double v, char* out, uint32_t n) {
-        if (id >= kParamCount) return false;
-        std::snprintf(out, n, kParams[id].stepped ? "%.0f" : "%.3f", v);
+        if (id > kShedsParam) return false;
+        std::snprintf(out, n, id == kShedsParam || kParams[id].stepped ? "%.0f" : "%.3f", v);
         return true;
     }
     static bool paramFromText(const clap_plugin_t*, clap_id id, const char* text, double* v) {
-        if (id >= kParamCount) return false;
+        if (id > kShedsParam) return false;
         char* end = nullptr; *v = std::strtod(text, &end);
         return end != text;
     }
@@ -713,7 +722,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     // the knobs are one group, the ribbon and the switches another (the switches as switches), the tunings and the
     // high-pass cutoff a third.
     static bool paramHint(const clap_plugin_t*, clap_id id, oscairn_param_hint_t* h) {
-        if (id >= kParamCount || !h) return false;
+        if (id > kShedsParam || !h) return false;
         *h = {};
         h->range_high = CLAP_INVALID_ID;
         switch (id) {

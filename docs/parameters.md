@@ -1,8 +1,9 @@
 # CLAP parameters
 
 Per sound (a parameter event with a channel reaches the sounds that channel selects; without one, every selected
-sound). The ids are stable: a new parameter gets a new id, an id is never reused or renumbered. Every parameter is
-automatable; the box destinations (ids 14-24) are also modulatable (`CLAP_PARAM_IS_MODULATABLE`).
+sound). The ids are stable: a new parameter gets a new id, an id is never reused or renumbered. Every parameter but
+id 26 is automatable; the box destinations (ids 14-24) are also modulatable (`CLAP_PARAM_IS_MODULATABLE`). Id 26 is
+the instance's, read-only (`CLAP_PARAM_IS_READONLY`), not the sound's.
 
 | id | name | patch-text key | range | default | what it does |
 |---|---|---|---|---|---|
@@ -22,6 +23,7 @@ automatable; the box destinations (ids 14-24) are also modulatable (`CLAP_PARAM_
 | 21, 22 | Element LFO Pitch Depth, Element LFO Amp Depth | `elfo_pitch_mod`, `elfo_amp_mod` | -8192..8192 | 0 | the box destinations element LFO pitch / amplitude depth in box-output units (a full box is 8192), added to the boxes' outputs and the mod wheel's element LFO ratios before the depth law |
 | 23, 24 | AEG Attack, AEG Release | `attack`, `release` | -128..128 | 0 | the box destinations amplitude envelope attack (read at note-on) and release (read at the note-off), index steps |
 | 25 | Output Bus | `bus` | 0..8, stepped | 0 | the output port the sound plays on: 0 main, n sound bus n (see [Output ports](#output-ports)) |
+| 26 | Late Stream Sheds | (none) | 0..2^32-1, read-only | 0 | element voices the instance shed for want of streamed audio since it was made: a late stream, or no free stream (the count the plugin's `org.oscairn.pcm.streaming/draft-1` extension returns) |
 
 A host passes no MIDI controller for the ribbon, the knobs or the switches (only CC 1, 2, 4, 11, 64-67, 120, 123 and
 pitch bend reach a plugin), so they are parameters. The maps were measured on the reference through a box on the fine

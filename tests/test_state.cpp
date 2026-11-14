@@ -6,7 +6,7 @@
 TEST(parameter_metadata) {
     Inst a(false);
     const uint32_t n = a.params->count(a.p);
-    CHECK_EQ(n, 26u);
+    CHECK_EQ(n, 27u);  // the shell's 26 and the read-only shed count
     std::vector<clap_id> seen;
     for (uint32_t i = 0; i < n; ++i) {
         clap_param_info_t info{};

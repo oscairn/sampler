@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Parts sharing one instance: each sound on its own channel and output bus plays as it would alone in an instance of
 // its own; a sound saved alone (oscairn.sound-snapshots draft 4) prepares beside and saves the same; a retiring sound
-// rings out and choke_retiring fades it; the two readings of ports 1 and 2.
+// rings out and choke_retiring fades it; the two readings of ports 1 and 2; the read-only shed count.
 #include <fcntl.h>
 
 #include "host.h"
 
 namespace {
-constexpr clap_id kBus = 25;
+constexpr clap_id kBus = 25, kSheds = 26;
 constexpr uint32_t kParamsWritable = 26;
 
 // Part k's sound: its own root, envelope and element level; its own level and pan
@@ -98,6 +98,7 @@ TEST(a_sound_saved_alone_prepares_beside_the_same) {
     oscairn_sound_parameter_t v[64] = {};
     CHECK_EQ(a.snapshots->sound_values(a.p, id, v, 64), kParamsWritable);
     CHECK(v[kBus].id == kBus && v[kBus].value == 4 && std::fabs(v[0].value - 0.7) < 1e-6 && std::fabs(v[3].value - 0.25) < 1e-6);
+    for (uint32_t i = 0; i < kParamsWritable; ++i) CHECK(v[i].id != kSheds);
     CHECK_EQ(a.snapshots->sound_values(a.p, 0, v, 64), 0u);  // the Default: selected
     CHECK_EQ(a.snapshots->sound_values(a.p, id + 50, v, 64), 0u);
 
@@ -267,4 +268,23 @@ TEST(shared_sounds_keep_their_own_voices) {
     oscairn_memory_t two{};
     CHECK(a.memory->current(a.p, &two));
     CHECK(two.context_bytes > 0);
+}
+
+// The read-only parameter shows the voices shed for late streams, the streaming extension's count, and is not written.
+TEST(shed_count_parameter_is_read_only) {
+    Inst a;
+    clap_param_info_t info{};
+    CHECK(a.params->get_info(a.p, kSheds, &info) && info.id == kSheds && (info.flags & CLAP_PARAM_IS_READONLY) && !(info.flags & CLAP_PARAM_IS_AUTOMATABLE));
+    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
+    CHECK(a.load(stateWith(snd)));
+    a.settle = false;
+    a.streaming->stall(a.p, true);
+    a.block(128, {on(0, 1, 0, 72)});  // its head runs out with the I/O thread stalled: shed
+    a.run(48000);
+    a.streaming->stall(a.p, false);
+    a.block(128, {param(0, kSheds, 0)});  // ignored
+    CHECK(a.streaming->sheds(a.p) > 0);
+    CHECK_EQ(a.value(kSheds), double(a.streaming->sheds(a.p)));
+    oscairn_sound_parameter_t bad{kSheds, 0};
+    CHECK_EQ(a.contexts->prepare(a.p, "x", &bad, 1, nullptr, nullptr, nullptr, 0), CLAP_INVALID_ID);
 }
