@@ -70,8 +70,8 @@ starting with "no" are reported at every value but the default (any other start:
 | Level Scaling Offset 4 | 〃 | yes: `amp_scaling_*`, `amp_keyfollow` | K40 | law only (unused on the pads) |
 | Level Key Follow Sensitivity | −64 – +63 | yes: `amp_scaling_*`, `amp_keyfollow` | K40 | law only (unused on the pads) |
 | AEG Time Key Follow Sensitivity Release Adjustment | 0 – 127 | yes: `ampeg_veltime*`, `ampeg_keytime*` | K10 | core test `level_scaling_and_velocity` (time shift); pads 0 |
-| Coarse Tune | −48 – +48 | yes: folded into the region's transpose and tune by the converter | converter (fine tune taken as cents, not measured) | pads (acceptance a) |
-| Fine Tune | −64 – +63 | yes: folded into the region's transpose and tune by the converter | converter (fine tune taken as cents, not measured) | pads (acceptance a) |
+| Coarse Tune | −48 – +48 | yes: folded into the region table by the converter, the key map moved down by the coarse tune (the reference picks the sample by key plus coarse tune) | measured here (acceptance g; exact: -12 is 0.000 cents) | the probe bass (acceptance g); sine and saw probes |
+| Fine Tune | −64 – +63 | yes: folded into the region's tune by the converter; not 1 cent a step: measured -64 -99.96, -32 -49.93, +1 +1.02, +5 +7.03, +10 +15.04, +63 +98.01 cents (the steps between not yet measured) | measured here (round 3, takes `m_fine*`) | pads (fine 0) |
 | Pitch Velocity Sensitivity | −64 – +63 | no (100 cents a key) | - | - |
 | Random Pitch Depth | 0 – 127 | no (100 cents a key) | - | - |
 | Pitch Key Follow Sensitivity | −200% – +200% | no (100 cents a key) | - | - |
