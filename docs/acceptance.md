@@ -604,6 +604,21 @@ attack and sustain takes suggest 2 steps a unit; the depth's takes are recorded 
 - Engine: `part_cutoff`, `part_resonance` (applied when the sound is compiled: no cost while playing); core test
   `part_offsets`.
 
+## (s) Resonance velocity sensitivity against the reference
+
+Recordings `a_rvs_*` (run pcm-round5-2026-11-14) and `l_rvs_*`, `l_rref*` (run pcm-round6-2026-11-14): a saw (note 36)
+through type 0 at cutoff 400 at velocities 1, 20, 40, 64, 80, 100 and 127; base resonances 0, 32, 64, 96, 127 with
+sensitivities -64, -48, -16, +16, +32, +48, +63 (the batch L takes at element level 80, below clipping). Each note matched
+against the engine's static resonances by band shape, the engine's reading turned into the reference's by the reference's
+own static resonances 0-127 every 8 (`l_rref*`: the engine reads 64 as 66, 96 as 100, 127 as 120).
+
+| what | measured | engine | tolerance | points |
+|---|---|---|---|---|
+| resonance at velocity v | the element's less abs(s) x (127 - v) / 126 for s > 0, abs(s) x (v - 1) / 126 for s < 0 (full sensitivity: 64 steps across the velocity range, the base at velocity 127 or 1), within 0-127 | `laws::resonanceAtVelocity` (rounded; +63 as +64), at note-on | rms 0.58 steps, at most 1.7 | 84 notes (12 settings x 7) |
+
+- Engine: `fil_res_velsens`; core test `resonance_velocity` (the law's values; a step through resonance 100 at the
+  softest velocity rings as resonance 36).
+
 ## Known differences (this engine's register)
 
 | # | what | size | status |

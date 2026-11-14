@@ -59,6 +59,11 @@ float elfoAmpDepthDb(float o) noexcept;
 // Index steps added to the cutoff at a key: the offset at the key (linear between the break points, flat beyond) x 3.125.
 float cutoffScalingSteps(const int16_t* keys, const int16_t* offsets, int key) noexcept;
 
+// ---- resonance velocity sensitivity ----
+// The resonance at a velocity (1-127): the element's less |s| x (127 - v) / 126 for a positive sensitivity s (+63 as
+// +64), |s| x (v - 1) / 126 for a negative one, rounded, within 0-127 (measured: docs/acceptance.md (s))
+int resonanceAtVelocity(int resonance, int sensitivity, int velocity) noexcept;
+
 // ---- pitch key follow ----
 float pitchKeyFollowCents(int raw) noexcept;  // cents a key at a raw sensitivity (96: 100, 64: 0)
 

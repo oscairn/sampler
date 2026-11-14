@@ -953,9 +953,10 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
     p.f[C0][i] = laws::cutoffCents(scaled) + keyCents;
     v.keyCents = keyCents + laws::cutoffCents(scaled) - laws::cutoffCents(float(e[FilCutoff]));  // the boxes move the base index
     v.element = e;
-    const int16_t bases[6] = {e[FilCutoff], e[FilResonance], e[AmpLevel], 0, 0, e[FilHpfCutoff]};
+    const int16_t resonance = int16_t(laws::resonanceAtVelocity(e[FilResonance], e[FilResVelSens], vel));
+    const int16_t bases[6] = {e[FilCutoff], resonance, e[AmpLevel], 0, 0, e[FilHpfCutoff]};
     for (int k = 0; k < 6; ++k) { v.base[k] = bases[k]; v.moved[k] = 0; }
-    p.f[DAMP][i] = laws::filterDamping(e[FilResonance]);
+    p.f[DAMP][i] = laws::filterDamping(resonance);
     for (int k = ST0; k < ST0 + 16; ++k) p.f[k][i] = 0;
     v.hpfCents = laws::hpfKeyCents(e[FilHpfKeyFollow], key);
     if (s.plan[ri].filter == Filter::LowHigh || s.plan[ri].filter == Filter::PoleHigh)

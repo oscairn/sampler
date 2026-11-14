@@ -99,7 +99,7 @@ starting with "no" are reported at every value but the default (any other start:
 | Filter Cutoff Frequency | 0 – 1023 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29; 0-256 measured here (acceptance d) | pads (acceptance a) (244, 6, 230, 74) |
 | Filter Cutoff Velocity Sensitivity | −64 – +63 | yes: `fil_velsens` | K34, verified here (acceptance j); below cutoff index 0 not modeled (D15) | 11 base cutoff / sensitivity pairs at 11 velocities: every note within 40 dB of the loudest within 2.1 dB (acceptance j) |
 | Filter Resonance/ Width | 0 – 127 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29 | pads (acceptance a) (244, 6, 230, 74) |
-| Filter Resonance Velocity Sensitivity | −64 – +63 | no | - | - |
+| Filter Resonance Velocity Sensitivity | −64 – +63 | yes: `fil_res_velsens`: the resonance less abs(s) x (127 - v) / 126 (s positive, +63 as +64) or abs(s) x (v - 1) / 126 (negative), rounded, at note-on | measured here (acceptance s) | 12 settings at 7 velocities: rms 0.58 steps over 84 notes; core test `resonance_velocity` |
 | HPF Cutoff Frequency | 0 – 1023 | yes: `fil_hpf_cutoff` in types 4 and 5 (a fixed section, damping 1, no key follow) | K23 | acceptance d (0-512) |
 | Distance | −128 – +127 | carried (`fil_distance`); acts only in the dual types, not covered | - | - |
 | Filter Gain | 0 – 255 | yes: `fil_cutoff`, `fil_resonance`, `fil_gain`, `fil_keyfollow` | K20-K22, K29 | pads (acceptance a) (244, 6, 230, 74) |

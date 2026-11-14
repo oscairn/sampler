@@ -977,6 +977,23 @@ static void partOffsets() {
     CHECK(r.sound->element[1].v[FilCutoff] == 1023 && r.sound->element[1].v[FilResonance] == 0);
 }
 
+// Resonance velocity sensitivity (measured): the law's values, and the voice's damping at a soft note.
+static void resonanceVelocity() {
+    CHECK(laws::resonanceAtVelocity(64, 63, 127) == 64 && laws::resonanceAtVelocity(64, 63, 64) == 32 && laws::resonanceAtVelocity(64, 63, 1) == 0);
+    CHECK(laws::resonanceAtVelocity(127, -64, 64) == 95 && laws::resonanceAtVelocity(64, -16, 127) == 48 && laws::resonanceAtVelocity(40, 0, 1) == 40);
+    // a step through type 0 at resonance 100: the softest note with sensitivity +63 rings as resonance 36
+    auto ring = [](const std::string& el, float vel) {
+        Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fil_type=0 fil_cutoff=500 fil_keyfollow=64 fileg_depth=0 " + el, constant(4410, 16384), 1, 44100.f, nullptr, 44100);
+        r.core->noteOn(0, 0, 0, 60, vel);
+        const auto o = r.run(4096);
+        double peak = 0;
+        for (size_t i = 0; i < o.size(); i += 2) peak = std::max(peak, double(o[i]));
+        return peak;
+    };
+    NEAR(ring("fil_resonance=100 fil_res_velsens=63", 1.0f / 127), ring("fil_resonance=36", 1.0f / 127), 1e-6);
+    CHECK(ring("fil_resonance=100 fil_res_velsens=63", 1.0f) > 1.2 * ring("fil_resonance=0", 1.0f));
+}
+
 int main() {
     struct { const char* name; void (*fn)(); } tests[] = {
         {"sound_format", soundFormat}, {"coverage", coverage}, {"coverage_table", coverageTable}, {"part_velocity", partVelocity}, {"element_number", elementNumber}, {"law_values", lawValues}, {"attack_shape", attackShape},
@@ -986,7 +1003,7 @@ int main() {
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
         {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
-        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets},
+        {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity},
     };
     for (auto& t : tests) {
         const int before = failures;

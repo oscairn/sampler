@@ -218,6 +218,16 @@ float pitchKeyFollowCents(int raw) noexcept
     return float(t[raw < 0 ? 0 : raw > 127 ? 127 : raw]);
 }
 
+int resonanceAtVelocity(int resonance, int s, int v) noexcept
+{
+    // 12 settings (bases 0-127, sensitivities -64 to +63) at 7 velocities against the reference's own static resonances:
+    // rms 0.58 steps, at most 1.7 (round 5 batch A, round 6 batch L)
+    if (s == 0) return resonance;
+    const int k = s >= 63 ? 64 : s < 0 ? -s : s;
+    const float drop = float(k) * float(s > 0 ? 127 - v : v - 1) / 126.0f;
+    return std::max(0, std::min(127, resonance - int(std::lround(drop))));
+}
+
 float hpfKeyCents(int kf, int key) noexcept
 {
     // the cutoff's key follow law, about key 60: measured on white noise (type 4, the high-pass at 400, key follow 0, 32, 96,
