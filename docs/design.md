@@ -91,10 +91,17 @@ allocator).
 
 A sample reference is `sample:<id>` (the host's `resolve_sample` gives the pack and the record's offset,
 length and preload span) or a path naming a one-record pack, whose trailer gives them. Each pack file is
-mapped once per process, read-only, advised random access, and shared by every instance. Loading a sound resolves every reference first, hints every record's
-preload span in one read-ahead batch, reads the headers in ascending offset order, then copies or
-decodes what stays in memory in ascending order (a second hint batch covers frames decoded past
-the windows). Nothing opens a file per sample.
+opened once per process, read-only, and shared by every instance; it is never mapped (a process whose
+mappings are locked, as with `mlockall`, would hold a whole pack): its header page, trailer and index are
+read once (the index 56 bytes a record on the heap), a record's preload span (header, frame table,
+window) when a sound is loaded, keeping its frame table, and each streamed block's compressed bytes into
+the I/O thread's one fixed buffer before decoding (`pread`; `ReadFile` at an offset on Windows). Loading
+a sound resolves every reference first, hints every record's preload span in one read-ahead batch
+(`posix_fadvise` WILLNEED on Linux, `fcntl` F_RDADVISE on macOS, none on Windows), reads the headers in
+ascending offset order, then reads or decodes what stays in memory in ascending order (a second hint
+batch covers frames decoded past the windows). Nothing opens a file per sample. A read that fails at
+load fails the sound's prepare, naming the reference; a streamed block that cannot be read is a late
+stream (the voice is shed with its fade, counted).
 
 What stays in memory, per region (frames from the region's start):
 

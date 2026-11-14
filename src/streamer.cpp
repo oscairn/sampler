@@ -48,9 +48,10 @@ void produce(pcm::Stream& st, const StreamSource& s, int64_t n, Decoder& d) {
     const int64_t w = st.written.load(std::memory_order_relaxed);
     if (st.ioAt < segEnd(s)) {
         const uint32_t b = s.record.info.block_size, g = s.start + uint32_t(st.ioAt), at = g % b;
-        const uint32_t got = decodeBlock(s.record, g / b, d);  // a block that does not decode plays silence
+        const int32_t got = decodeBlock(s.record, g / b, d);  // a block that does not decode plays silence
+        if (got < 0) { st.ioDone = true; return; }  // it cannot be read: nothing more comes, and the voice is shed as late
         for (int64_t k = 0; k < n; ++k)
-            for (uint32_t ch = 0; ch < c; ++ch) st.ring[((w + k) % pcm::kStreamFrames) * c + ch] = at + k < got ? d.ch[ch][at + k] : 0;
+            for (uint32_t ch = 0; ch < c; ++ch) st.ring[((w + k) % pcm::kStreamFrames) * c + ch] = int64_t(at) + k < got ? d.ch[ch][at + k] : 0;
         st.ioAt += n;
         if (s.loop && st.ioAt == s.loopEnd) st.ioAt = s.loopStart;
         else if (!s.loop && st.ioAt == s.stop && !s.tail) st.ioDone = true;

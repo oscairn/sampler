@@ -17,21 +17,20 @@ bool before(const Record& x, const Record& y) {
     return x.pack != y.pack ? x.pack->path < y.pack->path : x.entry.offset < y.entry.offset;
 }
 
-// Frames [from, from + count) of a record, interleaved, into out: from its window when they lie in it, else decoded.
-void readFrames(const Record& r, uint32_t from, uint32_t count, int16_t* out, Decoder& d) {
-    const uint8_t* w = nullptr; size_t bytes = 0;
-    if (from + count <= r.info.window_frames && sp_record_window(r.pack->data, r.pack->len, &r.entry, &w, &bytes) == SP_OK)
-        std::memcpy(out, w + size_t(from) * r.info.channels * 2, size_t(count) * r.info.channels * 2);  // little-endian 16-bit, as the core reads
-    else decodeFrames(r, from, count, out, d);
+// Frames [from, from + count) of a record, interleaved, into out: read from its window when they lie in it, else
+// decoded; false when the pack cannot be read.
+bool readFrames(const Record& r, uint32_t from, uint32_t count, int16_t* out, Decoder& d) {
+    if (from + count <= r.info.window_frames)  // little-endian 16-bit, as the core reads
+        return r.pack->read(r.entry.offset + r.info.head_len + uint64_t(from) * r.info.channels * 2, out, size_t(count) * r.info.channels * 2);
+    return decodeFrames(r, from, count, out, d);
 }
 
 // The bytes of a record's FLAC frames holding frames [from, from + count): for the read-ahead hint.
 void hintFrames(const Record& r, uint32_t from, uint32_t count) {
-    const uint8_t *frames = nullptr, *table = nullptr; size_t len = 0, entries = 0;
-    if (sp_record_frames(r.pack->data, r.pack->len, &r.entry, &frames, &len, &table, &entries) != SP_OK) return;
-    auto at = [&](size_t i) { const uint8_t* t = table + 4 * std::min(i, entries - 1); return uint32_t(t[0]) | uint32_t(t[1]) << 8 | uint32_t(t[2]) << 16 | uint32_t(t[3]) << 24; };
-    const size_t b0 = from / r.info.block_size, b1 = (size_t(from) + count + r.info.block_size - 1) / r.info.block_size;
-    willNeed(*r.pack, uint64_t(frames - r.pack->data) + at(b0), at(b1) - at(b0));
+    const std::vector<uint32_t>& t = *r.table;
+    const size_t b0 = std::min<size_t>(from / r.info.block_size, t.size() - 1);
+    const size_t b1 = std::min<size_t>((size_t(from) + count + r.info.block_size - 1) / r.info.block_size, t.size() - 1);
+    willNeed(*r.pack, r.entry.offset + r.info.head_len + r.info.window_bytes + t[b0], t[b1] - t[b0]);
 }
 
 // The process's buffers in memory, by record (pack path and offset: packs are never rewritten) and frames: a waveform
@@ -178,7 +177,10 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
     auto dec = std::make_unique<Decoder>();
     for (const Job& j : jobs) {
         auto& b = const_cast<std::vector<int16_t>&>(*s->pcm[j.buffer]);  // ours alone until it is cached below
-        readFrames(s->records[j.sample], j.from, j.count, b.data() + size_t(j.offset) * s->records[j.sample].info.channels, *dec);
+        if (!readFrames(s->records[j.sample], j.from, j.count, b.data() + size_t(j.offset) * s->records[j.sample].info.channels, *dec)) {
+            error = std::string(d.ref[j.sample]) + ": cannot read " + s->records[j.sample].pack->path;
+            return nullptr;
+        }
     }
     remember(keys, s->pcm);
     return s;

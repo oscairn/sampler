@@ -113,6 +113,7 @@ struct StreamingExt {
     uint64_t (*sheds)(const clap_plugin_t*);
     void (*stall)(const clap_plugin_t*, bool);
     void (*settle)(const clap_plugin_t*);
+    void (*failReads)(const clap_plugin_t*, bool);
 };
 
 struct Rec { uint16_t type; int32_t id; int16_t port, channel, key; uint32_t time; long frame; double value; };

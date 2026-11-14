@@ -109,3 +109,21 @@ TEST(streaming_holds_only_heads) {
     CHECK(bytes[1] >= 150000u * 4);                                   // the stereo tone whole
     CHECK(bytes[0] < 150000u * 4 / 4);                                // streamed: the default sound's head and the tone's
 }
+
+// Packs are read at their offsets, never mapped: with a sound loaded and a streamed note playing, no pack file is in
+// the process's mappings (a process whose mappings are locked holds only what it read). Linux only (/proc).
+TEST(packs_are_not_mapped) {
+#ifdef __linux__
+    Inst a;
+    CHECK(a.load(stateWith(soundOf(sampleRef("stereo"), "key=0-127 root=60"))));
+    a.block(128, {on(5, 1, 0, 72)});
+    a.run(9600);
+    FILE* f = std::fopen("/proc/self/maps", "r");
+    CHECK(f != nullptr);
+    char line[1024];
+    int mapped = 0;
+    while (f && std::fgets(line, sizeof line, f)) if (std::strstr(line, ".osp")) { ++mapped; std::printf("  mapped: %s", line); }
+    if (f) std::fclose(f);
+    CHECK_EQ(mapped, 0);
+#endif
+}
