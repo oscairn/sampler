@@ -44,3 +44,31 @@ TEST(no_allocation_in_process) {
     if (worst) std::printf("  %ld allocation(s) inside process()\n", worst);
     CHECK(a.endsTotal() > 100);
 }
+
+// The same with streaming: voices that start streams, read them, release their rings, loop through a streamed body
+// and are shed when the I/O thread stalls; the I/O thread runs beside process() throughout.
+TEST(no_allocation_in_process_while_streaming) {
+    if (!allocGuardAvailable()) { std::printf("  allocation guard unavailable in this build: not checked\n"); return; }
+    Inst a;
+    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nsample " + sampleRef("mono") +
+                            "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=40\n"
+                            "region key=0-63 root=60 element=0 sample=0\nregion key=64-127 root=60 element=0 sample=1 loop=10000-90000\n";
+    CHECK(a.load(stateWith(snd)));
+    a.settle = false;
+    a.block(128);
+    a.guard = true;
+    long worst = 0;
+    auto go = [&](uint32_t frames, std::vector<Bytes> ev = {}) { a.block(frames, ev); worst = std::max(worst, a.allocations); };
+    for (int i = 0; i < 400; ++i) go(128, {on(0, 1 + i, 0, int16_t(40 + (i * 7) % 60)), off(64, i - 4, 0, int16_t(40 + ((i - 4) * 7) % 60))});
+    a.guard = false; a.streaming->stall(a.p, true); a.guard = true;
+    for (int i = 0; i < 200; ++i) go(128, {on(0, 1000 + i, 0, int16_t(70 + i % 20))});  // late streams: shed
+    a.guard = false; a.streaming->stall(a.p, false); a.guard = true;
+    std::vector<Bytes> up;
+    for (int16_t k = 0; k < 128; ++k) up.push_back(off(0, -1, 0, k));
+    go(128, up);
+    for (int i = 0; i < 400; ++i) go(128);
+    a.guard = false;
+    CHECK_EQ(worst, 0);
+    CHECK(a.streaming->sheds(a.p) > 0);
+    CHECK_EQ(a.voices(), 0u);
+}
