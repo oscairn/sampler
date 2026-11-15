@@ -779,6 +779,7 @@ widths 0-127).
 | D21 | Type 10's passband | the engine 0.5-1.2 dB louder at width 64 in three takes (t) | open (the fork's law) |
 | D22 | A released voice ends once its output gain is below -96 dBFS (`docs/design.md`, the quiet end) | the reference plays on to -96.45 dB below the held level; output below -96 dBFS cut | by design (approved departure) |
 | D23 | Pitch more than 24 semitones above the root | one reference take (11 semitones by key, 24 by the bend) played 24 above the root (f); the engine plays the full pitch | open (one take; the engine sets no pitch ceiling) |
+| D24 | The instrument sleeps (CLAP_PROCESS_SLEEP) when nothing sounds or waits. The one state that runs with time while no voice sounds is the engine clock, which the part LFO's free-running phase (`plfo_keyon_reset=0`) and its random waves' seed (any reset setting) read | the clock catches up from the host's `steady_time` when it wakes, so the phase is as if every idle block had been rendered; a host that gives no `steady_time` (-1) leaves the clock where it stopped, and the phase restarts from there | by design |
 
 Analysis scripts and renders: the measuring machine's scratch area (`acc.py`, `acc2.py`,
 `refcmp.py`); not in this repository.

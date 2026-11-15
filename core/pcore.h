@@ -265,6 +265,10 @@ public:
     uint32_t streamSheds() const { return streamSheds_.load(std::memory_order_relaxed); }
 
     uint32_t voiceCount() const;  // slots sounding
+    // Nothing sounds or waits to start: render(frames) then does no more than advance(frames).
+    bool idle() const { return !pendingSlots_ && !live_ && !voiceCount(); }
+    // The clock moves on without rendering (frames the host skipped while the instrument slept): part LFOs keep their phase.
+    void advance(int64_t frames) { clock_ += frames; }
     uint32_t elementVoices() const;
     VoiceState voice(uint32_t v) const;
 

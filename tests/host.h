@@ -227,6 +227,7 @@ struct Inst {
     bool guard = false;         // count heap allocations inside process()
     long allocations = 0;
     bool badStatus = false, badTime = false;
+    clap_process_status last = CLAP_PROCESS_CONTINUE;  // what the latest block returned
 
     explicit Inst(bool start = true) {
         auto& lib = library();
@@ -283,6 +284,7 @@ struct Inst {
         if (guard) allocGuardEnable(true);
         const auto st = p->process(p, &pr);
         if (guard) { allocGuardEnable(false); allocations = allocGuardCount(); }
+        last = st;
         if (st == CLAP_PROCESS_ERROR) badStatus = true;
         if (out.badTime) badTime = true;
         if (out.dropped) { std::printf("  test log overflowed\n"); ++g_failures; }

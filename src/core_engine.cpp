@@ -88,6 +88,8 @@ public:
     void render(float* const* l, float* const* r, uint32_t n, uint32_t from) override { sync(); core_->render(l, r, n, from); }
     void route(uint32_t c, uint32_t bus, bool elements) override { core_->route(c, bus, elements); }
     uint32_t voiceCount() const override { return core_->voiceCount(); }
+    bool idle() const override { return core_->idle(); }
+    void advance(uint64_t frames) override { core_->advance(int64_t(frames)); }
     VoiceInfo voice(uint32_t v) const override {
         const auto s = core_->voice(v);
         return {s.sounding, s.releasing, s.level, s.age};

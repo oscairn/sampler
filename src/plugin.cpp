@@ -111,6 +111,10 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     std::atomic<bool> dropsPending{false};   // some are: each block asks for a main-thread call to drop them
     double sampleRate = 48000;
     uint32_t maxBlock = 0;
+    std::atomic<bool> loading{false};     // a snapshot load is running (main thread)
+    bool slept = false;                   // audio thread: the last process returned SLEEP
+    bool rendered = false;                // audio thread: this block reached the core
+    int64_t renderedEnd = -1;             // audio thread: the host's steady_time the core's clock has reached, -1 unknown
 
     explicit Plugin(const clap_host_t* h) : host(h) {
         plugin = {&kDescriptor, this, init, destroy, activate, deactivate, startProcessing, stopProcessing, reset, process, getExtension, onMainThread};
@@ -352,6 +356,26 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         while (cap && d.keeping() > cap && giveUp(d, victim(d, oscairn::voices::none))) {}
     }
 
+    // ---- sleeping -----------------------------------------------------------------------
+    // Audio thread, no locks: a block with no events would make no sound and change nothing but the clock, which process
+    // catches up from steady_time. False while any block work is left: a voice in any context (fading and released ones
+    // too, and the core's tails and held-back layers), a queued selection, a NOTE_END owed or a selection to show, a
+    // discarded sound the main thread still has to let go of, a snapshot load. Streams need nothing from the audio
+    // thread (the I/O thread takes released rings back on its own) and the shed counter is read, never pushed.
+    bool asleep() const {
+        uint32_t voicesLeft = 0;
+        for (const auto& c : contexts) voicesLeft += c.voices.load(std::memory_order_relaxed);
+        return !voicesLeft && core->idle() && !owedCount && selected[0] == shownSlot
+            && selectionHead.load(std::memory_order_acquire) == selectionTail.load(std::memory_order_relaxed)
+            && !dropsPending.load(std::memory_order_acquire) && !loading.load(std::memory_order_acquire);
+    }
+    // Any thread: the host calls process again (it is not calling while asleep). The main-thread changes that give the
+    // block work and that the host cannot see ask for it: a snapshot load (owed NOTE_ENDs, the shown sound), a state
+    // load, a discarded sound (dropsPending, with the callback process then asks for). The host itself processes the
+    // block after an accepted select or a queued chokeRetiring.
+    void wake() const { if (host && host->request_process) host->request_process(host); }
+    void snapshotLoading(bool on) { loading.store(on, std::memory_order_release); if (!on) wake(); }
+
     // ---- rendering ----------------------------------------------------------------------
     void render(const clap_process_t* pr, uint32_t from, uint32_t to) {
         for (uint32_t i = 0; i < kVoices; ++i)  // a choke (NOTE_CHOKE or the helper's own) fades in the core too
@@ -385,6 +409,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             const auto* ring = bus ? nullptr : retiring(slot);
             core->route(slot, ring ? kPorts + uint32_t(ring != ringOut) : bus, alone && !bus);
         }
+        rendered = true;
         core->render(left, right, to - from, from);
         for (uint32_t i = 0; i < kVoices; ++i)  // a voice the core finished: its note ends here
             if (voices[i].active && !core->voice(i).sounding) {
@@ -492,7 +517,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     void discarded(Context& c) {
         c.patch.sound.reset();
         const uint32_t i = uint32_t(&c - contexts.data());
-        if (!core->drop(i)) { dropping[i] = true; dropsPending.store(true, std::memory_order_relaxed); }
+        if (!core->drop(i)) { dropping[i] = true; dropsPending.store(true, std::memory_order_release); wake(); }
     }
 
     static bool saveState(const clap_plugin_t* p, const clap_ostream_t* stream) {
@@ -530,6 +555,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         s.contexts[0].patch.sound = patch.sound;
         s.core->loadPatch(0, patch);
         select(p, 0, -1);  // the state's sound plays on every channel (from the next block)
+        s.wake();
         return true;
     }
 
@@ -658,6 +684,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         s.setSampleRate(rate);
         s.core->prepare(rate, maxFrames);
         s.loadAll();
+        s.slept = false; s.renderedEnd = -1;
         return true;
     }
     static void deactivate(const clap_plugin_t*) {}
@@ -670,11 +697,22 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         bool left = false;
         for (uint32_t i = 0; i < kContexts; ++i)
             if (s.dropping[i]) left |= s.dropping[i] = !s.contexts[i].prepared && !s.core->drop(i);
-        s.dropsPending.store(left, std::memory_order_relaxed);
+        s.dropsPending.store(left, std::memory_order_release);
     }
+    // Frames the host skipped while this returned SLEEP move the core's clock on (the part LFOs' free-running phase) from
+    // steady_time; without one (-1) the clock stops while asleep. A block that returned early is one of the skipped.
     static clap_process_status process(const clap_plugin_t* p, const clap_process_t* pr) {
-        const auto status = Base::process(p, pr);
         auto& s = self(p);
+        const int64_t now = pr->steady_time;
+        if (now < 0) s.renderedEnd = -1;
+        else if (s.renderedEnd >= 0) {
+            if (s.slept && now > s.renderedEnd) s.core->advance(uint64_t(now - s.renderedEnd));
+            s.renderedEnd = now;
+        }
+        s.rendered = false;
+        const auto status = Base::process(p, pr);
+        if (s.rendered) s.renderedEnd = now >= 0 ? now + pr->frames_count : -1;
+        s.slept = status == CLAP_PROCESS_SLEEP;
         if (s.dropsPending.load(std::memory_order_relaxed) && s.host && s.host->request_callback) s.host->request_callback(s.host);
         return status;
     }

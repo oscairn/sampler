@@ -132,6 +132,9 @@ public:
     // A context's output bus, and whether its sound's elements may split off to buses 1 and 2 (pcm::Core::route)
     virtual void route(uint32_t context, uint32_t bus, bool elements) = 0;
     virtual uint32_t voiceCount() const = 0;                        // voices sounding, fading ones included
+    // Nothing sounds, fades or waits to start: a block rendered now makes no sound and changes nothing but the clock.
+    virtual bool idle() const = 0;
+    virtual void advance(uint64_t frames) = 0;                      // the clock moves on without rendering (skipped blocks)
     virtual VoiceInfo voice(uint32_t voice) const = 0;
     virtual SoundCost cost(uint32_t context) const = 0;              // any thread
     virtual uint64_t streamSheds() const = 0;                       // element voices shed for want of streamed audio; any thread
