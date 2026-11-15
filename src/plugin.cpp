@@ -26,7 +26,6 @@
 #include <set>
 #include <sstream>
 
-#include "assets-draft.h"
 #include "engine.h"
 #include "identity.h"
 
@@ -93,7 +92,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static constexpr bool volumeExpressions = true;  // the core multiplies by the note's volume
 
     const clap_host_t* host;
-    const oscairn_host_assets_draft4_t* assets = nullptr;
+    const oscairn_host_assets_t* assets = nullptr;
     bool assets4 = false;  // the host answered draft 4 (resolve_sample)
     std::unique_ptr<pcmshell::Engine> core = makeEngine();
     std::array<std::atomic<float>, kParamCount> values{};  // what get_value shows: the sound on channel 0
@@ -646,9 +645,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     static bool init(const clap_plugin_t* p) {
         auto& s = self(p);
         if (s.host && s.host->get_extension) {
-            s.assets = static_cast<const oscairn_host_assets_draft4_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS_DRAFT_4));
+            s.assets = static_cast<const oscairn_host_assets_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS));
             s.assets4 = s.assets != nullptr;
-            if (!s.assets) s.assets = static_cast<const oscairn_host_assets_draft4_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS));
+            if (!s.assets) s.assets = static_cast<const oscairn_host_assets_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS_DRAFT_3));
         }
         return true;
     }

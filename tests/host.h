@@ -3,13 +3,13 @@
 // structs: the built .clap is dlopen'ed, its factory creates the plugin, and nothing of the
 // plugin's own code or headers is used.
 #pragma once
+#include <atomic>
 #include <clap/clap.h>
 #include <dlfcn.h>
 #include <oscairn-clap/assets.h>
 #include <oscairn-clap/memory.h>
 #include <oscairn-clap/sound-contexts.h>
 #include <oscairn-clap/voice-budget.h>
-#include "../src/assets-draft.h"  // the draft copy of oscairn.assets draft 4 (resolve_sample)
 
 #include <algorithm>
 #include <array>
@@ -176,8 +176,8 @@ inline Library& library() { static Library l; return l; }
 
 // The host's oscairn.assets (draft 4): library "test" is g_assetDir, where a reference "waveform:<id>" is the file
 // <id>.owf; anything else is unknown; resolve_sample answers from the store pack (g_store).
-inline const oscairn_host_assets_draft4_t* testAssets() {
-    static const oscairn_host_assets_draft4_t a = {
+inline const oscairn_host_assets_t* testAssets() {
+    static const oscairn_host_assets_t a = {
         [](const clap_host_t*, oscairn_asset_ref_t* ref, char* path, uint32_t cap, char* msg, uint32_t mcap) {
             const bool wf = !std::strncmp(ref->path, "waveform:", 9);  // installed waveforms: <id>.owf, library empty
             if (std::strcmp(ref->library, wf ? "" : "test")) { std::snprintf(msg, mcap, "no library '%s'", ref->library); return false; }
@@ -197,10 +197,11 @@ inline const oscairn_host_assets_draft4_t* testAssets() {
         }};
     return &a;
 }
+inline std::atomic<int> g_processRequests{0};  // the plugin's request_process calls (a sleeping instrument's wake-ups)
 inline const clap_host_t* testHost() {
     static const clap_host_t h = {CLAP_VERSION, nullptr, "pcm-tests", "oscairn", "", "1",
-                                  [](const clap_host_t*, const char* id) -> const void* { return !std::strcmp(id, OSCAIRN_EXT_ASSETS_DRAFT_4) || !std::strcmp(id, OSCAIRN_EXT_ASSETS) ? testAssets() : nullptr; },
-                                  [](const clap_host_t*) {}, [](const clap_host_t*) {}, [](const clap_host_t*) {}};
+                                  [](const clap_host_t*, const char* id) -> const void* { return !std::strcmp(id, OSCAIRN_EXT_ASSETS_DRAFT_3) || !std::strcmp(id, OSCAIRN_EXT_ASSETS) ? testAssets() : nullptr; },
+                                  [](const clap_host_t*) {}, [](const clap_host_t*) { ++g_processRequests; }, [](const clap_host_t*) {}};
     return &h;
 }
 inline const oscairn_asset_ref_t* testBase() { static oscairn_asset_ref_t b = [] { oscairn_asset_ref_t r{}; std::snprintf(r.library, sizeof r.library, "test"); return r; }(); return &b; }
