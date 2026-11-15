@@ -91,7 +91,12 @@ transposition folds there, the 8-tap kernel keeps part of it as the reference do
 
 Not reproduced on purpose (known differences from the fork): its one-frame position stall at each
 voice's second block, its block-dependent float positions, and its reads past a sample's end at a
-loop crossing (these samples end exactly at their loop ends; the engine stitches the loop). The
+loop crossing (these samples end exactly at their loop ends; the engine stitches the loop).
+
+Accepted for now, to revisit if high notes are reported dull or grainy: the 8-tap kernel's extra
+aliasing from about two octaves above a sample's root, and the dropped requirement on the level of
+the interpolation's noise images. Where to look first: the kernel bank's cutoffs (docs/design.md)
+and the 20-tap figures above. The
 engine's segment ends wait for the next control step (at most 15 frames); on the pads this touches
 nothing measurable (the attack ends on flat decays).
 
