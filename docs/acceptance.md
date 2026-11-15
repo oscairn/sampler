@@ -608,7 +608,7 @@ them.
 | key-on reset | off: one oscillator, started by the first note, not reset later; each on: every note its own from its start (a second note's oscillator from its own start while the first runs on); first on: one, reset at a note while no other key is down | the same | phases within the tracker's resolution | 3 takes, two notes tracked apart |
 | box on slot 1's depth (57) | trunc(output x 128 / 8192) depth steps, within 0-127 | the same | every step the law's depth | 45 wheel steps |
 | slots | slots 2 and 3 as slot 1; two slots on the pitch add (64 + 64: 224.5 cents; 32 + 96: 555.6 against 554.5); the element's switch for a slot keeps it out | the same | within 1.3 cents | 5 takes |
-| element ratio | no effect on the pitch (ratios 0-96, slots 1, 2) or the level (0); the cutoff still at 0 and at about half its swing at 64 | the cutoff's slot scaled by ratio / 127, others unscaled; the pan's and resonance's reported | - | 8 takes |
+| element ratio | no effect on the pitch (ratios 0-96, slots 1, 2); the level slot inert at 0 (as with depth 0); the cutoff still at 0 and at about half its swing at 64 | the cutoff's and the level's slots scaled by ratio / 127 (level: ratio 0 measured, scaling in between assumed as for the cutoff), the pitch's unscaled; the pan's and resonance's reported | - | 8 takes |
 | element phase offset | no effect: offsets 1-5 on one element, 120 and 180 degrees on a second element two octaves up (each tracked apart), resets each on and first on | no effect; with reset off and more than one element reported | - | 8 takes |
 | level | the low half of a square: depth level steps down from level 127 (the top half held at 127) | levelGain(127 - depth) | within 0.17 dB, rms 0.07 | 15 depths |
 | pan | raw pan steps added, saturating: 34, 50, 57, 61, 62 at depths 16-80 (the balance law's grid), the far side silent from 96 | the table, linear between 16-step knots | within 0.22 dB | 5 depths and 3 silent |
@@ -772,6 +772,7 @@ widths 0-127).
 | D16 | Elements 2-8 with the filter thru | - | resolved: 5.625 dB below element 1 by `element_number` (i); the converter must write the number |
 | D17 | Filter gain 230 with type 0 wide open | the engine 0.21 dB above the reference (i) | open (the fork's law) |
 | D18 | An amplitude envelope release box whose source moves during the release | the reference changes the release's rate; the engine keeps the rate taken at the note-off | open |
+| D19 | The part LFO's level law at element ratios above 0, in particular on the negative half of a wave | not measured; the engine's may differ | open |
 | D9 | 88.2 kHz and rates above 132.3 kHz play the plain 44.1 kHz filter sections | response scaled by the rate | not covered |
 | D19 | Two high-pass sections (type 6) at resonance 88 and above: the reference saturates | its peaks 43-55 dB with harmonics; the engine linear, to 62 dB (t) | open (as type 0, the fork's K24) |
 | D20 | Type 3's section where it passes the top of the table with resonance 56 and above, and at cutoff 512 | up to 22 dB beside the peak at cutoffs 592-688, 17.7 dB at 512 (t) | open: the reference's section above 7290 Hz is not a stable 44.1 kHz section |

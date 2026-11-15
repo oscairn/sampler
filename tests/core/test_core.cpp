@@ -1134,6 +1134,18 @@ static void partLfo() {
         NEAR(o[2 * hi + 1] / (16384 * kUnit), 1.0, 1e-3);
         NEAR(o[2 * lo + 1] / (16384 * kUnit), laws::levelGain(95) * far34, 1e-3);  // right, the pan to the left, 32 steps down
     }
+    {   // the element's depth ratio 0 takes a level slot out: bit-identical to depth 0
+        std::vector<float> out[2];
+        for (int k = 0; k < 2; ++k) {
+            const std::string t = text(k ? "plfo_wave=6 plfo_speed=40 plfo_dst1=64 plfo_depth1=0" : "plfo_wave=6 plfo_speed=40 plfo_dst1=64 plfo_depth1=127", k ? "" : "plfo_ratio1=0");
+            Rig r(t.c_str(), constant(44100, 16384), 44100.f, 44100);
+            r.core->setGain(0, 1, 0);
+            r.core->noteOn(0, 0, 0, 60, 1.0f);
+            const auto o = r.run(44100);
+            out[k].assign(o.begin(), o.end());
+        }
+        CHECK(out[0] == out[1]);
+    }
     {   // the envelope: nothing during a delay of 64 (0.45 s); with a hold of 48 (0.20 s) and no fade out, nothing after it
         for (const char* env : {"plfo_delay=64", "plfo_hold=48 plfo_fade_out=0"}) {
             const std::string t = text(std::string("plfo_wave=6 plfo_speed=40 plfo_dst1=65 plfo_depth1=64 ") + env, "");

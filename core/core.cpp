@@ -1466,7 +1466,7 @@ PV_NOINLINE float Core::partLfo(Pool& p, uint32_t i) {
         float amp = lf.depth[j];
         if (lf.box1 && lf.slot[j] == 0)  // slot 1's depth moved by its boxes (the element's switches): raw steps, within 0-127
             amp = laws::partLfoDepth(lf.dest[j], std::max(0, std::min(127, lf.depth1 + noteOnSteps(*sound_[v.sound], v.element, v.sound, v.channel, laws::BoxLfoDepth1))));
-        if (lf.dest[j] == laws::LfoCutoff) amp *= float(v.lfoRatio[j]) / 127.0f;  // the element's depth ratio (measured on the cutoff only)
+        if (lf.dest[j] == laws::LfoCutoff || lf.dest[j] == laws::LfoLevel) amp *= float(v.lfoRatio[j]) / 127.0f;  // the element's depth ratio (cutoff: measured; level: ratio 0 measured, between assumed as for the cutoff)
         x[lf.dest[j]] += amp * w;
     }
     auto at = [&](int k, float lfo, float hi) { return std::max(0.0f, std::min(hi, float(v.base[k] + v.moved[k]) + lfo)); };

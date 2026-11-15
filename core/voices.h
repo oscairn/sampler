@@ -60,7 +60,7 @@ struct VoiceScalar {  // 512 bytes (static_assert below): the pools index it by 
     uint8_t slot = 0, sound = 0, channel = 0, key = 60, bus = 0;
     bool releasing = false, fresh = true, filterMoves = false, eq = false;  // eq: the element EQ shapes the sound
     bool steady = false, dirty = true;  // steady: control steps change nothing until an event makes it dirty
-    uint8_t lfoRatio[3] = {127, 127, 127};  // the element's part LFO depth ratio for each slot (it scales a slot on the cutoff)
+    uint8_t lfoRatio[3] = {127, 127, 127};  // the element's part LFO depth ratio for each slot (it scales a slot on the cutoff or the level)
     // the region's audio (virtual, unwrapped positions; see feed()): its view, the span of it the
     // positions in [segLo, segHi) read (frame x at seg + x * channels), the frames rebasing took off,
     // the stream while it streams; starve: 1 its stream is late (the next control step sheds it), 2 shed
