@@ -247,6 +247,32 @@ Expected from the counts (not measured): 9,272 and 12,166 instructions a mono an
 core's measured 0.99 and 0.94 ns an instruction about 9 and 11 us a voice, with the table no longer the cause of misses
 (2 KB a voice, 27 KB for the cost cases' 13 kernels).
 
+## One or two voices in a lane (0.9.0)
+
+A lane computes four voice slots in vector registers whether or not they hold voices, so one voice costs most of a
+lane. Instructions and first-level data read misses a block, valgrind with the device's caches (as `cache.sh`),
+`PC_SOUNDS=K pcbench cg held N x K` (N notes in each of K sounds, each sound on its own bus; the bench's zeroing and
+summing of its bus buffers, about 4,800 a block at rest, included):
+
+| case | mono, 8-tap | mono, Hermite | stereo, 8-tap | stereo, Hermite |
+|---|---|---|---|---|
+| 1 voice | 32,645; 60.0 | 25,493; 3.0 | 43,200; 80.8 | 36,992; 52.4 |
+| 2 voices, one sound | 36,157; 80.6 | 28,949; 35.8 | 46,938; 107.6 | 40,618; 77.5 |
+| 1 voice in each of 5 sounds | 81,928; 288.5 | 68,024; 123.9 | 103,892; 461.5 | 91,172; 275.4 |
+| 2 in each of 5 | 128,120; 461.8 | 107,144; 230.4 | 161,747; 705.8 | 142,355; 442.6 |
+| 1 in each of 8 | 95,152; 389.8 | 81,056; 197.7 | 117,814; 545.1 | 104,710; 342.0 |
+| 2 in each of 8 | 178,989; 1,134.4 | 150,877; 379.1 | 224,818; 1,389.7 | 198,626; 744.9 |
+
+One mono voice costs 32,645 instructions, 3.5 times the per-voice slope (9,272); a second voice in the same lane adds
+3,512 (its control step and scalar side). Of the single voice's cost the kernel's taps for the lane's four slots are
+about 7,150 more than Hermite's lane; the rest is the lane's vector work (window feed, envelope, filter, mix), the same
+for one voice or four, and 174 of fixed work a block. Its misses are not the problem: 60 a block against a slope of 174
+a voice. Skipping the empty slots' taps (bit-identical output) saved 2,232 instructions for one voice but cost 1,000 to
+13,000 more for 2 to 16 voices (the compiler no longer unrolls the slot loop), so it is not used. A gate of one voice at
+most 1.5 times the slope (13,908 mono) is not met and not set; reaching it needs the lane's vector work done at width
+1 or 2 for a lane with one or two voices, where a scalar filter takes about as many instructions as the vector
+one (by operation count, not measured): not done. `pcbench time` times these cases on the device.
+
 ## Time on this Mac (Apple silicon, thread CPU per block, `pcbench time`; the 0.1.0 core, not rerun)
 
 | voices | mono, 20-tap | mono, Hermite | stereo, 20-tap | stereo, Hermite |

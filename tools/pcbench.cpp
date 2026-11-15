@@ -10,7 +10,7 @@
 //                         flat envelope) SEMITONES from its root at 48 kHz, mono float32 (the noise test)
 //   pcbench cg CASE PLAN INTERP WARM MEAS TSV      one callgrind dump per measured block (PC_WHOLE=1: one for all;
 //                         PC_SOUNDS=N: the sound in N slots, slot k on its own output bus k + 1, notes taken in turn)
-//   pcbench time [CPU]    thread-CPU and wall time per block for every case
+//   pcbench time [CPU]    thread-CPU and wall time per block for every case (also 1 and 2 notes in each of 5 and 8 sounds)
 //   pcbench check         NaN/Inf/subnormal check over random notes (exit 1 on failure)
 //   pcbench kernels       prints core/kernels.cpp, the interpolation bank from kernelTap()
 //   pcbench coverage SOUND [STORE]   what the sound uses that the core does not cover (a sound with waveforms needs
@@ -379,26 +379,33 @@ static int timeAll(int argc, char** argv) {
     (void)argc; (void)argv;
 #endif
     static Builtin s;
+    // n notes in each of `sounds` slots (slot k on bus k + 1 when more than one)
+    auto one = [&](const char* plan, const char* ip, int n, uint32_t sounds) {
+        Host h(48000, interpOf(ip));
+        h.sounds = sounds;
+        if (!caseSound(h, plan, s)) return false;
+        const long total = 6 * 48000 / B, first = 2 * 48000 / B;
+        std::vector<Ev> evs = held(n * int(sounds)), bev;
+        std::vector<double> wall, cpu; alignas(64) float LR[2 * B]; float* L = LR; float* R = LR + B; size_t ei = 0; float sink = 0;
+        for (long b = 0; b < total; ++b) {
+            blockEvents(evs, ei, b, bev);
+            timespec c0, w0, w1, c1;
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c0); clock_gettime(CLOCK_MONOTONIC, &w0);
+            if (sounds > 1) h.blockOnBuses(L, R, bev.data(), bev.size()); else h.block(L, R, bev.data(), bev.size());
+            clock_gettime(CLOCK_MONOTONIC, &w1); clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c1);
+            sink += L[b & (B - 1)];
+            if (b >= first) { wall.push_back(us(w0, w1)); cpu.push_back(us(c0, c1)); }
+        }
+        if (sounds > 1) printf("case %s %s held %d in each of %u sounds: element voices %u (sink %g)\n", plan, ip, n, sounds, h.core->elementVoices(), double(sink));
+        else printf("case %s %s held %d: element voices %u (sink %g)\n", plan, ip, n, h.core->elementVoices(), double(sink));
+        stats("wall", wall); stats("cpu", cpu);
+        return true;
+    };
     for (const char* plan : {"mono", "stereo"})
-        for (const char* ip : {"sinc", "herm"})
-            for (int n : {0, 1, 4, 8, 16, 32, 64}) {
-                Host h(48000, interpOf(ip));
-                if (!caseSound(h, plan, s)) return 2;
-                const long total = 6 * 48000 / B, first = 2 * 48000 / B;
-                std::vector<Ev> evs = held(n), bev;
-                std::vector<double> wall, cpu; alignas(64) float LR[2 * B]; float* L = LR; float* R = LR + B; size_t ei = 0; float sink = 0;
-                for (long b = 0; b < total; ++b) {
-                    blockEvents(evs, ei, b, bev);
-                    timespec c0, w0, w1, c1;
-                    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c0); clock_gettime(CLOCK_MONOTONIC, &w0);
-                    h.block(L, R, bev.data(), bev.size());
-                    clock_gettime(CLOCK_MONOTONIC, &w1); clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c1);
-                    sink += L[b & (B - 1)];
-                    if (b >= first) { wall.push_back(us(w0, w1)); cpu.push_back(us(c0, c1)); }
-                }
-                printf("case %s %s held %d: element voices %u (sink %g)\n", plan, ip, n, h.core->elementVoices(), double(sink));
-                stats("wall", wall); stats("cpu", cpu);
-            }
+        for (const char* ip : {"sinc", "herm"}) {
+            for (int n : {0, 1, 2, 4, 8, 16, 32, 64}) if (!one(plan, ip, n, 1)) return 2;
+            for (uint32_t k : {5u, 8u}) for (int n : {1, 2}) if (!one(plan, ip, n, k)) return 2;
+        }
     return 0;
 }
 
