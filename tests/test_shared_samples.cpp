@@ -183,3 +183,32 @@ TEST(elements_of_one_waveform_play_independently_and_share_it) {
         CHECK((h1 - h0) - (h2 - h1) >= 150000L * 2 * 2 * 9 / 10);  // the second sound's samples were held already
     }
 }
+
+// What one more context of an already-held sound costs on the heap (its sound's parsed tables, compiled form and
+// state; the samples are shared) stays within the context_bytes the plugin declares, for a plain sound and for one
+// whose waveforms are expanded into a second table. The host charges each context after the first at that figure.
+TEST(declared_context_bytes_cover_a_duplicate_context) {
+    const std::string wf = writeWaveform("stereo", 0, 0);
+    CHECK(!wf.empty());
+    const std::string expanded = "oscairn-pcm-sound/1\nwaveform " + wf +
+                                 "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=5 waveform=1 amp_level=127 amp_pan=0\n";
+    for (const std::string& sound : {soundOf("stereo.osp"), expanded}) {
+        {  // first uses in the process (decoder buffers, pools) are not a context's: they are shared bytes
+            Inst warm;
+            CHECK(warm.load(stateWith(sound)));
+            CHECK(prepare(warm, sound) != CLAP_INVALID_ID);
+        }
+        Inst a;
+        CHECK(a.load(stateWith(sound)));
+        const uint64_t declared = memoryOf(a).context_bytes;
+        const long h = heapInUse();
+        CHECK(prepare(a, sound) != CLAP_INVALID_ID);
+        const long cost = heapInUse() - h;
+        if (h >= 0) {
+            std::printf("  a duplicate context of %s sound: declared %llu, measured %ld\n", sound == expanded ? "an expanded" : "a plain",
+                        (unsigned long long)declared, cost);
+            CHECK(cost > 0);
+            CHECK(declared >= uint64_t(cost));
+        }
+    }
+}

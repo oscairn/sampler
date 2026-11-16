@@ -170,7 +170,10 @@ kernel's, not counted; the record header is no longer checked again on every blo
 The stream pool is part of the core (`sizeof(pcm::Core)` 3,638,336 bytes on macOS arm64) and so of
 `oscairn.memory`'s shared bytes; each instance has its own. The parsed and expanded sound tables
 (`pcm::SoundData`, 314,364 bytes each, two for a sound with waveforms) are main-thread memory freed
-with the sound and not reported.
+with the sound. A context holds its own sound, so they are part of `oscairn.memory`'s context bytes: worst case
+two tables, the compiled sound (110,512), the patch and sound records and a 64 KiB allowance, 805,104 bytes.
+Measured as heap bytes for one more context of a held sound (macOS arm64): 443,664 for a plain sound, 771,344
+for one with waveforms.
 
 ## Data cache misses (0.9.0)
 

@@ -36,9 +36,14 @@ public:
         maxBlock_ = maxBlock ? maxBlock : 128;
         for (auto& s : staged_) s.middle.store(1, std::memory_order_relaxed), s.back = 0, s.front = 2;
     }
-    // the core is preallocated with the instance; a context holds its staged sounds' compiled form
-    // (samples are counted as assets by the shell; the stream pool is in the core)
-    EngineMemory memory(double, uint32_t) const override { return {sizeof(CoreEngine) + sizeof(pcm::Core), sizeof(Patch) + sizeof(pcm::Compiled) * 3}; }
+    // the core is preallocated with the instance (the stream pool is in the core); a context holds its own sound, never
+    // shared with another context: parsed and expanded tables, compiled form (samples are counted as assets by the shell)
+    // worst case, before the sound is known; the allowance covers what sizeof does not: blob, region and sample tables, heap overhead
+    EngineMemory memory(double, uint32_t) const override {
+        constexpr uint64_t kAllowance = 64 * 1024;
+        return {sizeof(CoreEngine) + sizeof(pcm::Core),
+                sizeof(Patch) + sizeof(Sound) + sizeof(Samples) + 2 * sizeof(pcm::SoundData) + sizeof(pcm::Compiled) + kAllowance};
+    }
     void loadPatch(uint32_t c, const Patch& p) override {
         if (c >= kContexts) return;
         std::lock_guard<std::mutex> g(write_);
