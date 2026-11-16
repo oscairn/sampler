@@ -44,7 +44,7 @@ void allocGuardEnable(bool on);
 long allocGuardCount();
 
 constexpr double kRate = 48000;
-constexpr const char* kId = "org.oscairn.pcm";
+constexpr const char* kId = "org.oscairn.sampler";
 // The default sound for these tests: a looped 220 Hz sine (sine.osp in the test library) over every
 // key, flat envelope, release 50 (from full level the voice ends about 155 ms after the note-off).
 constexpr const char* kSound =

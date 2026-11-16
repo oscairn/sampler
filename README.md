@@ -2,7 +2,7 @@
 
 A sample-playback instrument for [Oscairn](https://github.com/oscairn/oscairn), as a CLAP plugin
 for macOS, Linux and Windows (all built by CI). Version 0.9.3, a preview: the plugin is shown as
-"Oscairn Sampler (preview)" and its plugin id is still the working id `org.oscairn.pcm`.
+"Oscairn Sampler (preview)" and its plugin id is `org.oscairn.sampler`.
 
 Licence: AGPL-3.0-or-later (`LICENSE`); third-party material keeps its own licence (`third_party/NOTICES.md`).
 
@@ -33,7 +33,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-This builds `build/oscairn-pcm.clap`, `build/pcm_tests`, `build/pcmcore_tests` (the core's own
+This builds `build/oscairn-sampler.clap`, `build/pcm_tests`, `build/pcmcore_tests` (the core's own
 tests, linked directly) and `build/pcbench` (bench, render, noise test, coverage; render and coverage
 read sounds of format v0 or v1 with their packs and waveforms from a store folder: `tools/pcbench.cpp`). The instruction-cost gate is `tools/cost/cg.sh` (callgrind, aarch64;
 `docs/cost.md`). The tests load the built `.clap` and drive it only through the CLAP ABI and the

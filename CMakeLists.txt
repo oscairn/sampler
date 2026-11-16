@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(oscairn_pcm VERSION 0.9.3 LANGUAGES C CXX)
 
 # The binary's name (the release stem is NAME in tools/release/release.conf).
-set(PCM_NAME oscairn-pcm)
+set(PCM_NAME oscairn-sampler)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,19 +26,19 @@ target_include_directories(clap_headers INTERFACE third_party/clap/include third
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/samplepack/cmake")
 include(SamplePack)
 
-add_library(oscairn_pcm MODULE src/plugin.cpp src/core_engine.cpp src/loader.cpp src/packs.cpp src/streamer.cpp)
+add_library(oscairn_sampler MODULE src/plugin.cpp src/core_engine.cpp src/loader.cpp src/packs.cpp src/streamer.cpp)
 find_package(Threads REQUIRED)  # the I/O thread
-target_link_libraries(oscairn_pcm PRIVATE pcmcore samplepack::samplepack Threads::Threads)
-target_link_libraries(oscairn_pcm PRIVATE clap_headers)
+target_link_libraries(oscairn_sampler PRIVATE pcmcore samplepack::samplepack Threads::Threads)
+target_link_libraries(oscairn_sampler PRIVATE clap_headers)
 if(NOT MSVC)
-    target_compile_options(oscairn_pcm PRIVATE -Wall -Wextra)
+    target_compile_options(oscairn_sampler PRIVATE -Wall -Wextra)
 endif()
-set_target_properties(oscairn_pcm PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME ${PCM_NAME}
+set_target_properties(oscairn_sampler PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME ${PCM_NAME}
     CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND NOT APPLE AND NOT MSVC)
-    target_compile_options(oscairn_pcm PRIVATE -march=x86-64-v2)  # the baseline of the device images, at most
+    target_compile_options(oscairn_sampler PRIVATE -march=x86-64-v2)  # the baseline of the device images, at most
 endif()
-install(TARGETS oscairn_pcm LIBRARY DESTINATION lib/clap)
+install(TARGETS oscairn_sampler LIBRARY DESTINATION lib/clap)
 
 # The core's own tests link the core (no plugin): laws, the sound format, voices, cross-build statistics.
 enable_testing()
@@ -64,7 +64,7 @@ if(APPLE)
     add_library(pcm_alloc_interpose SHARED tests/alloc_interpose.c)
     target_link_libraries(pcm_tests PRIVATE pcm_alloc_interpose)
 endif()
-add_dependencies(pcm_tests oscairn_pcm)
+add_dependencies(pcm_tests oscairn_sampler)
 # The samplepack tool makes the tests' packs from generated tones (the host's toolchain, not the plugin's target).
 set(SAMPLEPACK_CLI "${CMAKE_BINARY_DIR}/samplepack-cli/release/samplepack")
 add_custom_target(samplepack_cli ${SAMPLEPACK_CARGO} build --release --locked --offline -p samplepack-cli --target-dir "${CMAKE_BINARY_DIR}/samplepack-cli"
@@ -74,4 +74,4 @@ add_dependencies(pcm_tests samplepack_cli)
 target_compile_definitions(pcm_tests PRIVATE "SAMPLEPACK_CLI=\"${SAMPLEPACK_CLI}\"")
 add_dependencies(pcm_tests pcbench)
 target_compile_definitions(pcm_tests PRIVATE "PCBENCH=\"$<TARGET_FILE:pcbench>\"")  # the tests run its render and coverage
-add_test(NAME abi COMMAND pcm_tests $<TARGET_FILE:oscairn_pcm>)
+add_test(NAME abi COMMAND pcm_tests $<TARGET_FILE:oscairn_sampler>)
