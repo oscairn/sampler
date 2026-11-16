@@ -45,6 +45,17 @@ uint32_t prepare(Inst& a, const std::string& sound) {
     if (id == CLAP_INVALID_ID) std::printf("  prepare: %s\n", msg);
     return id;
 }
+// Heap bytes one more context of `sound` adds: the largest of four, since memory another thread frees meanwhile
+// (an instance just closed) can only lower a reading.
+long duplicateCost(Inst& a, const std::string& sound) {
+    long most = -1;
+    for (int k = 0; k < 4; ++k) {
+        const long h = heapInUse();
+        CHECK(prepare(a, sound) != CLAP_INVALID_ID);
+        most = std::max(most, heapInUse() - h);
+    }
+    return most;
+}
 oscairn_memory_t memoryOf(const Inst& a) {
     oscairn_memory_t m{};
     CHECK(a.memory->current(a.p, &m));
@@ -206,8 +217,7 @@ TEST(declared_context_bytes_cover_a_duplicate_context) {
         CHECK(a.load(stateWith(sound)));
         const uint64_t declared = memoryOf(a).context_bytes;
         const long h = heapInUse();
-        CHECK(prepare(a, sound) != CLAP_INVALID_ID);
-        const long cost = heapInUse() - h;
+        const long cost = duplicateCost(a, sound);
         if (h >= 0) {
             std::printf("  a duplicate context of %s sound: declared %llu, measured %ld\n", sound == expanded ? "an expanded" : "a plain",
                         (unsigned long long)declared, cost);
@@ -266,8 +276,7 @@ TEST(declared_context_bytes_cover_a_duplicate_context_of_a_largest_sound) {
         CHECK(a.load(stateWith(sound)));
         const uint64_t declared = memoryOf(a).context_bytes;
         const long h = heapInUse();
-        CHECK(prepare(a, sound) != CLAP_INVALID_ID);
-        const long cost = heapInUse() - h;
+        const long cost = duplicateCost(a, sound);
         if (h >= 0) {
             std::printf("  a duplicate context of the largest %s sound: declared %llu, measured %ld\n", sound == expanded ? "expanded" : "plain",
                         (unsigned long long)declared, cost);
