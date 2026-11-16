@@ -9,7 +9,7 @@ namespace pcmshell {
 inline const char* const kFeatures[] = {CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SAMPLER,
                                         CLAP_PLUGIN_FEATURE_STEREO, nullptr};
 inline const clap_plugin_descriptor_t kDescriptor = {
-    CLAP_VERSION, "org.oscairn.sampler", "Oscairn Sampler (preview)", "Oscairn", "https://github.com/oscairn/sampler",
+    CLAP_VERSION, "org.oscairn.sampler", "Oscairn Sampler", "Oscairn", "https://github.com/oscairn/sampler",
     "", "", "0.9.3", "Sample-playback instrument", kFeatures};
 
 // Device voice caps, read when an instance is created (see plugin.cpp).
