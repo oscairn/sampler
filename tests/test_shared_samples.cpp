@@ -212,3 +212,63 @@ TEST(declared_context_bytes_cover_a_duplicate_context) {
         }
     }
 }
+
+// A waveform file of `count` key banks, each on four keys of its own, all playing the tone from frame `first` + the bank's
+// number (so every bank has a buffer of its own), installed as <id>.owf in the test library.
+static std::string writeBanks(const char* tone, int count, uint32_t first) {
+    uint8_t id[32];
+    for (int k = 0; k < 32; ++k) id[k] = uint8_t(std::stoi(g_tones.at(tone).id.substr(2 * k, 2), nullptr, 16));
+    std::vector<sp_key_bank> banks(count);
+    for (int i = 0; i < count; ++i) {
+        banks[i] = {};
+        banks[i].key_lo = uint8_t(4 * i); banks[i].key_hi = uint8_t(4 * i + 3); banks[i].vel_lo = 1; banks[i].vel_hi = 127;
+        banks[i].root = uint8_t(4 * i); banks[i].start = first + uint32_t(i);
+    }
+    std::vector<uint8_t> file(20 + 72 * size_t(count));
+    size_t n = 0;
+    if (sp_waveform_build(banks.data(), banks.size(), &id, 1, file.data(), file.size(), &n)) return "";
+    uint8_t wid[32];
+    sp_waveform_id(file.data(), n, wid);
+    std::string hex;
+    for (int k = 0; k < 32; ++k) { char h[3]; std::snprintf(h, 3, "%02x", wid[k]); hex += h; }
+    if (FILE* f = std::fopen((g_assetDir + "/" + hex + ".owf").c_str(), "wb")) { std::fwrite(file.data(), 1, n, f); std::fclose(f); }
+    return hex;
+}
+
+// The same at the format's maxima: 32 elements and 1,024 regions with a sample reference each, and the same through 32
+// waveforms of 32 key banks (expanded to 1,024 regions). Each region has a buffer of its own where the format lets it.
+TEST(declared_context_bytes_cover_a_duplicate_context_of_a_largest_sound) {
+    std::string plain = "oscairn-pcm-sound/0\n";
+    for (int i = 0; i < 1024; ++i) plain += "sample stereo.osp\n";
+    for (int e = 0; e < 32; ++e) plain += "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n";
+    for (int i = 0; i < 1024; ++i)
+        plain += "region key=0-127 root=60 element=" + std::to_string(i % 32) + " sample=" + std::to_string(i) +
+                 " loop=" + std::to_string(5000 + i) + "-" + std::to_string(5200 + i) + "\n";
+    std::string expanded = "oscairn-pcm-sound/1\n", elements;
+    for (int w = 0; w < 32; ++w) {
+        const std::string wf = writeBanks("short", 32, uint32_t(32 * w));
+        CHECK(!wf.empty());
+        expanded += "waveform " + wf + "\n";
+        elements += "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=5 waveform=" + std::to_string(w + 1) + "\n";
+    }
+    expanded += elements;
+    for (const std::string& sound : {plain, expanded}) {
+        {
+            Inst warm;
+            CHECK(warm.load(stateWith(sound)));
+            CHECK(prepare(warm, sound) != CLAP_INVALID_ID);
+        }
+        Inst a;
+        CHECK(a.load(stateWith(sound)));
+        const uint64_t declared = memoryOf(a).context_bytes;
+        const long h = heapInUse();
+        CHECK(prepare(a, sound) != CLAP_INVALID_ID);
+        const long cost = heapInUse() - h;
+        if (h >= 0) {
+            std::printf("  a duplicate context of the largest %s sound: declared %llu, measured %ld\n", sound == expanded ? "expanded" : "plain",
+                        (unsigned long long)declared, cost);
+            CHECK(cost > 0);
+            CHECK(declared >= uint64_t(cost));
+        }
+    }
+}

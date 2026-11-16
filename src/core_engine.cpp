@@ -36,13 +36,18 @@ public:
         maxBlock_ = maxBlock ? maxBlock : 128;
         for (auto& s : staged_) s.middle.store(1, std::memory_order_relaxed), s.back = 0, s.front = 2;
     }
-    // the core is preallocated with the instance (the stream pool is in the core); a context holds its own sound, never
-    // shared with another context: parsed and expanded tables, compiled form (samples are counted as assets by the shell)
-    // worst case, before the sound is known; the allowance covers what sizeof does not: blob, region and sample tables, heap overhead
+    // the core is preallocated with the instance (the stream pool is in the core). A context holds its own sound, which is
+    // never shared with another context; only the decoded buffers it points to are (and are counted as assets by the shell).
+    // Worst case, before the sound is known, from the format's maxima: the patch, the sound and its tables (parsed, and
+    // expanded when it has waveforms), the compiled sound, the blob (a serialization of a table, no larger than it: 296,388
+    // bytes at the maxima), and for kMaxSamples records and kMaxRegions regions the sample table (views, stream sources, and
+    // pointers to a head and a loop buffer each, twice for vector growth); the allowance is for heap overhead and paths.
     EngineMemory memory(double, uint32_t) const override {
         constexpr uint64_t kAllowance = 64 * 1024;
-        return {sizeof(CoreEngine) + sizeof(pcm::Core),
-                sizeof(Patch) + sizeof(Sound) + sizeof(Samples) + 2 * sizeof(pcm::SoundData) + sizeof(pcm::Compiled) + kAllowance};
+        constexpr uint64_t table = sizeof(Sound) + sizeof(Samples) + 3 * sizeof(pcm::SoundData) + sizeof(pcm::Compiled) +
+                                   pcm::kMaxSamples * sizeof(Record) +
+                                   pcm::kMaxRegions * (sizeof(pcm::SampleView) + sizeof(StreamSource) + 4 * sizeof(std::shared_ptr<const std::vector<int16_t>>));
+        return {sizeof(CoreEngine) + sizeof(pcm::Core), sizeof(Patch) + table + kAllowance};
     }
     void loadPatch(uint32_t c, const Patch& p) override {
         if (c >= kContexts) return;
