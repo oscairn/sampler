@@ -107,6 +107,37 @@ TEST(sound_context_snapshot_round_trip) {
     CHECK(c.contexts->state->save(c.p, &s3.out) && s3.data == s.data);
 }
 
+// The plugin previously published under this id was a different engine; a Performance saved against it hands
+// its state (a header line, then length-prefixed fields) and its patch text to this plugin, which must refuse
+// them and stay as it was.
+TEST(state_from_the_plugin_previously_under_this_id_is_refused) {
+    auto field = [](const std::string& f) { return std::to_string(f.size()) + "\n" + f + "\n"; };
+    const std::string patchText = "<region> sample=kick.wav key=60";
+    const std::string foreign = "oscairn-sampler-4\n" + field("") + field("") + field("") + field(patchText) + field("0");
+    const std::string withNul = "oscairn-sampler-4\n" + field("") + field("") + field("") + field(std::string("<region> sample=a\0b.wav", 23)) + field("0");
+    const std::string snapshot = "oscairn-sampler-contexts-3\n" + field("1") + field("Default") + field("") + field("") + field("") + field(patchText) + field("0");
+    Inst a;
+    a.block(128, {param(0, 0, 0.3)});
+    const std::string before = a.save();
+    for (const std::string* s : {&foreign, &withNul, &snapshot}) { CHECK(!a.load(*s)); CHECK(a.save() == before); }
+    Stream ctxBefore; CHECK(a.contexts->state->save(a.p, &ctxBefore.out));
+    for (const std::string* s : {&foreign, &withNul, &snapshot}) {
+        Stream x; x.data = *s;
+        CHECK(!a.contexts->state->load(a.p, &x.in));
+    }
+    Stream ctxAfter; CHECK(a.contexts->state->save(a.p, &ctxAfter.out));
+    CHECK(ctxAfter.data == ctxBefore.data);
+    char msg[256] = {};
+    CHECK_EQ(a.contexts->prepare(a.p, "x", nullptr, 0, patchText.c_str(), testBase(), msg, sizeof msg), CLAP_INVALID_ID);
+    CHECK(msg[0] != 0);
+    CHECK(a.save() == before);
+    // the instance still plays its sound
+    a.clearAudio();
+    a.block(128, {on(0, 1, 0, 60)});
+    a.run(4800);
+    CHECK(peak(a.L, 0) > 0.f);
+}
+
 TEST(memory_is_declared) {
     Inst a(false);
     oscairn_memory_t m{};
