@@ -171,9 +171,9 @@ TEST(volume_expression_scales_the_note) {
 // changing voice budgets. Every CLAP note-on id must end exactly once, and no id that never
 // started may end; MIDI notes (id -1) must end once each.
 static void randomRun(unsigned seed, const char* instanceCap, int blocks) {
-    if (instanceCap) setenv("OSCAIRN_PCM_MAX_VOICES", instanceCap, 1);
+    if (instanceCap) setenv("OSCAIRN_SAMPLER_MAX_VOICES", instanceCap, 1);
     Inst a;
-    unsetenv("OSCAIRN_PCM_MAX_VOICES");
+    unsetenv("OSCAIRN_SAMPLER_MAX_VOICES");
     std::mt19937 rng(seed);
     auto pick = [&](int n) { return int(rng() % unsigned(n)); };
     // prepare two more sounds and keep selecting among them
@@ -262,7 +262,7 @@ TEST(random_note_lifetime) {
 // insertion A, 2 to insertion B); without it, or with a host that gives the main port only, everything
 // is on the main port, the same samples; so it is when the host gives the ports but never activates them.
 TEST(output_ports) {
-    const std::string routed = "oscairn-pcm-sound/0\npart split_outputs=1\nsample sine.osp\n"
+    const std::string routed = "oscairn-sampler-sound/0\npart split_outputs=1\nsample sine.osp\n"
         "element ampeg_decay1=127 ampeg_decay2=127 element_connection=1\nelement ampeg_decay1=127 ampeg_decay2=127 element_connection=2\n"
         "region key=0-127 root=57 element=0 sample=0 loop=0-44100\nregion key=0-127 root=69 element=1 sample=0 loop=0-44100\n";
     auto energy = [](const std::vector<float>& x) { double e = 0; for (float v : x) e += double(v) * v; return e; };
@@ -300,7 +300,7 @@ TEST(box_sources_drive_their_boxes) {
         {3, midi(0, 0xb0, 11, 0), midi(0, 0xb0, 11, 127)}, {2, midi(0, 0xd0, 0, 0), midi(0, 0xd0, 127, 0)},
     };
     for (auto& c : cases) {
-        const std::string snd = "oscairn-pcm-sound/0\npart box1_src=" + std::to_string(c.src) + " box1_dst=60 box1_ratio=-64\nsample sine.osp\n"
+        const std::string snd = "oscairn-sampler-sound/0\npart box1_src=" + std::to_string(c.src) + " box1_dst=60 box1_ratio=-64\nsample sine.osp\n"
                                 "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
         Inst a;
         CHECK(a.load(stateWith(snd)));
@@ -314,7 +314,7 @@ TEST(box_sources_drive_their_boxes) {
     }
     // the pressure note expression (CLAP), on the note's channel
     Inst a;
-    CHECK(a.load(stateWith("oscairn-pcm-sound/0\npart box1_src=2 box1_dst=60 box1_ratio=-64\nsample sine.osp\n"
+    CHECK(a.load(stateWith("oscairn-sampler-sound/0\npart box1_src=2 box1_dst=60 box1_ratio=-64\nsample sine.osp\n"
                            "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion key=0-127 root=57 element=0 sample=0 loop=0-44100\n")));
     a.block(128, {on(0, 1, 0, 60, 1.0)});
     a.run(4800);
@@ -331,7 +331,7 @@ TEST(box_sources_drive_their_boxes) {
 // sample's end, active_voices returns to 0 and each note gets one NOTE_END, as a normal element and as a key-off
 // element, in any block size; also 26 such notes and a minute of silence.
 TEST(one_shot_regions_end_their_voices) {
-    const char* snd = "oscairn-pcm-sound/0\nsample sine.osp\n"
+    const char* snd = "oscairn-sampler-sound/0\nsample sine.osp\n"
                       "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127\n"
                       "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127 xa_control=2\n"
                       "region key=0-127 root=57 element=0 sample=0\nregion key=0-127 root=57 element=1 sample=0\n";
@@ -369,7 +369,7 @@ TEST(one_shot_regions_end_their_voices) {
 TEST(pad_voices_end_by_the_release_rule) {
     const double per60_127 = 105.719, per60_110 = 26.4298;  // laws::releaseSecondsPer60dB(127), (110)
     const long bound127 = long(per60_127 * 96.45 / 60 * kRate) + 256, bound110 = long(per60_110 * 96.45 / 60 * kRate) + 256;
-    const std::string pad = "oscairn-pcm-sound/0\npart box1_src=1 box1_dst=78 box1_ratio=63\nsample sine.osp\n"
+    const std::string pad = "oscairn-sampler-sound/0\npart box1_src=1 box1_dst=78 box1_ratio=63\nsample sine.osp\n"
                             "element ampeg_attack=30 ampeg_decay1=127 ampeg_decay2=127 ampeg_release=110 fil_type=0 fil_cutoff=600 fileg_depth=40 "
                             "fileg_release=100 fileg_release_level=0 half_damper=1 half_damper_time=127\n"
                             "region key=0-127 root=57 element=0 sample=0 loop=0-44100\n";

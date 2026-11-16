@@ -60,7 +60,7 @@ TEST(no_allocation_in_process) {
 TEST(no_allocation_in_process_while_streaming) {
     if (!allocGuardAvailable()) { std::printf("  allocation guard unavailable in this build: not checked\n"); return; }
     Inst a;
-    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nsample " + sampleRef("mono") +
+    const std::string snd = "oscairn-sampler-sound/0\nsample " + sampleRef("stereo") + "\nsample " + sampleRef("mono") +
                             "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=40\n"
                             "region key=0-63 root=60 element=0 sample=0\nregion key=64-127 root=60 element=0 sample=1 loop=10000-90000\n";
     CHECK(a.load(stateWith(snd)));

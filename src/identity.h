@@ -13,13 +13,13 @@ inline const clap_plugin_descriptor_t kDescriptor = {
     "", "", "0.9.3", "Sample-playback instrument", kFeatures};
 
 // Device voice caps, read when an instance is created (see plugin.cpp).
-inline constexpr const char* kEnvMaxVoices = "OSCAIRN_PCM_MAX_VOICES";               // 1..64
-inline constexpr const char* kEnvMaxVoicesPerSound = "OSCAIRN_PCM_MAX_VOICES_PER_SOUND"; // 1..64
+inline constexpr const char* kEnvMaxVoices = "OSCAIRN_SAMPLER_MAX_VOICES";               // 1..64
+inline constexpr const char* kEnvMaxVoicesPerSound = "OSCAIRN_SAMPLER_MAX_VOICES_PER_SOUND"; // 1..64
 // For comparisons with the sample-engine fork only: "hermite" plays Hermite interpolation (its own).
-inline constexpr const char* kEnvInterpolation = "OSCAIRN_PCM_INTERPOLATION";
+inline constexpr const char* kEnvInterpolation = "OSCAIRN_SAMPLER_INTERPOLATION";
 // For comparisons only: "1" decodes every region whole when a sound loads (nothing streams).
-inline constexpr const char* kEnvDecodeWhole = "OSCAIRN_PCM_DECODE_WHOLE";
+inline constexpr const char* kEnvDecodeWhole = "OSCAIRN_SAMPLER_DECODE_WHOLE";
 // The plugin's own extension (struct in plugin.cpp): element voices shed for late streams (Core::streamSheds), and
 // test hooks that stall the I/O thread and wait until it has filled every ring.
-inline constexpr const char* kExtStreaming = "org.oscairn.pcm.streaming/draft-1";
+inline constexpr const char* kExtStreaming = "org.oscairn.sampler.streaming/draft-1";
 }  // namespace pcmshell

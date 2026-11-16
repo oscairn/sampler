@@ -6,11 +6,11 @@
 #include "host.h"
 
 namespace {
-const std::string kOneShot = "oscairn-pcm-sound/0\nsample STEREO\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
+const std::string kOneShot = "oscairn-sampler-sound/0\nsample STEREO\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
 std::string streamed() { std::string s = kOneShot; s.replace(s.find("STEREO"), 6, sampleRef("stereo")); return s; }
 // the looped sine with a part LFO on the pitch that runs free from the sound's first note
 const char* const kFreeLfo =
-    "oscairn-pcm-sound/0\npart plfo_wave=0 plfo_speed=40 plfo_keyon_reset=0 plfo_dst1=65 plfo_depth1=120\nsample sine.osp\n"
+    "oscairn-sampler-sound/0\npart plfo_wave=0 plfo_speed=40 plfo_keyon_reset=0 plfo_dst1=65 plfo_depth1=120\nsample sine.osp\n"
     "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50 plfo_ratio1=127 plfo_box_sw1=1\nregion key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
 
 // Blocks of 128 frames until one returns SLEEP (at most `limit`); how many it took.

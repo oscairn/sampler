@@ -23,7 +23,7 @@ the instance's, read-only (`CLAP_PARAM_IS_READONLY`), not the sound's.
 | 21, 22 | Element LFO Pitch Depth, Element LFO Amp Depth | `elfo_pitch_mod`, `elfo_amp_mod` | -8192..8192 | 0 | the box destinations element LFO pitch / amplitude depth in box-output units (a full box is 8192), added to the boxes' outputs and the mod wheel's element LFO ratios before the depth law |
 | 23, 24 | AEG Attack, AEG Release | `attack`, `release` | -128..128 | 0 | the box destinations amplitude envelope attack (read at note-on) and release (read at the note-off), index steps |
 | 25 | Output Bus | `bus` | 0..8, stepped | 0 | the output port the sound plays on: 0 main, n sound bus n (see [Output ports](#output-ports)) |
-| 26 | Late Stream Sheds | (none) | 0..2^32-1, read-only | 0 | element voices the instance shed for want of streamed audio since it was made: a late stream, or no free stream (the count the plugin's `org.oscairn.pcm.streaming/draft-1` extension returns) |
+| 26 | Late Stream Sheds | (none) | 0..2^32-1, read-only | 0 | element voices the instance shed for want of streamed audio since it was made: a late stream, or no free stream (the count the plugin's `org.oscairn.sampler.streaming/draft-1` extension returns) |
 
 A host passes no MIDI controller for the ribbon, the knobs or the switches (only CC 1, 2, 4, 11, 64-67, 120, 123 and
 pitch bend reach a plugin), so they are parameters. The maps were measured on the reference through a box on the fine
@@ -76,6 +76,6 @@ tunings with the high-pass cutoff a third; Output Bus has the output bus role (`
 
 ## State
 
-The CLAP state `oscairn-pcm-state 3` and the sound-contexts snapshot `oscairn-pcm-contexts/3` save ids 0-25 (not the
+The CLAP state `oscairn-sampler-state 3` and the sound-contexts snapshot `oscairn-sampler-contexts/3` save ids 0-25 (not the
 modulation), then the sound. A state 2 (ids 0-24) and a state 1 (ids 0-2 only) still load, on Main and with their
 knobs at the sound's values; an older snapshot does not.

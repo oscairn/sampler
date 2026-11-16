@@ -3,7 +3,7 @@
 // waveforms into regions and the coverage report (docs/sound-format.md is the normative text).
 //
 // Blob (little-endian):
-//   0  "OPCM"   4  u16 version (0, or 1 with waveforms)   6  u16 flags (0)   8  u32 size of the whole blob
+//   0  "OSMP"   4  u16 version (0, or 1 with waveforms)   6  u16 flags (0)   8  u32 size of the whole blob
 //   12 u32 CRC-32 (IEEE) of bytes 16..size
 //   16 u16 samples, u16 elements, u16 regions, u16 part parameters (kPartParamCount)
 //   24 part parameters: i16 each, in partparams.inc order
@@ -17,7 +17,7 @@
 // Parameter indices are stable: params.inc and partparams.inc only ever grow at their ends.
 //
 // Text form (tests and hand-written sounds), one item per line, "name=value" tokens:
-//   oscairn-pcm-sound/0                               (or /1)
+//   oscairn-sampler-sound/0                               (or /1)
 //   part bend_up=12                                   (values that differ from the default)
 //   sample <reference>                                (numbered in order from 0)
 //   waveform <64 hex digits>                          (version 1; numbered in order from 0)
@@ -146,7 +146,7 @@ bool operator==(const SoundData& a, const SoundData& b) {
 
 size_t writeBlob(const SoundData& d, uint8_t* out, size_t cap) {
     W8 w{out, cap};
-    w.u8('O'); w.u8('P'); w.u8('C'); w.u8('M');
+    w.u8('O'); w.u8('S'); w.u8('M'); w.u8('P');
     w.u16(d.waveforms ? 1 : 0); w.u16(0); w.u32(0); w.u32(0);  // version 0 when it has no waveform: v0 sounds keep their bytes
     w.u16(d.samples); w.u16(d.elements); w.u16(d.regions); w.u16(kPartParamCount);
     for (int i = 0; i < kPartParamCount; ++i) w.u16(uint16_t(d.part[i]));
@@ -173,7 +173,7 @@ size_t writeBlob(const SoundData& d, uint8_t* out, size_t cap) {
 
 bool readBlob(const uint8_t* blob, size_t size, SoundData& d, char* e, size_t cap) {
     d = SoundData{};
-    if (!blob || size < 24 || std::memcmp(blob, "OPCM", 4)) return err(e, cap, "not a sound blob"), false;
+    if (!blob || size < 24 || std::memcmp(blob, "OSMP", 4)) return err(e, cap, "not a sound blob"), false;
     R8 r{blob, size, 4};
     const uint32_t version = r.u16(), flags = r.u16(), total = r.u32(), crc = r.u32();
     if (version > kFormatVersion) return err(e, cap, "sound format version %ld, this engine reads %ld", long(version), long(kFormatVersion)), false;
@@ -313,9 +313,9 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
         auto bad = [&](const char* what, Tok t) { if (e && cap) std::snprintf(e, cap, "line %d: %s '%.*s'", line, what, int(std::min<size_t>(t.n, 200)), t.p); return false; };
         const Tok kind = tok[0];
         if (!header) {
-            if (!(kind.is("oscairn-pcm-sound/0") || kind.is("oscairn-pcm-sound/1")) || nt != 1) return bad("expected 'oscairn-pcm-sound/0' or '/1', not", kind);
+            if (!(kind.is("oscairn-sampler-sound/0") || kind.is("oscairn-sampler-sound/1")) || nt != 1) return bad("expected 'oscairn-sampler-sound/0' or '/1', not", kind);
             header = true;
-            v1 = kind.is("oscairn-pcm-sound/1");
+            v1 = kind.is("oscairn-sampler-sound/1");
             continue;
         }
         if (kind.is("waveform") && v1) {
@@ -381,7 +381,7 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
         }
         return bad("unknown line", kind);
     }
-    if (!header) return err(e, cap, "line 1: expected 'oscairn-pcm-sound/0'"), false;
+    if (!header) return err(e, cap, "line 1: expected 'oscairn-sampler-sound/0'"), false;
     if (!v1 && (!d.samples || !d.elements || !d.regions)) return err(e, cap, "line %ld: a sound needs a sample, an element and a region", line), false;
     if (const char* why = checkSound(d)) { if (e && cap) std::snprintf(e, cap, "line %d: %s", line, why); return false; }
     for (uint32_t i = 0; i < d.regions; ++i)
@@ -394,7 +394,7 @@ bool readText(const char* text, SoundData& d, char* e, size_t cap) {
 
 size_t writeText(const SoundData& d, char* out, size_t cap) {
     Out o{out, cap};
-    o.put(d.waveforms ? "oscairn-pcm-sound/1\n" : "oscairn-pcm-sound/0\n");
+    o.put(d.waveforms ? "oscairn-sampler-sound/1\n" : "oscairn-sampler-sound/0\n");
     bool part = false;
     for (int i = 0; i < kPartParamCount; ++i)
         if (d.part[i] != kPartParamDefs[i].def) { o.put(part ? " " : "part "); o.put(kPartParamDefs[i].id); o.put("="); o.num(d.part[i]); part = true; }

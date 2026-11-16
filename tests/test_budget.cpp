@@ -6,9 +6,9 @@
 namespace {
 struct Env {
     explicit Env(const char* instance, const char* sound = nullptr) {
-        set("OSCAIRN_PCM_MAX_VOICES", instance); set("OSCAIRN_PCM_MAX_VOICES_PER_SOUND", sound);
+        set("OSCAIRN_SAMPLER_MAX_VOICES", instance); set("OSCAIRN_SAMPLER_MAX_VOICES_PER_SOUND", sound);
     }
-    ~Env() { set("OSCAIRN_PCM_MAX_VOICES", nullptr); set("OSCAIRN_PCM_MAX_VOICES_PER_SOUND", nullptr); }
+    ~Env() { set("OSCAIRN_SAMPLER_MAX_VOICES", nullptr); set("OSCAIRN_SAMPLER_MAX_VOICES_PER_SOUND", nullptr); }
     static void set(const char* n, const char* v) { if (v) setenv(n, v, 1); else unsetenv(n); }
 };
 // Notes ended so far, as a set of ids.

@@ -21,7 +21,7 @@ static int failures = 0;
 #define NEAR(a, b, tol) do { const double x_ = (a), y_ = (b); if (!(std::fabs(x_ - y_) <= (tol))) { ++failures; std::printf("  %s:%d: %s = %.9g, want %.9g (+-%g)\n", __FILE__, __LINE__, #a, x_, y_, double(tol)); } } while (0)
 
 static const char* kPad =
-    "oscairn-pcm-sound/0\n"
+    "oscairn-sampler-sound/0\n"
     "sample a/one.flac\n"
     "sample b/two two.flac\n"
     "element ampeg_attack=30 ampeg_decay2=127 ampeg_release=127 fil_type=0 fil_cutoff=244 fil_resonance=6 fileg_decay1=0 "
@@ -36,7 +36,7 @@ static void soundFormatV1() {
     char err[256] = {};
     const std::string w0(64, 'a'), w1 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const std::string id = "sample:" + std::string(64, '5');
-    const std::string text = "oscairn-pcm-sound/1\nsample " + id + "\nwaveform " + w0 + "\nwaveform " + w1 +
+    const std::string text = "oscairn-sampler-sound/1\nsample " + id + "\nwaveform " + w0 + "\nwaveform " + w1 +
                              "\nelement waveform=2 key_lo=10 key_hi=20 vel_lo=5 vel_hi=6 coarse=-48 fine=63\nelement\nregion key=0-127 vel=1-127 root=60 element=1 sample=0\n";
     CHECK(readText(text.c_str(), *a, err, sizeof err));
     CHECK(a->waveforms == 2 && a->waveform[1][0] == 0x01 && a->waveform[1][31] == 0xef && a->element[0].v[Waveform] == 2 && a->element[0].v[Coarse] == -48);
@@ -45,7 +45,7 @@ static void soundFormatV1() {
     CHECK(blob[4] == 1 && readBlob(blob.data(), blob.size(), *b, err, sizeof err) && *a == *b);
     std::vector<char> t(writeText(*a, nullptr, 0) + 1);
     writeText(*a, t.data(), t.size());
-    const std::string want = text.substr(0, 20) + "sample " + id + "\nwaveform " + w0 + "\nwaveform " + w1 +
+    const std::string want = text.substr(0, text.find('\n') + 1) + "sample " + id + "\nwaveform " + w0 + "\nwaveform " + w1 +
                              "\nelement waveform=2 key_lo=10 key_hi=20 vel_lo=5 vel_hi=6 coarse=-48 fine=63\nelement\nregion key=0-127 vel=1-127 root=60 element=1 sample=0\n";
     CHECK(want == t.data());
     if (want != t.data()) std::printf("  wrote:\n%s", t.data());
@@ -54,21 +54,21 @@ static void soundFormatV1() {
     for (size_t n = 0; n < blob.size(); ++n) accepted += readBlob(blob.data(), n, *x, err, sizeof err);
     CHECK(accepted == 0);
     // every element on a waveform: no sample, no region
-    const std::string bare = "oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1\n";
+    const std::string bare = "oscairn-sampler-sound/1\nwaveform " + w0 + "\nelement waveform=1\n";
     CHECK(readText(bare.c_str(), *a, err, sizeof err) && a->samples == 0 && a->regions == 0);
     blob.assign(writeBlob(*a, nullptr, 0), 0);
     writeBlob(*a, blob.data(), blob.size());
     CHECK(readBlob(blob.data(), blob.size(), *b, err, sizeof err) && *a == *b);
     const std::string refused[][2] = {
-        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nsample x.flac\nelement waveform=1\n", "line 3"},       // a path in v1
-        {"oscairn-pcm-sound/1\nsample " + id + "\nwaveform " + w0 + "\nelement waveform=1\nregion element=0 sample=0\n", "waveform and regions"},
-        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1 key_lo=61 key_hi=60\n", "inverted"},
-        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1 vel_lo=61 vel_hi=60\n", "inverted"},
-        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=2\n", "does not list"},
-        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement\n", "needs a region"},
-        {"oscairn-pcm-sound/1\nwaveform " + w0.substr(1) + "g\nelement waveform=1\n", "line 2"},
-        {"oscairn-pcm-sound/0\nwaveform " + w0 + "\nelement waveform=1\n", "line 2"},                        // not in v0
-        {"oscairn-pcm-sound/1\nwaveform " + w0 + "\nelement waveform=1 coarse=49\n", "line 3"},
+        {"oscairn-sampler-sound/1\nwaveform " + w0 + "\nsample x.flac\nelement waveform=1\n", "line 3"},       // a path in v1
+        {"oscairn-sampler-sound/1\nsample " + id + "\nwaveform " + w0 + "\nelement waveform=1\nregion element=0 sample=0\n", "waveform and regions"},
+        {"oscairn-sampler-sound/1\nwaveform " + w0 + "\nelement waveform=1 key_lo=61 key_hi=60\n", "inverted"},
+        {"oscairn-sampler-sound/1\nwaveform " + w0 + "\nelement waveform=1 vel_lo=61 vel_hi=60\n", "inverted"},
+        {"oscairn-sampler-sound/1\nwaveform " + w0 + "\nelement waveform=2\n", "does not list"},
+        {"oscairn-sampler-sound/1\nwaveform " + w0 + "\nelement\n", "needs a region"},
+        {"oscairn-sampler-sound/1\nwaveform " + w0.substr(1) + "g\nelement waveform=1\n", "line 2"},
+        {"oscairn-sampler-sound/0\nwaveform " + w0 + "\nelement waveform=1\n", "line 2"},                        // not in v0
+        {"oscairn-sampler-sound/1\nwaveform " + w0 + "\nelement waveform=1 coarse=49\n", "line 3"},
     };
     for (auto& r : refused) { CHECK(!readText(r[0].c_str(), *x, err, sizeof err)); if (!std::strstr(err, r[1].c_str())) { ++failures; std::printf("  error '%s' lacks '%s'\n", err, r[1].c_str()); } }
     // the blob refuses the same: an element with a waveform and a region
@@ -132,7 +132,7 @@ static void soundFormat() {
     for (size_t n = 0; n < blob.size(); ++n) accepted += readBlob(blob.data(), n, *c, err, sizeof err);
     CHECK(accepted == 0);
     // the element EQ's gains take their whole range, -12 to +12 dB (raw 32-96)
-    CHECK(readText("oscairn-pcm-sound/0\nsample s\nelement eq_gain1=32 eq_gain2=96\nregion element=0 sample=0\n", *c, err, sizeof err));
+    CHECK(readText("oscairn-sampler-sound/0\nsample s\nelement eq_gain1=32 eq_gain2=96\nregion element=0 sample=0\n", *c, err, sizeof err));
     // a blob from before the last part parameters were added (two fewer): read, those at their defaults
     {
         std::vector<uint8_t> old(blob.size() - 4);
@@ -158,15 +158,15 @@ static void soundFormat() {
     CHECK(!readBlob(v.data(), v.size(), *c, err, sizeof err) && std::strstr(err, "version"));
     // text errors name their line
     const char* bad[][2] = {
-        {"oscairn-pcm-sound/0\nsample x\nelement nope=1\nregion element=0 sample=0\n", "line 3"},
-        {"oscairn-pcm-sound/0\nsample x\nelement fil_cutoff=1024\nregion element=0 sample=0\n", "line 3"},
-        {"oscairn-pcm-sound/0\nsample x\nelement\nregion element=1 sample=0\n", "bad element"},
-        {"oscairn-pcm-sound/0\nsample ../x\nelement\nregion element=0 sample=0\n", "line 2"},
-        {"oscairn-pcm-sound/0\nsample x\nelement\nregion element=0 sample=0 key=5-4\n", "line 4"},
-        {"oscairn-pcm-sound/0\nsample x\nelement\nregion element=0 sample=0 tune=1.234\n", "line 4"},
-        {"oscairn-pcm-sound/0\nsample x\nelement\nregion element=0 sample=0 loop=10-10\n", "line 4"},
-        {"oscairn-pcm-sound/1\n", "line 1"},
-        {"oscairn-pcm-sound/0\nsample x\nelement\n", "region"},
+        {"oscairn-sampler-sound/0\nsample x\nelement nope=1\nregion element=0 sample=0\n", "line 3"},
+        {"oscairn-sampler-sound/0\nsample x\nelement fil_cutoff=1024\nregion element=0 sample=0\n", "line 3"},
+        {"oscairn-sampler-sound/0\nsample x\nelement\nregion element=1 sample=0\n", "bad element"},
+        {"oscairn-sampler-sound/0\nsample ../x\nelement\nregion element=0 sample=0\n", "line 2"},
+        {"oscairn-sampler-sound/0\nsample x\nelement\nregion element=0 sample=0 key=5-4\n", "line 4"},
+        {"oscairn-sampler-sound/0\nsample x\nelement\nregion element=0 sample=0 tune=1.234\n", "line 4"},
+        {"oscairn-sampler-sound/0\nsample x\nelement\nregion element=0 sample=0 loop=10-10\n", "line 4"},
+        {"oscairn-sampler-sound/1\n", "line 1"},
+        {"oscairn-sampler-sound/0\nsample x\nelement\n", "region"},
     };
     for (auto& b2 : bad) { CHECK(!readText(b2[0], *c, err, sizeof err)); if (!std::strstr(err, b2[1])) { ++failures; std::printf("  error '%s' lacks '%s'\n", err, b2[1]); } }
     soundFormatV1();
@@ -244,7 +244,7 @@ static void coverageTable() {
     };
     std::unique_ptr<SoundData> d(new SoundData);
     char err[256];
-    CHECK(readText("oscairn-pcm-sound/0\nsample s\nelement\nregion element=0 sample=0\n", *d, err, sizeof err));
+    CHECK(readText("oscairn-sampler-sound/0\nsample s\nelement\nregion element=0 sample=0\n", *d, err, sizeof err));
     for (int part = 0; part < 2; ++part) {
         const int count = part ? int(kPartParamCount) : int(kParamCount);
         for (int i = 0; i < count; ++i) {
@@ -335,7 +335,7 @@ struct Rig {
         pcm.assign(size_t((kGuardPre + kGuardPost) * channels), 0);
         pcm.insert(pcm.begin() + kGuardPre * channels, frames.begin(), frames.end());
         view = {pcm.data() + kGuardPre * channels, uint32_t(frames.size() / size_t(channels)), uint8_t(channels), rate};
-        const std::string text = "oscairn-pcm-sound/0\nsample s\nelement " + element + "\nregion key=0-127 root=60 element=0 sample=0 " + region + (loop ? std::string(" loop=") + loop : "") + "\n";
+        const std::string text = "oscairn-sampler-sound/0\nsample s\nelement " + element + "\nregion key=0-127 root=60 element=0 sample=0 " + region + (loop ? std::string(" loop=") + loop : "") + "\n";
         char err[256];
         if (!readText(text.c_str(), *data, err, sizeof err)) { std::printf("  sound: %s\n", err); ++failures; }
         const std::vector<SampleView> views(data->regions, view);
@@ -440,7 +440,7 @@ static void releaseShape() {
 static void quietEnd() {
     const double per60 = laws::releaseSecondsPer60dB(127), perSample = -60.0 / (per60 * 48000.0);
     const std::string element = "ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 ampeg_release=127 amp_level=40";
-    const std::string text = "oscairn-pcm-sound/0\npart box1_src=1 box1_dst=60 box1_ratio=63\nsample s\nelement " + element +
+    const std::string text = "oscairn-sampler-sound/0\npart box1_src=1 box1_dst=60 box1_ratio=63\nsample s\nelement " + element +
                              "\nregion key=0-127 root=60 element=0 sample=0 loop=100-40000\n";
     // the element at level 40, the box able to take it to 127: the bound is the top's (the source at full scale)
     const double endDb = quietDb(kUnit * 32768 * laws::levelGain(127));
@@ -599,7 +599,7 @@ static void filterTypes45() {
     // the high-pass key follow (measured: the cutoff's law about key 60): at key 84 (the sample's root there too, so the
     // tone stays 110 Hz) key follow 0 moves the high-pass 4800 cents down: the tone passes; at 64 it does not move
     for (int kf : {0, 64}) {
-        const std::string text = "oscairn-pcm-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fil_type=4 fil_cutoff=1023 fil_hpf_cutoff=512 fil_hpf_keyfollow="
+        const std::string text = "oscairn-sampler-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 fil_type=4 fil_cutoff=1023 fil_hpf_cutoff=512 fil_hpf_keyfollow="
                                  + std::to_string(kf) + "\nregion key=0-127 root=84 element=0 sample=0 loop=0-44100\n";
         Rig k(text.c_str(), sine(44100, 110, 44100, 16384), 44100.f, 44100);
         k.core->setGain(0, 1, 0);
@@ -734,7 +734,7 @@ static void kernelByTransposition() {
 // Key-off elements (element trigger mode 2) start when the note ends, at the note's key and velocity, and
 // release 2.0 s after they start (the fork's K42).
 static void keyOffElements() {
-    Rig r("oscairn-pcm-sound/0\nsample s\n"
+    Rig r("oscairn-sampler-sound/0\nsample s\n"
           "element ampeg_attack=0 ampeg_release=0\n"
           "element ampeg_attack=0 ampeg_release=40 xa_control=2\n"
           "region key=0-127 root=60 element=0 sample=0 loop=100-29000\n"
@@ -767,7 +767,7 @@ static void keyOffElements() {
 // time; the pedal's value moves the release index between that and its own release index; with the
 // pedal up it takes its own (measured: docs/acceptance.md (g)).
 static void halfDamper() {
-    Rig r("oscairn-pcm-sound/0\nsample s\nelement ampeg_attack=0 ampeg_release=40 half_damper=1 half_damper_time=103\n"
+    Rig r("oscairn-sampler-sound/0\nsample s\nelement ampeg_attack=0 ampeg_release=40 half_damper=1 half_damper_time=103\n"
           "region key=0-127 root=60 element=0 sample=0 loop=100-29000\n", constant(30000, 16384), 44100.f, 44100);
     auto slope = [&](long n) {  // dB/s over n frames
         const auto x = r.run(n);
@@ -784,9 +784,9 @@ static void halfDamper() {
     }
     // an envelope still in its decays plays on under the pedal; the half damper waits for the sustain
     {
-        Rig d("oscairn-pcm-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=100 ampeg_decay1_level=64 ampeg_release=40 half_damper=1 half_damper_time=103\n"
+        Rig d("oscairn-sampler-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=100 ampeg_decay1_level=64 ampeg_release=40 half_damper=1 half_damper_time=103\n"
               "region key=0-127 root=60 element=0 sample=0 loop=100-29000\n", constant(30000, 16384), 44100.f, 44100);
-        Rig h("oscairn-pcm-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=100 ampeg_decay1_level=64 ampeg_release=40 half_damper=1 half_damper_time=103\n"
+        Rig h("oscairn-sampler-sound/0\nsample s\nelement ampeg_attack=0 ampeg_decay1=100 ampeg_decay1_level=64 ampeg_release=40 half_damper=1 half_damper_time=103\n"
               "region key=0-127 root=60 element=0 sample=0 loop=100-29000\n", constant(30000, 16384), 44100.f, 44100);
         for (Rig* x : {&d, &h}) { x->core->setSustain(0, 1.0f); x->core->noteOn(0, 0, 0, 60, 1.0f); x->run(4096); }
         d.core->keyUp(0);  // h: the key stays down
@@ -842,7 +842,7 @@ static void elementLfo() {
     NEAR(chi - clo, laws::elfoPitchDepthCents(5120), 0.15 * laws::elfoPitchDepthCents(5120));  // 10 ms windows sample the triangle's peaks
     // the same law from a knob box on the element LFO's pitch depth (knob 768, ratio +32: o 3072, 35.97 cents), and nothing at a negative ratio
     for (int ratio : {32, -32}) {
-        const std::string text = "oscairn-pcm-sound/0\npart knob1=768 box1_src=8 box1_dst=64 box1_ratio=" + std::to_string(ratio) +
+        const std::string text = "oscairn-sampler-sound/0\npart knob1=768 box1_src=8 box1_dst=64 box1_ratio=" + std::to_string(ratio) +
                                  "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127\nregion key=0-127 root=60 element=0 sample=0 loop=0-44100\n";
         Rig k(text.c_str(), sine(44100, 441, 44100, 16384), 44100.f, 44100);
         k.core->setGain(0, 1, 0);
@@ -961,7 +961,7 @@ static void partVelocity() {
     NEAR(laws::velocityFrom2048(1023), 63, 0);            // the step at or below: 1023 is velocity 63 (measured)
     NEAR(laws::velocityFrom2048(1024), 64, 0);
     NEAR(laws::velocityFrom2048(2047), 127, 0);
-    const char* text = "oscairn-pcm-sound/0\npart vel_offset=96\nsample s\n"
+    const char* text = "oscairn-sampler-sound/0\npart vel_offset=96\nsample s\n"
                        "element amp_velsens=32 amp_pan=1\nelement amp_velsens=32 amp_pan=127\n"
                        "region key=0-127 vel=1-63 root=60 element=0 sample=0 loop=100-29000\n"
                        "region key=0-127 vel=64-127 root=60 element=1 sample=0 loop=100-29000\n";
@@ -993,7 +993,7 @@ static void elementNumber() {
     }
     // a part of more than 8 elements: numbers up to 32 load, and a note starts up to 16 regions (a sound written before
     // the limits grew loads unchanged: sound_format)
-    std::string text = "oscairn-pcm-sound/0\nsample s\n";
+    std::string text = "oscairn-sampler-sound/0\nsample s\n";
     for (int e = 0; e < 20; ++e) text += "element ampeg_decay1=127 ampeg_decay2=127 element_number=" + std::to_string(e + 1) + "\n";
     for (int e = 0; e < 20; ++e) text += "region key=0-127 root=60 loop=100-40000 sample=0 element=" + std::to_string(e) + "\n";
     Rig r(text.c_str(), constant(48000, 4000), 48000.f, 48000);
@@ -1008,7 +1008,7 @@ static void elementNumber() {
 static void controllerBoxes() {
     const std::string tone = "region key=0-127 root=60 element=0 sample=0 loop=0-44100\n";
     auto rig = [&](const std::string& part, const std::string& el) {
-        return std::unique_ptr<Rig>(new Rig(("oscairn-pcm-sound/0\npart " + part + "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 " + el + "\n" + tone).c_str(),
+        return std::unique_ptr<Rig>(new Rig(("oscairn-sampler-sound/0\npart " + part + "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 " + el + "\n" + tone).c_str(),
                                             sine(44100, 441, 44100, 16384), 44100.f, 44100));
     };
     struct { const char* part; const char* el; float wheel; double cents; } cases[] = {
@@ -1098,7 +1098,7 @@ static void oneShotEnds() {
 // first-on ones share one.
 static void partLfo() {
     auto text = [](const std::string& part, const std::string& el) {
-        return "oscairn-pcm-sound/0\npart " + part + "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 " + el +
+        return "oscairn-sampler-sound/0\npart " + part + "\nsample s\nelement ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 " + el +
                "\nregion key=0-127 root=60 element=0 sample=0 loop=0-44100\n";
     };
     const double hz = laws::partLfoHz(40), per = 44100 / hz;  // frames a cycle (about 26,800)
@@ -1205,7 +1205,7 @@ static void partLfo() {
 static void elementSelection() {
     auto sound = [](const std::vector<std::pair<int, int>>& els) {  // (trigger mode, group) per element, levels 127, 100, 70, 40
         static const int lv[4] = {127, 100, 70, 40};
-        std::string t = "oscairn-pcm-sound/0\nsample s\n";
+        std::string t = "oscairn-sampler-sound/0\nsample s\n";
         for (size_t e = 0; e < els.size(); ++e)
             t += "element ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 amp_level=" + std::to_string(lv[e]) + " xa_control=" + std::to_string(els[e].first) +
                  " element_group=" + std::to_string(els[e].second) + " element_number=" + std::to_string(e + 1) + "\n";
@@ -1284,7 +1284,7 @@ static void keyOnDelay() {
 // The part's cutoff and resonance offsets (measured): 8 index steps and 2 resonance steps a unit on every element, within
 // the limits.
 static void partOffsets() {
-    Rig r("oscairn-pcm-sound/0\npart part_cutoff=16 part_resonance=-8 part_feg_depth=-8\nsample s\nelement fil_type=0 fil_cutoff=400 fil_resonance=40 fileg_depth=32\n"
+    Rig r("oscairn-sampler-sound/0\npart part_cutoff=16 part_resonance=-8 part_feg_depth=-8\nsample s\nelement fil_type=0 fil_cutoff=400 fil_resonance=40 fileg_depth=32\n"
           "element fil_type=0 fil_cutoff=1000 fil_resonance=10 fileg_depth=-60\nregion element=0 sample=0\nregion element=1 sample=0\n", constant(4410, 16384), 44100.f, 44100);
     CHECK(r.sound->element[0].v[FilCutoff] == 528 && r.sound->element[0].v[FilResonance] == 24);
     CHECK(r.sound->element[1].v[FilCutoff] == 1023 && r.sound->element[1].v[FilResonance] == 0);

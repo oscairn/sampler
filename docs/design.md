@@ -110,7 +110,7 @@ Hermite-to-kernel difference is up to the signal's own level near the source's N
 -96 dBFS end only within a few dB of the voice's end. The kernel costs 9,272 instructions a mono voice-block
 against Hermite's 7,466 (docs/cost.md) and 2 KB of table. Hermite stays the core's other interpolator
 (`Core::setInterp`), used to null against the fork; the plugin plays it only when
-`OSCAIRN_PCM_INTERPOLATION=hermite` is set (a measurement switch).
+`OSCAIRN_SAMPLER_INTERPOLATION=hermite` is set (a measurement switch).
 
 ## Memory and threads
 
@@ -194,7 +194,7 @@ takes the slower path, which also hands back what was read and loads `written`.
 
 Late chunks: once fewer than 1,152 frames past a voice's reads are handed over (and more are due),
 the voice is shed at its next control step with a 16-frame fade, as `Core::shed` does, and counted
-(`Core::streamSheds`, the plugin's `org.oscairn.pcm.streaming/draft-1` extension). 1,152 frames
+(`Core::streamSheds`, the plugin's `org.oscairn.sampler.streaming/draft-1` extension). 1,152 frames
 cover the rest of the control step and the fade at the largest step (32): the fade never reads a
 frame not handed over, the voice never waits, and its note ends as any other. The read-ahead is in
 frames consumed: the ring holds 4,096 frames, a unit needs 1,024 free, the margin is 1,152, so after

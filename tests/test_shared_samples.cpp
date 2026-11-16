@@ -32,11 +32,11 @@ long heapInUse() {
 }
 // Instances made while this lives decode every sample whole into memory (so a sample's size dominates the heap counts).
 struct DecodeWhole {
-    DecodeWhole() { setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1); }
-    ~DecodeWhole() { unsetenv("OSCAIRN_PCM_DECODE_WHOLE"); }
+    DecodeWhole() { setenv("OSCAIRN_SAMPLER_DECODE_WHOLE", "1", 1); }
+    ~DecodeWhole() { unsetenv("OSCAIRN_SAMPLER_DECODE_WHOLE"); }
 };
 std::string soundOf(const char* ref) {
-    return std::string("oscairn-pcm-sound/0\nsample ") + ref +
+    return std::string("oscairn-sampler-sound/0\nsample ") + ref +
            "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion key=0-127 root=60 element=0 sample=0\n";
 }
 uint32_t prepare(Inst& a, const std::string& sound) {
@@ -160,7 +160,7 @@ TEST(elements_of_one_waveform_play_independently_and_share_it) {
     const std::string wf = writeWaveform("sine", 1, 44100);
     CHECK(!wf.empty());
     const std::string env = "ampeg_decay1=127 ampeg_decay2=127 ampeg_release=5";
-    const std::string head = "oscairn-pcm-sound/1\nwaveform " + wf + "\n";
+    const std::string head = "oscairn-sampler-sound/1\nwaveform " + wf + "\n";
     // A: full level, hard left; B: lower, hard right, a fifth up, keys 40 to 80 only
     const std::string a = "element " + env + " waveform=1 amp_level=127 amp_pan=0\n";
     const std::string b = "element " + env + " waveform=1 amp_level=64 amp_pan=127 coarse=7 key_lo=40 key_hi=80\n";
@@ -184,7 +184,7 @@ TEST(elements_of_one_waveform_play_independently_and_share_it) {
     DecodeWhole whole;
     const std::string wfStereo = writeWaveform("stereo", 0, 0);
     CHECK(!wfStereo.empty());
-    const std::string headS = "oscairn-pcm-sound/1\nwaveform " + wfStereo + "\n";
+    const std::string headS = "oscairn-sampler-sound/1\nwaveform " + wfStereo + "\n";
     Inst x, y;
     const long h0 = heapInUse();
     CHECK(x.load(stateWith(headS + a)));
@@ -205,7 +205,7 @@ TEST(elements_of_one_waveform_play_independently_and_share_it) {
 TEST(declared_context_bytes_cover_a_duplicate_context) {
     const std::string wf = writeWaveform("stereo", 0, 0);
     CHECK(!wf.empty());
-    const std::string expanded = "oscairn-pcm-sound/1\nwaveform " + wf +
+    const std::string expanded = "oscairn-sampler-sound/1\nwaveform " + wf +
                                  "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=5 waveform=1 amp_level=127 amp_pan=0\n";
     for (const std::string& sound : {soundOf("stereo.osp"), expanded}) {
         {  // first uses in the process (decoder buffers, pools) are not a context's: they are shared bytes
@@ -252,13 +252,13 @@ static std::string writeBanks(const char* tone, int count, uint32_t first) {
 // The same at the format's maxima: 32 elements and 1,024 regions with a sample reference each, and the same through 32
 // waveforms of 32 key banks (expanded to 1,024 regions). Each region has a buffer of its own where the format lets it.
 TEST(declared_context_bytes_cover_a_duplicate_context_of_a_largest_sound) {
-    std::string plain = "oscairn-pcm-sound/0\n";
+    std::string plain = "oscairn-sampler-sound/0\n";
     for (int i = 0; i < 1024; ++i) plain += "sample stereo.osp\n";
     for (int e = 0; e < 32; ++e) plain += "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n";
     for (int i = 0; i < 1024; ++i)
         plain += "region key=0-127 root=60 element=" + std::to_string(i % 32) + " sample=" + std::to_string(i) +
                  " loop=" + std::to_string(5000 + i) + "-" + std::to_string(5200 + i) + "\n";
-    std::string expanded = "oscairn-pcm-sound/1\n", elements;
+    std::string expanded = "oscairn-sampler-sound/1\n", elements;
     for (int w = 0; w < 32; ++w) {
         const std::string wf = writeBanks("short", 32, uint32_t(32 * w));
         CHECK(!wf.empty());

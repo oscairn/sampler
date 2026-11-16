@@ -7,7 +7,7 @@
 #include "host.h"
 
 namespace {
-const std::string kOneShot = "oscairn-pcm-sound/0\nsample STEREO\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
+const std::string kOneShot = "oscairn-sampler-sound/0\nsample STEREO\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
 std::string oneShot() { std::string s = kOneShot; s.replace(s.find("STEREO"), 6, sampleRef("stereo")); return s; }
 }  // namespace
 

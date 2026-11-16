@@ -11,7 +11,7 @@ A reader refuses a later version.
 
 | offset | field |
 |---|---|
-| 0 | `OPCM` |
+| 0 | `OSMP` |
 | 4 | u16 version (0 or 1), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
@@ -45,7 +45,7 @@ parameter's default must be the behaviour sounds had without it.
 ## Text form
 
 ```
-oscairn-pcm-sound/1
+oscairn-sampler-sound/1
 part bend_up=12
 sample sample:2b7c...(64 hex digits)
 waveform 9f04...(64 hex digits)
@@ -54,7 +54,7 @@ element amp_level=100
 region key=0-33 vel=1-127 root=30 tune=9.38 level=-7.12 pan=-100 element=1 sample=0 loop=544-93904
 ```
 
-One item a line; the first line is `oscairn-pcm-sound/0` or `oscairn-pcm-sound/1`; `sample`, `waveform`
+One item a line; the first line is `oscairn-sampler-sound/0` or `oscairn-sampler-sound/1`; `sample`, `waveform`
 (version 1 only) and `element` lines are numbered from 0 in their own order; tune, level and pan take
 at most two decimals; `loop=start-end` with the end exclusive (an SFZ `loop_end` plus one); a `#` line
 is a comment. Errors name their line.

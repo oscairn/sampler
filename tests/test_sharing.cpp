@@ -13,7 +13,7 @@ constexpr uint32_t kParamsWritable = 26;
 // Part k's sound: its own root, envelope and element level; its own level and pan
 std::string soundOf(int k) {
     char s[320];
-    std::snprintf(s, sizeof s, "oscairn-pcm-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=%d amp_level=%d\n"
+    std::snprintf(s, sizeof s, "oscairn-sampler-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=%d amp_level=%d\n"
                   "region key=0-127 root=%d element=0 sample=0 loop=0-44100\n", 30 + 2 * k, 127 - 3 * k, 50 + k);
     return s;
 }
@@ -152,7 +152,7 @@ TEST(retiring_sounds_ring_out_and_choke) {
     a.ring = true;
     a.block(128);
     const int before = openFiles();
-    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") +
+    const std::string snd = "oscairn-sampler-sound/0\nsample " + sampleRef("stereo") +
                             "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion key=0-127 root=60 element=0 sample=0 loop=1000-140000\n";
     const uint32_t first = prepare(a, "level=1", snd);
     CHECK(first != CLAP_INVALID_ID);
@@ -206,7 +206,7 @@ TEST(retiring_sounds_ring_out_and_choke) {
 // selected and on bus 0. Once a second sound is selected on another channel, or the sound's bus is not 0, they are
 // sound buses 1 and 2 and its elements play on its bus with the rest.
 TEST(element_routing_only_for_one_sound_on_bus_0) {
-    const std::string routed = "oscairn-pcm-sound/0\npart split_outputs=1\nsample sine.osp\n"
+    const std::string routed = "oscairn-sampler-sound/0\npart split_outputs=1\nsample sine.osp\n"
         "element ampeg_decay1=127 ampeg_decay2=127 element_connection=1\nelement ampeg_decay1=127 ampeg_decay2=127 element_connection=2\n"
         "region key=0-127 root=57 element=0 sample=0 loop=0-44100\nregion key=0-127 root=69 element=1 sample=0 loop=0-44100\n";
     Inst a;
@@ -275,7 +275,7 @@ TEST(shed_count_parameter_is_read_only) {
     Inst a;
     clap_param_info_t info{};
     CHECK(a.params->get_info(a.p, kSheds, &info) && info.id == kSheds && (info.flags & CLAP_PARAM_IS_READONLY) && !(info.flags & CLAP_PARAM_IS_AUTOMATABLE));
-    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
+    const std::string snd = "oscairn-sampler-sound/0\nsample " + sampleRef("stereo") + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
     CHECK(a.load(stateWith(snd)));
     a.settle = false;
     a.streaming->stall(a.p, true);

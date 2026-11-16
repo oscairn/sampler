@@ -21,7 +21,7 @@ The shell does CLAP, parameters, state, sample assets (`oscairn.assets`, listed 
 
 A sound's patch text (sound contexts' `prepare`): an optional `shell` line of the shell's values by their
 keys (`level= pan= polyphony= knob1= ... cutoff=`; `docs/parameters.md` lists every parameter and its key),
-then the sound in its text form or as `oscairn-pcm-blob/0 <base64>`; sample references are paths
+then the sound in its text form or as `oscairn-sampler-blob/0 <base64>`; sample references are paths
 relative to the base asset reference `prepare` is given, resolved through the host.
 
 ## Build and test
@@ -41,8 +41,8 @@ Oscairn extension structs (`tests/host.h`); they link no plugin code, and their 
 "test" asset library the harness writes. Heap allocations inside `process()` are counted by
 interposing the C allocator in the test process.
 
-Device voice caps, read when an instance is created: `OSCAIRN_PCM_MAX_VOICES` (1 to 64, the
-instance) and `OSCAIRN_PCM_MAX_VOICES_PER_SOUND` (1 to 64, each sound). Anything else is no cap.
+Device voice caps, read when an instance is created: `OSCAIRN_SAMPLER_MAX_VOICES` (1 to 64, the
+instance) and `OSCAIRN_SAMPLER_MAX_VOICES_PER_SOUND` (1 to 64, each sound). Anything else is no cap.
 
 Third-party code and its licences: `third_party/NOTICES.md` (the reference's measured laws are
 carried over from the sample-engine fork under its BSD-2-Clause licence).

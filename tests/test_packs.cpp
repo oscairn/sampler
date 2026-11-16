@@ -17,7 +17,7 @@ TEST(samplepack_sample_id) {
 
 namespace {
 std::string soundOf(const std::string& ref, const char* region = "key=0-127 root=57 loop=0-44100") {
-    return "oscairn-pcm-sound/0\nsample " + ref + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion " + region + " element=0 sample=0\n";
+    return "oscairn-sampler-sound/0\nsample " + ref + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\nregion " + region + " element=0 sample=0\n";
 }
 // Renders a note of `sound` (loaded through the CLAP state) for `frames`, released half way.
 std::vector<float> play(const std::string& sound, long frames = 48000, int key = 60) {
@@ -56,11 +56,11 @@ namespace {
 // A note of `sound` from `tone`, with the plugin's I/O thread filling every ring before each block (or every region
 // decoded whole when `whole`).
 std::vector<float> render(const std::string& sound, bool whole, int key, long frames) {
-    if (whole) setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1);
+    if (whole) setenv("OSCAIRN_SAMPLER_DECODE_WHOLE", "1", 1);
     std::vector<float> out;
     {
         Inst a;
-        unsetenv("OSCAIRN_PCM_DECODE_WHOLE");
+        unsetenv("OSCAIRN_SAMPLER_DECODE_WHOLE");
         if (!a.load(stateWith(sound))) { std::printf("  the sound did not load\n"); ++g_failures; return {}; }
         a.block(128, {on(3, 1, 0, int16_t(key))});
         a.run(frames * 3 / 4, 128);
@@ -83,7 +83,7 @@ TEST(streamed_audio_equals_whole) {
         for (const char* loop : regions)
             for (int key : {60, 79, 96}) {
                 if (std::string(tone) == "mono" && std::string(loop).find("140000") != std::string::npos) continue;  // past its end
-                const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef(tone) + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\n"
+                const std::string snd = "oscairn-sampler-sound/0\nsample " + sampleRef(tone) + "\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\n"
                                         "region key=0-127 root=60 element=0 sample=0" + loop + "\n";
                 const auto w = render(snd, true, key, 96000), s = render(snd, false, key, 96000);
                 if (w.empty() || w != s) { std::printf("  %s%s key %d differs\n", tone, loop, key); ++g_failures; }
@@ -93,12 +93,12 @@ TEST(streamed_audio_equals_whole) {
 
 // The comparison above compares two different things: decoded whole holds the tone in memory, streamed only its head.
 TEST(streaming_holds_only_heads) {
-    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nelement\nregion element=0 sample=0\n";
+    const std::string snd = "oscairn-sampler-sound/0\nsample " + sampleRef("stereo") + "\nelement\nregion element=0 sample=0\n";
     uint64_t bytes[2] = {};
     for (int whole = 0; whole < 2; ++whole) {
-        if (whole) setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1);
+        if (whole) setenv("OSCAIRN_SAMPLER_DECODE_WHOLE", "1", 1);
         Inst a;
-        unsetenv("OSCAIRN_PCM_DECODE_WHOLE");
+        unsetenv("OSCAIRN_SAMPLER_DECODE_WHOLE");
         char msg[256];
         const uint32_t id = a.contexts->prepare(a.p, "s", nullptr, 0, snd.c_str(), testBase(), msg, sizeof msg);
         CHECK(id != CLAP_INVALID_ID);

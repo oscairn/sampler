@@ -19,7 +19,7 @@ The same CLAP note events (48 kHz, 128-frame blocks) rendered by the fork's plug
 0.8.5 macOS build; its release time at index 127 is origin/Oscairn's 105.7 s, as the equal release
 slopes show; loading the setup's own node state) and by this plugin (the
 sound prepared through `oscairn.sound-contexts` from its text form, samples through
-`oscairn.assets`), with Hermite (the fork's interpolation; `OSCAIRN_PCM_INTERPOLATION=hermite`) for
+`oscairn.assets`), with Hermite (the fork's interpolation; `OSCAIRN_SAMPLER_INTERPOLATION=hermite`) for
 the null test and separately with the engine's 20-tap kernel. Sequences: single notes at keys 30, 50,
 60, 76, 95, 110 (one per region pair, 110 the stereo region), velocity 100, 3 s held; key 60 at
 velocities 30 and 127; a four-note chord started off the block grid and released in turn.

@@ -69,7 +69,7 @@ TEST(waveform_sound_equals_explicit_regions) {
         bank(72, 100, 1, 127, 84, 0, 0, 0, 0, -10000), bank(72, 100, 1, 127, 84, 1, 0, 0, 0, 10000)};
     const std::string wf = writeWaveform(banks, {"mono", "stereo", "sine"});
     CHECK(!wf.empty());
-    const std::string v1 = "oscairn-pcm-sound/1\nwaveform " + wf + "\n"
+    const std::string v1 = "oscairn-sampler-sound/1\nwaveform " + wf + "\n"
         "element " + kEnv + " waveform=1 coarse=3 fine=-20\n"
         "element " + kEnv + " waveform=1 coarse=-5 fine=33 key_lo=50 key_hi=90 vel_lo=40 vel_hi=100\n"
         "element " + kEnv + " waveform=1 key_lo=60 key_hi=65 vel_hi=50\n";
@@ -79,7 +79,7 @@ TEST(waveform_sound_equals_explicit_regions) {
         const std::string l = "region " + common + " pan=-100 sample=0\n", r = "region " + common + " pan=100 sample=1\n";
         return monoFirst ? l + r : r + l;
     };
-    const std::string v0 = "oscairn-pcm-sound/0\nsample " + sampleRef("mono") + "\nsample " + sampleRef("stereo") + "\nsample " + sampleRef("sine") + "\n"
+    const std::string v0 = "oscairn-sampler-sound/0\nsample " + sampleRef("mono") + "\nsample " + sampleRef("stereo") + "\nsample " + sampleRef("sine") + "\n"
         "element " + kEnv + "\nelement " + kEnv + "\nelement " + kEnv + "\n"
         // element 0: coarse +3 moves the key map down 3, transposes up 3; fine -20 is -31.25 cents: -31
         "region element=0 key=0-44 vel=1-63 root=40 transpose=3 tune=-31 sample=0\n"
@@ -106,7 +106,7 @@ TEST(waveform_refusals) {
     Inst a;
     char msg[256] = {};
     auto prepare = [&](const std::string& id) {
-        const std::string snd = "oscairn-pcm-sound/1\nwaveform " + id + "\nelement waveform=1\n";
+        const std::string snd = "oscairn-sampler-sound/1\nwaveform " + id + "\nelement waveform=1\n";
         return a.contexts->prepare(a.p, "w", nullptr, 0, snd.c_str(), testBase(), msg, sizeof msg);
     };
     CHECK(prepare(wf) != CLAP_INVALID_ID);
@@ -149,9 +149,9 @@ TEST(waveform_refusals) {
 namespace {
 // A note of `sound` (the I/O thread filling every ring before each block, or every region decoded whole).
 std::vector<float> note(const std::string& sound, bool whole, int key) {
-    if (whole) setenv("OSCAIRN_PCM_DECODE_WHOLE", "1", 1);
+    if (whole) setenv("OSCAIRN_SAMPLER_DECODE_WHOLE", "1", 1);
     Inst a;
-    unsetenv("OSCAIRN_PCM_DECODE_WHOLE");
+    unsetenv("OSCAIRN_SAMPLER_DECODE_WHOLE");
     if (!a.load(stateWith(sound))) return {};
     a.block(128, {on(3, 1, 0, int16_t(key))});
     a.run(72000);
@@ -178,8 +178,8 @@ TEST(key_bank_start_and_end) {
         sp_key_bank b = bank(0, 127, 1, 127, 60, 0, 0, 0, 0, 0, loop, c.loopStart, c.loopEnd);
         b.start = c.start; b.end = c.end;
         const std::string trimmed = writeWaveform({b}, {c.tone}), env = "ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60";
-        const std::string v1 = "oscairn-pcm-sound/1\nwaveform " + trimmed + "\nelement " + env + " waveform=1\n";
-        const std::string v0 = "oscairn-pcm-sound/0\nsample " + sampleRef(c.trimmed) + "\nelement " + env + "\nregion root=60 element=0 sample=0" +
+        const std::string v1 = "oscairn-sampler-sound/1\nwaveform " + trimmed + "\nelement " + env + " waveform=1\n";
+        const std::string v0 = "oscairn-sampler-sound/0\nsample " + sampleRef(c.trimmed) + "\nelement " + env + "\nregion root=60 element=0 sample=0" +
                                (loop ? " loop=" + std::to_string(c.loopStart - c.start) + "-" + std::to_string(c.loopEnd - c.start) : std::string()) + "\n";
         for (int key : {60, 79, 96}) {
             const auto s = note(v1, false, key), w = note(v0, true, key);
@@ -194,7 +194,7 @@ TEST(key_bank_start_and_end) {
 // sample:<id>, library empty and the id as sha256; not the samples a waveform names. A path reference keeps its base.
 TEST(waveform_asset_dependencies) {
     const std::string wf = writeWaveform({bank(0, 127, 1, 127, 60, 0)}, {"mono"});
-    const std::string snd = "oscairn-pcm-sound/1\nsample " + sampleRef("stereo") + "\nwaveform " + wf + "\nelement waveform=1\nelement\nregion element=1 sample=0\n";
+    const std::string snd = "oscairn-sampler-sound/1\nsample " + sampleRef("stereo") + "\nwaveform " + wf + "\nelement waveform=1\nelement\nregion element=1 sample=0\n";
     Inst a;
     CHECK(a.load(stateWith(snd)));
     auto deps = static_cast<const oscairn_plugin_asset_dependencies_t*>(a.p->get_extension(a.p, OSCAIRN_EXT_ASSET_DEPENDENCIES));
@@ -224,11 +224,11 @@ TEST(waveform_heads_shared_between_sounds) {
     auto bytes = [&] { oscairn_memory_t m{}; a.memory->current(a.p, &m); return m.asset_bytes; };
     const uint64_t base = bytes();
     auto prepare = [&](const std::string& snd) { CHECK(a.contexts->prepare(a.p, "s", nullptr, 0, snd.c_str(), testBase(), msg, sizeof msg) != CLAP_INVALID_ID); };
-    prepare("oscairn-pcm-sound/1\nwaveform " + wf + "\nelement waveform=1\n");
+    prepare("oscairn-sampler-sound/1\nwaveform " + wf + "\nelement waveform=1\n");
     const uint64_t one = bytes();
-    prepare("oscairn-pcm-sound/1\nwaveform " + wf + "\nelement waveform=1 coarse=7 fil_cutoff=500\nelement waveform=1 key_hi=40\n");
+    prepare("oscairn-sampler-sound/1\nwaveform " + wf + "\nelement waveform=1 coarse=7 fil_cutoff=500\nelement waveform=1 key_hi=40\n");
     CHECK(one > base && bytes() == one);
-    prepare("oscairn-pcm-sound/0\nsample " + sampleRef("stereo-trim") + "\nelement\nregion element=0 sample=0\n");
+    prepare("oscairn-sampler-sound/0\nsample " + sampleRef("stereo-trim") + "\nelement\nregion element=0 sample=0\n");
     CHECK(bytes() > one);
     std::remove((g_assetDir + "/" + wf + ".owf").c_str());
 }
@@ -239,8 +239,8 @@ TEST(pcbench_renders_waveform_sounds) {
     const std::string wf = writeWaveform({bank(0, 59, 1, 127, 48, 0), bank(60, 127, 1, 127, 72, 1, 0, 0, -300, 2500)}, {"mono", "stereo"});
     const std::string dir = g_assetDir;
     auto put = [&](const char* name, const std::string& text) { FILE* f = std::fopen((dir + "/" + name).c_str(), "wb"); std::fputs(text.c_str(), f); std::fclose(f); };
-    put("v1.txt", "oscairn-pcm-sound/1\nwaveform " + wf + "\nelement waveform=1 coarse=2 fine=10 key_lo=30\n");
-    put("v0.txt", "oscairn-pcm-sound/0\nsample " + sampleRef("mono") + "\nsample " + sampleRef("stereo") + "\nelement\n"
+    put("v1.txt", "oscairn-sampler-sound/1\nwaveform " + wf + "\nelement waveform=1 coarse=2 fine=10 key_lo=30\n");
+    put("v0.txt", "oscairn-sampler-sound/0\nsample " + sampleRef("mono") + "\nsample " + sampleRef("stereo") + "\nelement\n"
                   "region key=30-57 root=48 transpose=2 tune=15 element=0 sample=0\nregion key=58-127 root=72 transpose=2 tune=15 level=-3 pan=25 element=0 sample=1\n");
     auto run = [&](const std::string& args) { return std::system(("\"" PCBENCH "\" " + args + " > /dev/null 2>&1").c_str()); };
     const std::string ev = " 48000 1.5 ", notes = " sinc on@0:40:100 on@0.1:70:60 off@0.5:40 off@0.9:70";

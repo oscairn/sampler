@@ -48,11 +48,11 @@ constexpr const char* kId = "org.oscairn.sampler";
 // The default sound for these tests: a looped 220 Hz sine (sine.osp in the test library) over every
 // key, flat envelope, release 50 (from full level the voice ends about 155 ms after the note-off).
 constexpr const char* kSound =
-    "oscairn-pcm-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
+    "oscairn-sampler-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
     "region key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
 // The same sound on a key range only.
 constexpr const char* kZoneSound =
-    "oscairn-pcm-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
+    "oscairn-sampler-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
     "region key=84-96 root=57 element=0 sample=0 loop=0-44100\n";
 inline std::string b64(const std::string& s) {
     static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -65,7 +65,7 @@ inline std::string b64(const std::string& s) {
 }
 // A CLAP state holding a sound given as its text form (the plugin saves the binary blob).
 inline std::string stateWith(const std::string& sound, double level = 1, double pan = 0, int poly = 64) {
-    char head[96]; std::snprintf(head, sizeof head, "oscairn-pcm-state 1\n%g %g %d \"test\" \"\" ", level, pan, poly);
+    char head[96]; std::snprintf(head, sizeof head, "oscairn-sampler-state 1\n%g %g %d \"test\" \"\" ", level, pan, poly);
     return head + b64(sound) + "\n";
 }
 // Patch text for prepare: the shell's values, then a sound.
@@ -244,7 +244,7 @@ struct Inst {
         contexts = static_cast<const oscairn_plugin_sound_contexts_t*>(p->get_extension(p, OSCAIRN_EXT_SOUND_CONTEXTS));
         budget = static_cast<const oscairn_plugin_voice_budget_t*>(p->get_extension(p, OSCAIRN_EXT_VOICE_BUDGET));
         memory = static_cast<const oscairn_plugin_memory_t*>(p->get_extension(p, OSCAIRN_EXT_MEMORY));
-        streaming = static_cast<const StreamingExt*>(p->get_extension(p, "org.oscairn.pcm.streaming/draft-1"));
+        streaming = static_cast<const StreamingExt*>(p->get_extension(p, "org.oscairn.sampler.streaming/draft-1"));
         snapshots = static_cast<const oscairn_plugin_sound_snapshots_t*>(p->get_extension(p, OSCAIRN_EXT_SOUND_SNAPSHOTS));
         if (!streaming) { std::printf("  no streaming extension\n"); ++g_failures; return; }
         if (start) { p->activate(p, kRate, 1, 4096); p->start_processing(p); }

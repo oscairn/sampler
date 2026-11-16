@@ -71,7 +71,7 @@ struct SoundData {
     uint8_t waveform[kMaxWaveforms][32];      // the waveform ids its elements name (v1)
     SoundData();
 };
-// The binary form: "OPCM", version, sizes, a CRC-32, then the tables (sound.cpp). writeBlob and
+// The binary form: "OSMP", version, sizes, a CRC-32, then the tables (sound.cpp). writeBlob and
 // writeText return the bytes needed (without a NUL) and write at most cap bytes; readBlob and
 // readText validate everything and leave `out` unspecified on failure (error says why).
 size_t writeBlob(const SoundData&, uint8_t* out, size_t cap);

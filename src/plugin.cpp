@@ -32,12 +32,12 @@
 namespace pcmshell {
 namespace {
 
-constexpr const char* kStateHeader = "oscairn-pcm-state 3";      // the CLAP state: the default sound (states 1 and 2,
-constexpr const char* kStateHeader2 = "oscairn-pcm-state 2";     // with the values before the knobs or before the bus
-constexpr const char* kStateHeader1 = "oscairn-pcm-state 1";     // only, still read)
-constexpr const char* kSnapshotHeader = "oscairn-pcm-contexts/3"; // the sound-contexts snapshot (one token)
+constexpr const char* kStateHeader = "oscairn-sampler-state 3";      // the CLAP state: the default sound (states 1 and 2,
+constexpr const char* kStateHeader2 = "oscairn-sampler-state 2";     // with the values before the knobs or before the bus
+constexpr const char* kStateHeader1 = "oscairn-sampler-state 1";     // only, still read)
+constexpr const char* kSnapshotHeader = "oscairn-sampler-contexts/3"; // the sound-contexts snapshot (one token)
 constexpr clap_id kShedsParam = kParamCount;  // read-only: voices shed for late streams (the streaming extension's count)
-constexpr const char* kBlobHeader = "oscairn-pcm-blob/0";         // patch text: a blob in base64
+constexpr const char* kBlobHeader = "oscairn-sampler-blob/0";         // patch text: a blob in base64
 constexpr size_t kMaxStateBytes = 1 << 22;  // eight sounds' blobs in base64
 constexpr uint32_t kMaxDeviceVoices = kVoices, kMaxDeviceVoicesPerSound = kVoices;
 
@@ -490,7 +490,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (b64 != "-") {
             std::vector<uint8_t> blob; std::string error;
             if (library.size() >= 64 || path.size() >= 1024 || !unbase64(b64, blob)) return false;
-            if (blob.size() < 4 || std::memcmp(blob.data(), "OPCM", 4)) {  // a hand-written state may carry the text form
+            if (blob.size() < 4 || std::memcmp(blob.data(), "OSMP", 4)) {  // a hand-written state may carry the text form
                 pcm::SoundData d; const std::string text(blob.begin(), blob.end());
                 if (!pcm::readText(text.c_str(), d, nullptr, 0)) return false;
                 blob.resize(pcm::writeBlob(d, nullptr, 0));
@@ -561,7 +561,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
 
     // ---- sound contexts: prepare ---------------------------------------------------------
     // Patch text, line by line: an optional "shell" line of the shell's values (level=, pan=,
-    // polyphony=), then the sound: its text form (core/sound.cpp) or "oscairn-pcm-blob/0 <base64>".
+    // polyphony=), then the sound: its text form (core/sound.cpp) or "oscairn-sampler-blob/0 <base64>".
     // Sample references resolve from `base` through the host's oscairn.assets.
     bool givenShell[kParamCount] = {};  // parsePatchText's: the values its shell line named
     std::shared_ptr<const Sound> parsePatchText(const char* text, const oscairn_asset_ref_t* base, Patch& patch, std::string& error) {

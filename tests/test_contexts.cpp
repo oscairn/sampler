@@ -28,7 +28,7 @@ TEST(prepare_select_discard_lifecycle) {
     CHECK_EQ(prepare(a, "x", patchWith("volume=1").c_str(), msg, sizeof msg), CLAP_INVALID_ID);
     CHECK_EQ(prepare(a, "x", patchWith("pan=2").c_str(), msg, sizeof msg), CLAP_INVALID_ID);
     // a sample the host cannot resolve, or no base to resolve it from
-    CHECK_EQ(prepare(a, "x", "oscairn-pcm-sound/0\nsample none.wav\nelement\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);
+    CHECK_EQ(prepare(a, "x", "oscairn-sampler-sound/0\nsample none.wav\nelement\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);
     CHECK(std::strstr(msg, "none.wav") != nullptr);
     CHECK_EQ(a.contexts->prepare(a.p, "x", nullptr, 0, kSound, nullptr, msg, sizeof msg), CLAP_INVALID_ID);
     oscairn_sound_parameter_t bad{99, 1};
@@ -131,7 +131,7 @@ TEST(a_sound_plays_only_its_key_range) {
     char msg[160] = {};
     const uint32_t b = prepare(a, "zone", patchWith("level=1", kZoneSound).c_str(), msg, sizeof msg);
     CHECK(b != CLAP_INVALID_ID);
-    CHECK_EQ(prepare(a, "x", "oscairn-pcm-sound/0\nsample sine.osp\nelement fil_cutoff=5000\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);  // a raw value out of range
+    CHECK_EQ(prepare(a, "x", "oscairn-sampler-sound/0\nsample sine.osp\nelement fil_cutoff=5000\nregion element=0 sample=0\n", msg, sizeof msg), CLAP_INVALID_ID);  // a raw value out of range
     CHECK(std::strstr(msg, "line 3") != nullptr && std::strstr(msg, "fil_cutoff=5000") != nullptr);
     a.contexts->select(a.p, b, 0);
     a.block(128);
@@ -151,7 +151,7 @@ TEST(a_discarded_sound_releases_its_samples) {
     Inst a;
     a.block(128);
     const int before = openFiles();
-    const std::string snd = "oscairn-pcm-sound/0\nsample " + sampleRef("stereo") + "\nelement ampeg_release=0\nregion element=0 sample=0\n";
+    const std::string snd = "oscairn-sampler-sound/0\nsample " + sampleRef("stereo") + "\nelement ampeg_release=0\nregion element=0 sample=0\n";
     const uint32_t id = prepare(a, "s", snd.c_str());
     CHECK(id != CLAP_INVALID_ID);
     CHECK_EQ(openFiles(), before + 1);

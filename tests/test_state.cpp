@@ -45,7 +45,7 @@ TEST(state_round_trip_is_byte_identical) {
     Inst a;
     a.block(128, {param(0, 0, 0.3), param(0, 1, -0.5), param(0, 2, 10)});
     const std::string s = a.save();
-    CHECK(s.rfind("oscairn-pcm-state 3\n", 0) == 0);
+    CHECK(s.rfind("oscairn-sampler-state 3\n", 0) == 0);
     Inst b;
     CHECK(b.load(s));
     CHECK_EQ(b.save() == s, true);
@@ -67,14 +67,14 @@ TEST(state_refuses_what_is_malformed) {
     Inst b;
     const std::string before = b.save();
     const std::string sound = b64(kSound);
-    const std::string bad[] = {"", "oscairn-pcm-state 1\n0.5 0 8\n", "oscairn-pcm-state 1\n", "oscairn-pcm-state 0\n0.5 0 8 \"test\" \"\" -\n",
-                               "oscairn-pcm-state 1\n2 0 8 \"test\" \"\" -\n", "oscairn-pcm-state 1\nnan 0 8 \"test\" \"\" -\n",
-                               "oscairn-pcm-state 1\n0.5 0 0 \"test\" \"\" -\n", "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" - 9\n",
-                               "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" -\ngarbage\n", "not a state",
-                               "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + b64(std::string(kSound).substr(0, std::strlen(kSound) - 30)) + "\n",  // a cut sound
-                               "oscairn-pcm-state 1\n0.5 0 8 \"elsewhere\" \"\" " + sound + "\n",                         // samples that do not resolve
-                               "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + b64("oscairn-pcm-sound/0\nsample sine.osp\n") + "\n",  // no region
-                               "oscairn-pcm-state 1\n0.5 0 8 \"test\" \"\" " + sound.substr(0, sound.size() - 1) + "\n"};  // not base64
+    const std::string bad[] = {"", "oscairn-sampler-state 1\n0.5 0 8\n", "oscairn-sampler-state 1\n", "oscairn-sampler-state 0\n0.5 0 8 \"test\" \"\" -\n",
+                               "oscairn-sampler-state 1\n2 0 8 \"test\" \"\" -\n", "oscairn-sampler-state 1\nnan 0 8 \"test\" \"\" -\n",
+                               "oscairn-sampler-state 1\n0.5 0 0 \"test\" \"\" -\n", "oscairn-sampler-state 1\n0.5 0 8 \"test\" \"\" - 9\n",
+                               "oscairn-sampler-state 1\n0.5 0 8 \"test\" \"\" -\ngarbage\n", "not a state",
+                               "oscairn-sampler-state 1\n0.5 0 8 \"test\" \"\" " + b64(std::string(kSound).substr(0, std::strlen(kSound) - 30)) + "\n",  // a cut sound
+                               "oscairn-sampler-state 1\n0.5 0 8 \"elsewhere\" \"\" " + sound + "\n",                         // samples that do not resolve
+                               "oscairn-sampler-state 1\n0.5 0 8 \"test\" \"\" " + b64("oscairn-sampler-sound/0\nsample sine.osp\n") + "\n",  // no region
+                               "oscairn-sampler-state 1\n0.5 0 8 \"test\" \"\" " + sound.substr(0, sound.size() - 1) + "\n"};  // not base64
     for (auto& s : bad) { CHECK(!b.load(s)); CHECK(b.save() == before); }
     CHECK(!b.load(std::string(1 << 20, 'x')));
     CHECK(b.save() == before);
@@ -90,7 +90,7 @@ TEST(sound_context_snapshot_round_trip) {
     a.block(128);
     Stream s;
     CHECK(a.contexts->state->save(a.p, &s.out));
-    CHECK(s.data.rfind("oscairn-pcm-contexts/3\n", 0) == 0);
+    CHECK(s.data.rfind("oscairn-sampler-contexts/3\n", 0) == 0);
     Inst c;
     Stream in; in.data = s.data;
     CHECK(c.contexts->state->load(c.p, &in.in));
@@ -101,7 +101,7 @@ TEST(sound_context_snapshot_round_trip) {
     oscairn_sound_context_info_t info{};
     CHECK(c.contexts->get(c.p, 1, &info) && !std::strcmp(info.name, "bright \"b\"") && (info.selected_channels == 4));
     // a snapshot that is wrong changes nothing
-    const char* bad[] = {"", "oscairn-pcm-contexts/2\n", "oscairn-pcm-contexts/2\n0\n", "oscairn-pcm-contexts/1\n1 \"Default\" 0.5 0 8 \"\" \"\" -\n"};
+    const char* bad[] = {"", "oscairn-sampler-contexts/2\n", "oscairn-sampler-contexts/2\n0\n", "oscairn-sampler-contexts/1\n1 \"Default\" 0.5 0 8 \"\" \"\" -\n"};
     for (auto* t : bad) { Stream x; x.data = t; CHECK(!c.contexts->state->load(c.p, &x.in)); }
     Stream s3;
     CHECK(c.contexts->state->save(c.p, &s3.out) && s3.data == s.data);
@@ -119,9 +119,13 @@ TEST(state_from_the_plugin_previously_under_this_id_is_refused) {
     Inst a;
     a.block(128, {param(0, 0, 0.3)});
     const std::string before = a.save();
+    // this plugin's own state under the header of the id it used before (no reader for that header)
+    const std::string oldHeader = "oscairn-pcm-state 3" + before.substr(std::strlen("oscairn-sampler-state 3"));
+    CHECK(before.rfind("oscairn-sampler-state 3\n", 0) == 0);
+    CHECK(!a.load(oldHeader) && a.save() == before);
     for (const std::string* s : {&foreign, &withNul, &snapshot}) { CHECK(!a.load(*s)); CHECK(a.save() == before); }
     Stream ctxBefore; CHECK(a.contexts->state->save(a.p, &ctxBefore.out));
-    for (const std::string* s : {&foreign, &withNul, &snapshot}) {
+    for (const std::string* s : {&foreign, &withNul, &snapshot, &oldHeader}) {
         Stream x; x.data = *s;
         CHECK(!a.contexts->state->load(a.p, &x.in));
     }
