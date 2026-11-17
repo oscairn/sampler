@@ -184,7 +184,9 @@ A port counts as done when all of these hold: the test suite and the cost gates 
 
 At the port to Rust the engine is cut into three reusable pieces, so other engines can use them: reading samples
 from packs (already a separate library), sample playback (interpolation, looping, streaming), and the per-layer
-voice (filter, envelopes, LFOs, controller routing). Until then new work keeps those pieces separable.
+voice (filter, envelopes, LFOs, controller routing). Each engine compiles the
+pieces it uses into its own plugin at a pinned version (a build-time dependency: the shipped plugin stays
+self-contained, and the pieces are optimized together with the engine's own loop). Until then new work keeps those pieces separable.
 
 ## 6. Next
 
