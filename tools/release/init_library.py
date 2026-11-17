@@ -177,6 +177,7 @@ def build(clap, samplepack, c):
     """{path: bytes} of the archive's files in archive order, library.json first."""
     version, outputs = read_build(clap, c['PACKAGE_ID'])
     item_id = c['INIT_SOUND']
+    revision = subprocess.run(('git', '-C', REPO, 'rev-parse', 'HEAD'), capture_output=True, text=True, check=True).stdout.strip()
     with tempfile.TemporaryDirectory() as tmp:
         wav, osp, owf = (os.path.join(tmp, 'tone' + ext) for ext in ('.wav', '.osp', '.owf'))
         with wave.open(wav, 'wb') as w:
@@ -227,7 +228,9 @@ def build(clap, samplepack, c):
     files[f'{folder}/sound.json'] = (compact(doc) + '\n').encode()
     files.update(TYPES)
     manifest = {'format': 'oscairn.library', 'version': 3, 'id': c['INIT_LIBRARY_ID'], 'name': c['INIT_LIBRARY_NAME'],
-                'kind': 'library', 'items': [{'kind': 'sound', 'id': item_id, 'name': SOUND_NAME, 'path': folder}],
+                'kind': 'library', 'license': c['INIT_LICENSE'],
+                'source': {'url': c['SOURCE_URL'], 'revision': revision},  # the plugin's own: this script makes the content
+                'items': [{'kind': 'sound', 'id': item_id, 'name': SOUND_NAME, 'path': folder}],
                 'plugins': [], 'files': {p: sha256(d) for p, d in files.items()}}
     return {'library.json': (compact(manifest) + '\n').encode(), **files}
 

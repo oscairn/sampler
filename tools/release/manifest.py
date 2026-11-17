@@ -106,7 +106,8 @@ def main():
         if not os.path.isfile(path):
             sys.exit(f"manifest.py: {path} missing; run tools/release/init_library.py first")
         manifest['dependencies'] = {'packages': [{'id': c['INIT_LIBRARY_ID'], 'version': version}]}
-        manifest['init'] = {'library': {'file': c['INIT_FILE'], 'sha256': sha256(path), 'size': os.path.getsize(path)},
+        manifest['init'] = {'library': {'file': c['INIT_FILE'], 'sha256': sha256(path), 'size': os.path.getsize(path),
+                                        'license': c['INIT_LICENSE']},
                             'sound': c['INIT_SOUND']}
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(manifest, f, indent=2)

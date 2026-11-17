@@ -66,7 +66,8 @@ OBJECTS['dependencies'] = ([], {'assets': (None, None), 'packages': (None, None)
 OBJECTS['packages'] = (['id', 'version'], {'id': (ID, 128), 'version': (r'^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$', None)})
 OBJECTS['init'] = (['library', 'sound'], {'library': (None, None), 'sound': (r'^[A-Za-z0-9][A-Za-z0-9._:@+/-]{0,255}$', None)})
 OBJECTS['library'] = (['file', 'sha256', 'size'], {'file': (OBJECTS['builds'][1]['file'][0], None),
-                                                  'sha256': (r'^[0-9a-f]{64}$', None), 'size': (None, None)})
+                                                  'sha256': (r'^[0-9a-f]{64}$', None), 'size': (None, None),
+                                                  'license': (None, 256)})
 OBJECTS['assets'] = (['id', 'version'], {'id': (ID, 128), 'version': (r'^[0-9][A-Za-z0-9.+_-]{0,63}$', None)})
 CONSTS = {'': {'format': 'oscairn.plugin-release', 'version': 1}}
 
@@ -185,6 +186,11 @@ def check_init(dist, manifest, bad):
         return bad(f"init: {library['file']} is not a library archive: {e}")
     if held.get('id') not in [n.get('id') for n in manifest.get('dependencies', {}).get('packages', [])]:
         bad(f"init: the library is {held.get('id')}, which dependencies.packages does not name")
+    if held.get('license') != library.get('license', manifest.get('license')):
+        bad(f"init: the library's license is {held.get('license')!r}, not the manifest's")
+    source = manifest.get('source', {})
+    if held.get('source') != {'url': source.get('url'), 'revision': source.get('revision')}:
+        bad("init: the library's source is not the release's url and revision")
     if init.get('sound') not in [i.get('id') for i in held.get('items', [])]:
         bad(f"init: the library has no item {init.get('sound')}")
 
