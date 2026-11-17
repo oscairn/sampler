@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(oscairn_sampler VERSION 0.9.4 LANGUAGES C CXX)
+project(oscairn_sampler VERSION 0.9.5 LANGUAGES C CXX)
 
 # The binary's name (the release stem is NAME in tools/release/release.conf).
 set(PCM_NAME oscairn-sampler)
