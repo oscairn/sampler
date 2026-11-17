@@ -327,6 +327,32 @@ TEST(box_sources_drive_their_boxes) {
     CHECK(whole > 0.01f && peak(a.L, a.L.size() - 1000) < 1e-4f * whole);
 }
 
+// Pitch bend moves the pitch by the part's bend range (default +2 / -2 semitones): the played 220 Hz sine, measured from
+// its positive-going zero crossings over the last half second, is two semitones up at full bend up and two down at full
+// bend down; the mod wheel with no box assigned changes nothing.
+TEST(pitch_bend_moves_the_pitch) {
+    auto hz = [](const std::vector<float>& v) {
+        const size_t from = v.size() - 24000;
+        size_t first = 0, last = 0, n = 0;
+        for (size_t i = from + 1; i < v.size(); ++i)
+            if (v[i - 1] < 0 && v[i] >= 0) { if (!n++) first = i; last = i; }
+        return n > 1 ? double(n - 1) * kRate / double(last - first) : 0.0;
+    };
+    struct { uint8_t lsb, msb; double semitones; } cases[] = {{0, 64, 0}, {127, 127, 2}, {0, 0, -2}};
+    for (auto& c : cases) {
+        Inst a;
+        a.block(128, {midi(0, 0xe0, c.lsb, c.msb), on(0, 1, 0, 57, 1.0)});
+        a.run(48000);
+        const double want = 220 * std::pow(2.0, c.semitones / 12), got = hz(a.L);
+        if (!(std::fabs(got - want) < 0.005 * want)) { ++g_failures; std::printf("  bend %d: %g Hz, wanted %g\n", int(c.semitones), got, want); }
+    }
+    Inst wheel, plain;
+    wheel.block(128, {midi(0, 0xb0, 1, 127), on(0, 1, 0, 57, 1.0)});
+    plain.block(128, {on(0, 1, 0, 57, 1.0)});
+    wheel.run(9600); plain.run(9600);
+    CHECK(peak(plain.L) > 0.01f && wheel.L == plain.L && wheel.R == plain.R);
+}
+
 // One-shot regions (no loop) whose sample ends before the note and before the release would: the voice ends at the
 // sample's end, active_voices returns to 0 and each note gets one NOTE_END, as a normal element and as a key-off
 // element, in any block size; also 26 such notes and a minute of silence.
