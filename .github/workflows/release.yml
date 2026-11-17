@@ -61,10 +61,23 @@ jobs:
           set -euo pipefail
           . tools/release/release.conf
           python3 tools/release/check_deps.py "dist/$NAME-${{ matrix.name }}.clap" '${{ matrix.name }}'
+      - name: Init library
+        # Built once, on a native job that can load its own .clap (build.sh refuses another platform's);
+        # a release.conf without INIT_FILE has none.
+        if: matrix.name == 'linux-x86_64'
+        run: |
+          set -euo pipefail
+          . tools/release/release.conf
+          if [ -n "${INIT_FILE:-}" ]; then
+            python3 tools/release/init_library.py "dist/$NAME-${{ matrix.name }}.clap" \
+              "dist/build-${{ matrix.name }}/samplepack-cli/release/samplepack" "dist/$INIT_FILE"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: clap-${{ matrix.name }}
-          path: dist/*.clap
+          path: |
+            dist/*.clap
+            dist/*.olib
 
   release:
     needs: build
@@ -115,7 +128,7 @@ jobs:
             --verify-tag \
             --title "$TAG" \
             --notes "Install from the Catalog in Oscairn (official repository), or download the signed package: https://github.com/oscairn/packages/raw/main/packages/$PACKAGE_ID/${TAG#*-v}.olib (available once this version is imported)." \
-            dist/*.clap dist/licenses.tar.gz dist/oscairn-release.json
+            dist/*.clap dist/licenses.tar.gz dist/oscairn-release.json $(ls dist/*.olib 2>/dev/null || true)
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
@@ -125,5 +138,6 @@ jobs:
           name: release-files
           path: |
             dist/*.clap
+            dist/*.olib
             dist/licenses.tar.gz
             dist/oscairn-release.json

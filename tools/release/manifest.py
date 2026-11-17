@@ -8,7 +8,9 @@
 prefix; until the packages schema adopts it, source.tag stays the real tag name).
 The version comes from the tag and must equal the version the plugin itself reports
 in its clap_plugin_descriptor_t (version.py) and the CMake project version. The
-builds rows come from every <NAME>-<platform>.clap found in <distdir>.
+builds rows come from every <NAME>-<platform>.clap found in <distdir>. With INIT_FILE
+in release.conf, the init library archive <distdir>/<INIT_FILE> is named in `init` and,
+at the release's version, in `dependencies.packages`.
 """
 import datetime
 import json
@@ -98,6 +100,14 @@ def main():
         'clap': clap_version(),
         'oscairnClap': oscairn_clap,
     }
+    if c.get('INIT_FILE'):
+        # The init library (init_library.py): a package of its own, at this release's version, and a file of the release.
+        path = os.path.join(dist, c['INIT_FILE'])
+        if not os.path.isfile(path):
+            sys.exit(f"manifest.py: {path} missing; run tools/release/init_library.py first")
+        manifest['dependencies'] = {'packages': [{'id': c['INIT_LIBRARY_ID'], 'version': version}]}
+        manifest['init'] = {'library': {'file': c['INIT_FILE'], 'sha256': sha256(path), 'size': os.path.getsize(path)},
+                            'sound': c['INIT_SOUND']}
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(manifest, f, indent=2)
         f.write('\n')

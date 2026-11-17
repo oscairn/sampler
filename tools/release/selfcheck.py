@@ -7,8 +7,9 @@
 The checks packages-side import-release.py runs that need no third-party library:
 required fields, no unknown fields, the constants, enums, patterns and array
 bounds (retranscribed from oscairn/packages schemas/plugin-release.schema.json at
-PR #18 head), the schema's rule that a macOS build is a Mach-O file and not a zip,
-and that every builds/licenseFiles sha256 and size match the actual files in <distdir>.
+PR #18 head, and for dependencies.packages and init at PR #33 head), the schema's rule that a macOS build is a Mach-O file and not a zip,
+and that every builds/licenseFiles sha256 and size match the actual files in <distdir>;
+for an init library, that its file matches and its archive's id is in dependencies.packages.
 
 Known deviation: the schema requires source.tag == "v" + package.version, but every
 plugin repo tags oscairn-vX.Y.Z (upstream v* tags exist in forks), so TAG_PATTERN
@@ -18,6 +19,7 @@ import json
 import os
 import re
 import sys
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from release_conf import conf, sha256
@@ -32,7 +34,7 @@ OBJECTS = {
           'licenseFiles', 'clap', 'oscairnClap'],
          {'format': ('^oscairn\\.plugin-release$', None), 'version': (None, None),
           'package': (None, None), 'plugins': (None, None), 'builds': (None, None),
-          'source': (None, None), 'dependencies': (None, None),
+          'source': (None, None), 'dependencies': (None, None), 'init': (None, None),
           'license': (r'^[A-Za-z0-9.+() -]{1,256}$', None),
           'licenseFiles': (None, None),
           'clap': (SEMVER, None), 'oscairnClap': (r'^[0-9a-f]{7,40}$', None)}),
@@ -54,12 +56,17 @@ OBJECTS = {
                      {'file': (r'^licenses/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$', None),
                       'sha256': (r'^[0-9a-f]{64}$', None)}),
 }
-ARRAY_BOUNDS = {'plugins': (1, 64), 'builds': (1, 8), 'licenseFiles': (1, 64), 'assets': (0, 64)}
+ARRAY_BOUNDS = {'plugins': (1, 64), 'builds': (1, 8), 'licenseFiles': (1, 64), 'assets': (0, 64), 'packages': (0, 64)}
 # element schema name for array fields
-ARRAY_ITEMS = {'plugins': 'plugins', 'builds': 'builds', 'licenseFiles': 'licenseFiles', 'assets': 'assets'}
+ARRAY_ITEMS = {'plugins': 'plugins', 'builds': 'builds', 'licenseFiles': 'licenseFiles', 'assets': 'assets',
+               'packages': 'packages'}
 # object fields of the top object, and their schema names
-NESTED = {'package': 'package', 'source': 'source', 'dependencies': 'dependencies'}
-OBJECTS['dependencies'] = ([], {'assets': (None, None)})
+NESTED = {'package': 'package', 'source': 'source', 'dependencies': 'dependencies', 'init': 'init', 'library': 'library'}
+OBJECTS['dependencies'] = ([], {'assets': (None, None), 'packages': (None, None)})
+OBJECTS['packages'] = (['id', 'version'], {'id': (ID, 128), 'version': (r'^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$', None)})
+OBJECTS['init'] = (['library', 'sound'], {'library': (None, None), 'sound': (r'^[A-Za-z0-9][A-Za-z0-9._:@+/-]{0,255}$', None)})
+OBJECTS['library'] = (['file', 'sha256', 'size'], {'file': (OBJECTS['builds'][1]['file'][0], None),
+                                                  'sha256': (r'^[0-9a-f]{64}$', None), 'size': (None, None)})
 OBJECTS['assets'] = (['id', 'version'], {'id': (ID, 128), 'version': (r'^[0-9][A-Za-z0-9.+_-]{0,63}$', None)})
 CONSTS = {'': {'format': 'oscairn.plugin-release', 'version': 1}}
 
@@ -152,6 +159,34 @@ def check_files(dist, manifest, bad):
             bad(f"licenseFiles: {row['file']} not in {dist}")
         elif sha256(path) != row['sha256']:
             bad(f"licenseFiles: {row['file']}: sha256 mismatch")
+    check_init(dist, manifest, bad)
+
+
+def check_init(dist, manifest, bad):
+    """The init library is a file of the release (not another one), as the import checks: its sha256 and size,
+    that it is a library archive whose id dependencies.packages names, and that it holds the sound."""
+    init = manifest.get('init')
+    if not init:
+        return
+    library = init.get('library', {})
+    if library.get('file') in {os.path.basename(r['file']) for r in manifest.get('builds', []) + manifest.get('licenseFiles', [])}:
+        bad(f"init: {library['file']} is also another file of the release")
+    path = os.path.join(dist, str(library.get('file')))
+    if not os.path.isfile(path):
+        return bad(f"init: {library.get('file')} not in {dist}")
+    if sha256(path) != library.get('sha256'):
+        bad(f"init: {library['file']}: sha256 mismatch")
+    if os.path.getsize(path) != library.get('size'):
+        bad(f"init: {library['file']}: size mismatch")
+    try:
+        with zipfile.ZipFile(path) as z:
+            held = json.loads(z.read('library.json'))
+    except (zipfile.BadZipFile, KeyError, ValueError) as e:
+        return bad(f"init: {library['file']} is not a library archive: {e}")
+    if held.get('id') not in [n.get('id') for n in manifest.get('dependencies', {}).get('packages', [])]:
+        bad(f"init: the library is {held.get('id')}, which dependencies.packages does not name")
+    if init.get('sound') not in [i.get('id') for i in held.get('items', [])]:
+        bad(f"init: the library has no item {init.get('sound')}")
 
 
 def main():
