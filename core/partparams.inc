@@ -194,3 +194,6 @@ X(PartCutoffOffset, "part_cutoff", -64, 63, 0)
 X(PartResonanceOffset, "part_resonance", -64, 63, 0)
 // the part's filter envelope depth offset (as displayed): 2 depth steps a unit
 X(PartFegDepthOffset, "part_feg_depth", -64, 63, 0)
+// the part's key assign: 0 single (a note ends the sound's notes already sounding on its key), 1 multi (they stack); the
+// reference stores 0 single, 1 multi. Multi is the default: sounds played so before the parameter existed
+X(PartKeyAssign, "key_assign", 0, 1, 1)

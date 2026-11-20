@@ -70,6 +70,10 @@ public:
         if (c >= kContexts || !installed_[c]) return false;
         return pcm::keySounds(*installed_[c], key, std::max(1, int(std::lround(vel * 127))));
     }
+    bool multiKeys(uint32_t c) override {
+        sync();
+        return c < kContexts && installed_[c] && installed_[c]->multi;
+    }
     void noteOn(uint32_t v, uint32_t c, int16_t ch, int16_t key, double vel) override {
         sync();
         core_->noteOn(v, c, ch, key, float(vel));

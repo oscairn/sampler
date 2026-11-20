@@ -173,6 +173,7 @@ struct Compiled {
     float bendUp = 2, bendDown = -2;  // semitones at full bend
     int16_t velDepth = 64, velOffset = 64;  // the part's velocity sensitivity (raw)
     bool splitOutputs = false;        // elements to their output buses (else all on bus 0)
+    bool multi = true;                // key assign multi: notes on one key stack (else a note ends the earlier ones)
     double noteCost = 0;              // estimated instructions a block of the costliest note (all its layers)
     // the controller boxes the core moves (laws::boxDest), in the part's order: number (0-15), source, destination,
     // curve; ratio (raw +127 as +128) and offset (1024 unipolar, 512 bipolar)

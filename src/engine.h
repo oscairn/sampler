@@ -111,6 +111,7 @@ public:
 
     // Audio thread from here on.
     virtual bool keySounds(uint32_t context, int16_t key, double velocity) = 0;  // velocity 0..1
+    virtual bool multiKeys(uint32_t context) = 0;  // key assign multi: a note leaves the sound's earlier ones on its key sounding
     virtual void noteOn(uint32_t voice, uint32_t context, int16_t channel, int16_t key, double velocity) = 0;
     virtual void noteOff(uint32_t voice) = 0;                       // enter the release
     virtual void keyUp(uint32_t voice) = 0;                         // the key is up, the sustain pedal holds the note

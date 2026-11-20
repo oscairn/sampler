@@ -427,3 +427,106 @@ TEST(pad_voices_end_by_the_release_rule) {
         if (c.mode == 0 && std::labs(end - quiet110) > 512) { ++g_failures; std::printf("  %s: ended at %ld, the quiet end at %ld frames\n", c.what, end, quiet110); }
     }
 }
+
+// Key assign (part parameter key_assign). The test sound with key_assign set to single (0) or multi (1).
+static std::string keyAssignSound(int v) {
+    return "oscairn-sampler-sound/0\npart key_assign=" + std::to_string(v) + "\nsample sine.osp\n"
+           "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
+           "region key=0-127 root=57 element=0 sample=0 loop=0-44100\n";
+}
+// RMS of the main port's left channel over [from, to).
+static double rmsL(const Inst& a, size_t from, size_t to) {
+    double s = 0;
+    for (size_t i = from; i < to; ++i) s += double(a.L[i]) * a.L[i];
+    return std::sqrt(s / double(to - from));
+}
+// Key 57 (the root: 220 Hz) struck n times with the pedal down, 4800 frames apart (22 whole cycles: the notes in phase),
+// each strike's key let up just before the next (at the same frame); then 4800 frames more.
+static constexpr long kStrikes = 4800;
+static void restrike(Inst& a, int n) {
+    a.block(96, {midi(0, 0xb0, 64, 127), on(0, 1, 0, 57, 1.0)});
+    a.run(kStrikes - 96, 96);
+    for (int k = 2; k <= n; ++k) {
+        a.block(96, {off(0, k - 1, 0, 57), on(0, k, 0, 57, 1.0)});
+        a.run(kStrikes - 96, 96);
+    }
+}
+
+// Single: a key struck again ends the sound's earlier note on it, held by the pedal, with the 3 ms choke fade and its
+// NOTE_END; one voice sounds, at one strike's level. Multi: the notes stack, as for a sound saved without the parameter
+// (the default is multi).
+TEST(key_assign_single_ends_the_earlier_note_on_its_key) {
+    const int n = 8;
+    Inst a;
+    CHECK(a.load(stateWith(keyAssignSound(0))));
+    restrike(a, n);
+    const double one = rmsL(a, 2400, kStrikes), last = rmsL(a, (n - 1) * kStrikes + 2400, n * kStrikes);
+    CHECK(one > 0.01 && std::fabs(last / one - 1) < 0.02);
+    CHECK_EQ(a.voices(), 1u);
+    for (int k = 1; k < n; ++k) {  // each ended once, when the fade from the next strike finished
+        const auto* e = a.endOf(k);
+        const long t = long(k) * kStrikes;
+        CHECK(a.ends(k) == 1 && e && e->key == 57 && e->channel == 0 && e->frame >= t + long(kChoke) - 1 && e->frame < t + long(kChoke) + 2 * 96);
+    }
+    CHECK_EQ(a.ends(n), 0);
+    a.block(96, {off(0, n, 0, 57), midi(0, 0xb0, 64, 0)});
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), n);
+    CHECK_EQ(a.voices(), 0u);
+
+    Inst m;
+    CHECK(m.load(stateWith(keyAssignSound(1))));
+    restrike(m, n);
+    const double mOne = rmsL(m, 2400, kStrikes), mLast = rmsL(m, (n - 1) * kStrikes + 2400, n * kStrikes);
+    CHECK(mOne > 0.01 && mLast > 0.9 * n * mOne);  // in phase: n times one note's level
+    CHECK_EQ(m.voices(), uint32_t(n));
+    CHECK_EQ(m.endsTotal(), 0);
+    m.block(96, {off(0, n, 0, 57), midi(0, 0xb0, 64, 0)});
+    m.run(24000);
+    CHECK_EQ(m.endsTotal(), n);
+
+    Inst d;  // kSound has no key_assign: the default, multi
+    restrike(d, n);
+    CHECK_EQ(d.voices(), uint32_t(n));
+    CHECK_EQ(d.endsTotal(), 0);
+}
+
+// Single ends the notes of its own sound on its own key only: another key, and another sound sharing the instance on the
+// same key, play on; a released note still ringing on the key ends too.
+TEST(key_assign_single_leaves_other_keys_and_sounds) {
+    Inst a;
+    CHECK(a.load(stateWith(keyAssignSound(0))));
+    char msg[256] = {};
+    const uint32_t other = a.contexts->prepare(a.p, "other", nullptr, 0, patchWith("level=1").c_str(), testBase(), msg, sizeof msg);
+    CHECK(other != CLAP_INVALID_ID);
+    a.contexts->select(a.p, other, 1);
+    a.block(128, {on(0, 1, 0, 60), on(0, 2, 0, 64), on(0, 3, 1, 60)});
+    a.run(2400);
+    a.block(128, {off(0, 1, 0, 60)});  // released: in its release (about 155 ms)
+    a.run(1280);
+    CHECK_EQ(a.ends(1), 0);
+    a.block(128, {on(0, 4, 0, 60)});
+    a.run(1280);
+    CHECK(a.ends(1) == 1 && a.ends(2) == 0 && a.ends(3) == 0 && a.ends(4) == 0);
+    CHECK_EQ(a.voices(), 3u);
+    a.block(128, {off(0, 2, 0, 64), off(0, 3, 1, 60), off(0, 4, 0, 60)});
+    a.run(24000);
+    CHECK_EQ(a.endsTotal(), 4);
+}
+
+// The earlier note fades out: struck again a quarter cycle off the first note's phase (the old note near its peak), the
+// largest step from one frame to the next stays within that of the two notes' sum at rest, no cut.
+TEST(key_assign_single_fades_the_earlier_note) {
+    Inst a;
+    CHECK(a.load(stateWith(keyAssignSound(0))));
+    a.block(96, {on(0, 1, 0, 57, 1.0)});
+    a.run(kStrikes - 96, 96);
+    const size_t t = size_t(kStrikes) + 55;  // 55 frames: a quarter of the 218-frame cycle
+    a.block(96, {on(55, 2, 0, 57, 1.0)});
+    a.run(4800, 96);
+    CHECK(a.ends(1) == 1 && a.ends(2) == 0);
+    float steady = 0, cut = 0;
+    for (size_t i = 2401; i < size_t(kStrikes); ++i) steady = std::max(steady, std::fabs(a.L[i] - a.L[i - 1]));
+    for (size_t i = t - 8; i < t + kChoke + 8; ++i) cut = std::max(cut, std::fabs(a.L[i] - a.L[i - 1]));
+    CHECK(steady > 0 && cut < 2.5f * steady);
+}

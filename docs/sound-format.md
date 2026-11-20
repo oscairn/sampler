@@ -15,7 +15,7 @@ A reader refuses a later version.
 | 4 | u16 version (0 or 1), u16 flags (0) |
 | 8 | u32 size of the whole blob |
 | 12 | u32 CRC-32 (IEEE) of bytes 16 to the end |
-| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (181 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
+| 16 | u16 samples, u16 elements, u16 regions, u16 part parameters (182 now; a blob with fewer, written before the later ones were added, reads with those at their defaults) |
 | 24 | part parameters, i16 each, in `core/partparams.inc` order |
 | | samples: u8 length, then the reference's bytes (no NUL): in version 0 a relative path (no `..` segment, no leading `/`); in version 1 `sample:` and the sample's id as 64 lowercase hex digits |
 | | elements: u16 count, then count x (u16 parameter index in `core/params.inc` order, i16 value); indices increasing; only values that differ from the default |
@@ -40,7 +40,9 @@ waveforms has none. Every single-byte corruption and every truncation of a test 
 (`tests/core`).
 
 Parameter indices are stable: `params.inc` and `partparams.inc` only grow at their ends; a new
-parameter's default must be the behaviour sounds had without it.
+parameter's default must be the behavior sounds had without it. So the part's `key_assign` (0 single, 1 multi)
+defaults to multi: the notes on one key stack, as before it existed. Single ends the same sound's earlier notes on
+that key with a short fade (the 3 ms choke time) and their NOTE_END.
 
 ## Text form
 
@@ -114,6 +116,7 @@ To write this format instead of SFZ for element parts:
   `split_outputs` when the host should get the insertion ports;
 - the part's bend range (`bend_up`, `bend_down`), its velocity sensitivity depth and offset (`vel_depth`,
   `vel_offset`, raw 0-127, 64 neutral), and `mono` / `portamento` when set (reported as not covered);
+- the part's key assign (`key_assign`, the reference's Key Assign Mode as it stores it: 0 single, 1 multi);
 - each element's EQ raw as the reference stores it (`eq_type`, `eq_q`, `eq_freq1`, `eq_gain1`, `eq_freq2`, `eq_gain2`; the
   frequencies 0-511 as they are: the engine reads their low 8 bits, as the reference, and keeps the high shelf within
   131-241);

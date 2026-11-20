@@ -118,6 +118,7 @@ bool compile(const SoundData& d, const SampleView* views, Compiled& out, char* e
     out.bendDown = float(d.part[PartBendDown]);
     out.velDepth = d.part[PartVelDepth]; out.velOffset = d.part[PartVelOffset];
     out.splitOutputs = d.part[PartSplitOutputs] != 0;
+    out.multi = d.part[PartKeyAssign] != 0;
     // the controller boxes the core moves (the others are reported by notCovered)
     out.boxes = 0;
     for (int k = 0; k < 16; ++k) {

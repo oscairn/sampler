@@ -225,8 +225,18 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     uint32_t index(const Voice& v) const { return uint32_t(&v - voices.data()); }
     void start(Voice& v, Context& c) {
         const uint32_t i = index(v);
+        const uint32_t slot = uint32_t(&c - contexts.data());
+        // key assign single: the sound's notes already on this key (held, released or held by the pedal) fade out over the
+        // choke time as a give-up does, and end then
+        if (!core->multiKeys(slot))
+            for (uint32_t k = 0; k < kVoices; ++k)
+                if (k != i && voices[k].active && voices[k].context == slot && voices[k].key == v.key && !voices[k].chokeLength) {
+                    fadeOut(int(k));
+                    core->choke(k, chokeFrames);
+                    choking[k] = true;
+                }
         makeRoom(c, i);
-        core->noteOn(i, uint32_t(&c - contexts.data()), v.channel, v.key, v.velocity);
+        core->noteOn(i, slot, v.channel, v.key, v.velocity);
     }
     void release(Voice& v) { core->noteOff(index(v)); }
     // Every way a note's voice ends (released out, choked, stolen, reset): free the core's slot.

@@ -68,6 +68,13 @@ channel (a CLAP state: from the next block). While a sound retires (no channel s
 ring-out buffer, what it plays on Main goes into the buffer's channels 0 and 1, or 2 and 3 once `choke_retiring` fades
 it out over the choke time; what it plays on other ports stays there.
 
+## Key assign
+
+A sound's notes on one key follow its part parameter `key_assign` (`docs/sound-format.md`), not a CLAP parameter.
+Multi (1, the default): the notes stack, as every sound did before 0.9.6. Single (0): a note ends the notes of the same sound already sounding on its key, held, released or held
+by the sustain pedal, with the choke fade (3 ms) and their NOTE_END, as a voice given up for the limits; other keys,
+and other sounds of the instance on the same key, play on.
+
 ## Editor hints (`oscairn.ui`)
 
 Every parameter has a hint: Level (role level, priority 1), Pan (pan), Cutoff (cutoff, 2), Resonance (resonance, 3),

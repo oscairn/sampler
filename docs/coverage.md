@@ -153,7 +153,8 @@ starting with "no" are reported at every value but the default (any other start:
 | Volume, Pan | the multi-part setup's (the converter writes the part's level); the shell's `level` and `pan` per sound are a linear gain and a balance | volume measured: (volume / 127)^2 on the 0.375 dB grid (acceptance c) | acceptance c |
 | Note Shift, Detune, Zone Octave Shift | folded into the regions' transpose and tune by the converter | converter | - |
 | Pitch Bend Range Upper / Lower | yes: `bend_up`, `bend_down` (semitones) | - | law only |
-| Mono/Poly Mode, Key Assign Mode | no: `mono` is reported | K54 in the fork | - |
+| Mono/Poly Mode | no: `mono` is reported | K54 in the fork | - |
+| Key Assign Mode | yes: `key_assign` (0 single; 1 multi, the default; as the reference stores them): single, a note ends the sound's notes already sounding on its key (held, released or held by the pedal; key-off elements of the note too) with the choke fade (3 ms) and their NOTE_END; multi, they stack | measured on the reference's sample engine: multi stacks a new voice on every strike of a sounding key, single leaves one voice, the earlier one fading within some milliseconds; the rule is per part | ABI tests `key_assign_single_ends_the_earlier_note_on_its_key`, `key_assign_single_leaves_other_keys_and_sounds`, `key_assign_single_fades_the_earlier_note` |
 | Portamento Switch, Time, Mode, Time Mode | no: `portamento` is reported | - | - |
 | Velocity Limit Low / High, Note Limit Low / High | clipped into the regions by the converter | converter | - |
 | Velocity Sensitivity Depth / Offset | yes: `vel_depth`, `vel_offset`; the note's velocity on the 0-2047 scale, moved as measured, for everything (element velocity limits, level, filter and envelope velocity laws) | measured here (acceptance h) | 18 pairs at 11 velocities (rms 0.057 dB); velocity limits and cutoff velocity sensitivity follow it |
