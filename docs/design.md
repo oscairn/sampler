@@ -124,6 +124,22 @@ is reused: the shell publishes no sound for the context and, after the next bloc
 main-thread call that takes back and empties the entry the audio thread left. Nothing on the audio thread allocates, locks or blocks (tested by interposing the
 allocator).
 
+## The voice budget
+
+`oscairn.voice-budget`, drafts 1 and 2 (the same table for both IDs). The unit the shell gives up is a note: a core
+slot starts every layer (region) the note hits and gives them up only together, so the host's limits,
+`active_voices` and the n a lowered limit drops by all count notes. Draft 2's `importance` lists each sound's 16
+least important notes through the SDK's `Importance` helper, from the same description the give-ups use
+(`Plugin::describe`). Weight: the note's layers sounding now. Level: its loudest layer's gain at the output, the
+amplitude envelope now times the layer's constant gain (velocity, element and region level, output staging), the
+note's volume expression and the sound's level (`pcm::Core::output`, no pass over samples), 0 dB being a
+full-scale sample. State: held (key down), pedaled (key up, the sustain pedal holding it) or released; a note below
+-60 dBFS counts as released unless struck in the last 50 ms. Age: the note-on serial, and the time since the note-on
+from the host's `steady_time`. A new note makes room through the SDK's `victim()`; at a block's start, past a limit
+the host lowered, `Importance::next()` gives up the notes the last report listed, in its order, while they still
+sound in their slots, then `victim()`'s. Either way the note fades out over the choke time (3 ms) and ends with its
+NOTE_END. The device caps and the Polyphony Limit parameter are limits of the same kind.
+
 ## Streaming
 
 A sample reference is `sample:<id>` (the host's `resolve_sample` gives the pack and the record's offset,
