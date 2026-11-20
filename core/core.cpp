@@ -1712,4 +1712,19 @@ VoiceState Core::voice(uint32_t v) const {
     return {true, releasing, level, age};
 }
 
+VoiceOutput Core::output(uint32_t v) const {
+    if (v >= kMaxVoices || !slot_[v].on) return {0, 0};
+    const Slot& sl = slot_[v];
+    VoiceOutput o{0, 0};
+    for (int k = 0; k < sl.layers; ++k) {
+        const Pool& p = pool_[sl.pool[k]];
+        for (uint32_t i = 0; i < p.n; ++i)
+            if (p.v[i].id == sl.id[k]) {
+                ++o.layers;
+                o.gain = std::max(o.gain, std::fabs(p.f[G][i]) * p.v[i].level * 32768.0f * p.v[i].volume * p.v[i].soundGain);  // level is per 16-bit sample value
+            }
+    }
+    return o;
+}
+
 }  // namespace pcm

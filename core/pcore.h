@@ -211,6 +211,7 @@ constexpr int kSub = 16;              // frames between control steps, from each
 constexpr uint32_t kOutputs = 11;     // render's output buses: 0-8 the caller's ports, 9 and 10 two more (see route)
 
 struct VoiceState { bool sounding, releasing; float level; uint64_t age; };
+struct VoiceOutput { float gain; uint32_t layers; };  // a note's gain at the output, linear, and its layers sounding
 
 }  // namespace pcm
 #include "voices.h"  // the voice pools: plain structure-of-arrays data
@@ -272,6 +273,9 @@ public:
     void advance(int64_t frames) { clock_ += frames; }
     uint32_t elementVoices() const;
     VoiceState voice(uint32_t v) const;
+    // The note's loudest layer now, 1 for its sample at full scale (envelope, velocity, element and region level, volume,
+    // the sound's level; no pass over its samples), and its layers sounding
+    VoiceOutput output(uint32_t v) const;
 
 private:
     struct Slot { bool on = false, keyUp = false, keyOff = false; uint8_t sound = 0; uint8_t layers = 0; uint8_t pool[kMaxLayers]; uint16_t id[kMaxLayers]; uint64_t age = 0; float volume = 1;

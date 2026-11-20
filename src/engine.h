@@ -137,6 +137,7 @@ public:
     virtual bool idle() const = 0;
     virtual void advance(uint64_t frames) = 0;                      // the clock moves on without rendering (skipped blocks)
     virtual VoiceInfo voice(uint32_t voice) const = 0;
+    virtual pcm::VoiceOutput output(uint32_t voice) const = 0;  // its gain at the output and its layers (pcm::Core::output)
     virtual SoundCost cost(uint32_t context) const = 0;              // any thread
     virtual uint64_t streamSheds() const = 0;                       // element voices shed for want of streamed audio; any thread
     virtual void reset() = 0;                                       // every voice off now, controllers to rest

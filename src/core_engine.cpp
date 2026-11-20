@@ -108,6 +108,7 @@ public:
         const auto s = core_->voice(v);
         return {s.sounding, s.releasing, s.level, s.age};
     }
+    pcm::VoiceOutput output(uint32_t v) const override { return core_->output(v); }
     SoundCost cost(uint32_t c) const override {
         if (c >= kContexts) return {0, 0};
         return {cost_[c].voice.load(std::memory_order_relaxed), cost_[c].rest.load(std::memory_order_relaxed)};
