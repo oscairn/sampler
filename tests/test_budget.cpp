@@ -178,3 +178,148 @@ TEST(notes_and_active_voices_report) {
     a.run(24000);
     CHECK_EQ(a.voices(), 1u);
 }
+
+// ---- draft 2: importance ----------------------------------------------------------------------
+namespace {
+// Three regions on every key: a note runs three layers.
+constexpr const char* kThreeLayers =
+    "oscairn-sampler-sound/0\nsample sine.osp\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n"
+    "region key=0-127 root=57 element=0 sample=0 loop=0-44100\nregion key=0-127 root=64 element=0 sample=0 loop=0-44100\n"
+    "region key=0-127 root=69 element=0 sample=0 loop=0-44100\n";
+struct Report {
+    std::array<oscairn_voice_budget_importance_t, 16> c{};
+    uint32_t n = 0;
+    const oscairn_voice_budget_importance_t* of(uint32_t id) const { for (uint32_t i = 0; i < n; ++i) if (c[i].context == id) return &c[i]; return nullptr; }
+};
+Report importance(const Inst& a) { Report r; r.n = a.budget2->importance(a.p, r.c.data(), uint32_t(r.c.size())); return r; }
+// The SDK's order within a context: the tier, one not just struck, then the level less a decibel a second of age.
+bool ordered(const oscairn_voice_budget_importance_t& c) {
+    for (uint32_t i = 1; i < c.count; ++i) {
+        const auto &x = c.least[i - 1], &y = c.least[i];
+        const bool xs = x.flags & OSCAIRN_VOICE_BUDGET_STRUCK, ys = y.flags & OSCAIRN_VOICE_BUDGET_STRUCK;
+        const double ax = x.level_db - std::min(x.age_ms / 1000.0, 10.0), ay = y.level_db - std::min(y.age_ms / 1000.0, 10.0);
+        if (x.tier != y.tier ? x.tier > y.tier : xs != ys ? xs : ax > ay + 1e-3) return false;
+    }
+    return true;
+}
+}  // namespace
+
+TEST(draft_2_answers_with_the_same_table_and_importance) {
+    Inst a;
+    CHECK(a.budget2 != nullptr && a.budget2 == a.budget);
+    CHECK(a.budget2 && a.budget2->importance != nullptr);
+    CHECK_EQ(importance(a).n, 0u);  // nothing sounds
+}
+
+TEST(importance_lists_each_sounds_least_important_notes_weighted_by_layers) {
+    Inst a;
+    char msg[64];
+    const uint32_t b = a.contexts->prepare(a.p, "b", nullptr, 0, kThreeLayers, testBase(), msg, sizeof msg);
+    a.contexts->select(a.p, b, 1);
+    a.block(128);
+    std::vector<Bytes> ev;
+    for (int i = 0; i < 20; ++i) ev.push_back(on(0, 1 + i, 0, int16_t(40 + i)));
+    for (int i = 0; i < 3; ++i) ev.push_back(on(0, 100 + i, 1, int16_t(60 + i)));
+    for (int i = 0; i < 20; ++i) ev.push_back(volume(1, 1 + i, 0, int16_t(40 + i), 0.1 + 0.04 * i));
+    a.block(128, ev);
+    a.run(2560);
+    const Report r = importance(a);
+    CHECK_EQ(r.n, 2u);
+    const auto* one = r.of(0);
+    const auto* three = r.of(b);
+    CHECK(one && three);
+    if (!one || !three) return;
+    CHECK_EQ(one->voices, 20u);
+    CHECK_EQ(one->count, 16u);  // at most OSCAIRN_VOICE_BUDGET_LEAST
+    CHECK(one->weight == 20.f);
+    CHECK(ordered(*one));
+    for (uint32_t i = 0; i < one->count; ++i) CHECK(one->least[i].weight == 1.f && one->least[i].tier == 2 && one->least[i].age_ms >= 50);
+    CHECK(one->least[0].level_db < one->least[15].level_db);  // the quietest first
+    CHECK_EQ(three->voices, 3u);
+    CHECK_EQ(three->count, 3u);
+    CHECK(three->weight == 9.f);
+    CHECK(ordered(*three));
+    for (uint32_t i = 0; i < three->count; ++i) CHECK(three->least[i].weight == 3.f);
+    CHECK_EQ(a.voices(), 23u);  // active_voices counts notes, as the report does
+}
+
+TEST(importance_released_then_pedaled_then_held_and_struck) {
+    Inst a;
+    // 1 held loud; 2 released quiet; 3 key up under the sustain pedal (channel 1)
+    a.block(128, {on(0, 1, 0, 60), on(0, 2, 0, 62), on(0, 3, 1, 64), volume(1, 2, 0, 62, 0.3), midi(2, 0xb1, 64, 127)});
+    a.run(2560);
+    a.block(128, {off(0, 2, 0, 62), off(0, 3, 1, 64)});
+    Report r = importance(a);
+    const auto* c = r.of(0);
+    CHECK(c && c->count == 3 && c->voices == 3);
+    if (!c || c->count != 3) return;
+    CHECK(c->least[0].tier == 0 && c->least[1].tier == 1 && c->least[2].tier == 2);
+    CHECK(c->least[0].level_db < c->least[2].level_db && c->least[0].level_db > -60);
+    for (uint32_t i = 0; i < 3; ++i) CHECK(!(c->least[i].flags & OSCAIRN_VOICE_BUDGET_STRUCK));
+    a.block(128, {on(0, 4, 0, 66)});  // a note struck under 50 ms ago: flagged, after the other held one
+    r = importance(a);
+    c = r.of(0);
+    CHECK(c && c->count == 4 && (c->least[3].flags & OSCAIRN_VOICE_BUDGET_STRUCK) && c->least[3].tier == 2 && c->least[3].age_ms < 50);
+}
+
+TEST(lowered_limit_gives_up_exactly_what_importance_listed) {
+    // six held notes, the quietest listed first: 2 (0.2), 5 (0.3), 3, 6, 4, 1
+    const double vol[6] = {0.9, 0.2, 0.5, 0.7, 0.3, 0.6};
+    auto six = [&](Inst& a) {
+        std::vector<Bytes> ev;
+        for (int i = 0; i < 6; ++i) ev.push_back(on(0, 1 + i, 0, int16_t(60 + i)));
+        for (int i = 0; i < 6; ++i) ev.push_back(volume(1, 1 + i, 0, int16_t(60 + i), vol[i]));
+        a.block(128, ev);
+        a.run(2560);
+        const Report r = importance(a);
+        CHECK(r.of(0) && r.of(0)->count == 6 && ordered(*r.of(0)));
+    };
+    {   // the order moves after the list (2 and 5 loudest now, 1 quietest), and still the listed two go
+        Inst a;
+        six(a);
+        a.block(128, {volume(0, 2, 0, 61, 1.0), volume(0, 5, 0, 64, 1.0), volume(0, 1, 0, 60, 0.1)});
+        a.limits(0, {{0, 4, 0, 5, 0}});
+        a.guard = true;
+        a.block(128);
+        a.guard = false;
+        if (allocGuardAvailable()) CHECK_EQ(a.allocations, 0);
+        a.run(640);
+        CHECK((ended(a) == std::vector<int>{2, 5}));
+        CHECK_EQ(a.voices(), 4u);
+    }
+    {   // a listed note ends by itself before the drop: the next listed one goes in its place
+        Inst a;
+        six(a);
+        a.block(128, {choke(0, 2, 0, 61)});
+        a.run(640);
+        CHECK((ended(a) == std::vector<int>{2}));
+        a.limits(0, {{0, 4, 0, 5, 0}});
+        a.run(640);
+        CHECK((ended(a) == std::vector<int>{2, 5}));
+        CHECK_EQ(a.voices(), 4u);
+    }
+    {   // a new note takes a listed note's slot: it is not the listed one, so the listed 5 and 3 go, though it is quieter
+        Inst a;
+        six(a);
+        a.block(128, {choke(0, 2, 0, 61)});
+        a.run(640);
+        a.block(128, {on(0, 7, 0, 70), volume(1, 7, 0, 70, 0.05)});
+        a.run(2560);
+        a.limits(0, {{0, 4, 0, 5, 0}});
+        a.run(640);
+        CHECK((ended(a) == std::vector<int>{2, 3, 5}));
+        CHECK_EQ(a.voices(), 4u);
+    }
+}
+
+TEST(no_allocation_in_importance) {
+    if (!allocGuardAvailable()) { std::printf("  allocation guard unavailable in this build: not checked\n"); return; }
+    Inst a;
+    for (int i = 0; i < 40; ++i) a.block(64, {on(0, 1 + i, 0, int16_t(30 + i))});
+    oscairn_voice_budget_importance_t out[16];
+    allocGuardEnable(true);
+    const uint32_t n = a.budget2->importance(a.p, out, 16);
+    allocGuardEnable(false);
+    CHECK_EQ(allocGuardCount(), 0);
+    CHECK_EQ(n, 1u);
+}

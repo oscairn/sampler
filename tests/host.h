@@ -212,6 +212,7 @@ struct Inst {
     const clap_plugin_state_t* state = nullptr;
     const oscairn_plugin_sound_contexts_t* contexts = nullptr;
     const oscairn_plugin_voice_budget_t* budget = nullptr;
+    const oscairn_plugin_voice_budget_t* budget2 = nullptr;  // the table under draft 2's ID (with importance)
     const oscairn_plugin_memory_t* memory = nullptr;
     const StreamingExt* streaming = nullptr;
     bool settle = true;         // before each block, wait until the plugin's I/O thread has filled every ring (deterministic)
@@ -243,6 +244,7 @@ struct Inst {
         state = static_cast<const clap_plugin_state_t*>(p->get_extension(p, CLAP_EXT_STATE));
         contexts = static_cast<const oscairn_plugin_sound_contexts_t*>(p->get_extension(p, OSCAIRN_EXT_SOUND_CONTEXTS));
         budget = static_cast<const oscairn_plugin_voice_budget_t*>(p->get_extension(p, OSCAIRN_EXT_VOICE_BUDGET));
+        budget2 = static_cast<const oscairn_plugin_voice_budget_t*>(p->get_extension(p, OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2));
         memory = static_cast<const oscairn_plugin_memory_t*>(p->get_extension(p, OSCAIRN_EXT_MEMORY));
         streaming = static_cast<const StreamingExt*>(p->get_extension(p, "org.oscairn.sampler.streaming/draft-1"));
         snapshots = static_cast<const oscairn_plugin_sound_snapshots_t*>(p->get_extension(p, OSCAIRN_EXT_SOUND_SNAPSHOTS));
