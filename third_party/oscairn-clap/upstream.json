@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/oscairn/oscairn-clap",
   "path": "include/oscairn-clap",
-  "commit": "c2119dbe992ce7551f49fb5efa49fe48e93cfe34",
+  "commit": "6f27cdd2fd36176952e2211e825ea751e8195b2c",
   "note": "assets.h, memory.h, sound-contexts.h, sound-contexts-plugin.hpp, ui.h, voice-budget.h and voice-budget-plugin.hpp only, unchanged; MIT like the rest of include/oscairn-clap."
 }
