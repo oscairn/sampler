@@ -27,11 +27,37 @@ void paced(Inst& a, long frames, const std::vector<Bytes>& events = {}) {
 std::vector<float> pacedNote(Inst& a) {
     a.settle = false;
     a.clearAudio();
-    paced(a, 24000, {on(3, 1, 0, 72)});
+    // printed: from the note on (the wake) to the I/O thread's first pass with nothing to do (the ring filled), and its
+    // passes with nothing to do over the note
+    using Clock = std::chrono::steady_clock;
+    const uint64_t p0 = a.streaming->idlePasses(a.p);
+    std::atomic<bool> done{false};
+    Clock::time_point filled{};
+    std::thread watch([&] {
+        while (!done && a.streaming->idlePasses(a.p) == p0) std::this_thread::sleep_for(std::chrono::microseconds(50));
+        filled = Clock::now();
+    });
+    const auto t0 = Clock::now();
+    a.block(128, {on(3, 1, 0, 72)});
+    const auto t1 = Clock::now();
+    paced(a, 24000 - 128);
+    done = true;
+    watch.join();
+    std::printf("  note-on block %.2f ms, note on to ring filled %.2f ms (the head lasts about 30 ms), %llu idle passes in the note\n",
+                std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(filled - t0).count(),
+                (unsigned long long)(a.streaming->idlePasses(a.p) - p0));
     paced(a, 12000, {off(7, 1, 0, 72)});
     std::vector<float> out = a.L;
     out.insert(out.end(), a.R.begin(), a.R.end());
     return out;
+}
+
+// Whether two renders are the same, printing the first frame where they differ when not
+bool same(const std::vector<float>& a, const std::vector<float>& b) {
+    size_t d = 0;
+    while (d < a.size() && d < b.size() && a[d] == b[d]) ++d;
+    if (d < a.size() || d < b.size()) std::printf("  they differ from frame %zu (of %zu, left then right)\n", d, a.size() / 2);
+    return a == b;
 }
 
 // The I/O thread's passes that found nothing to do over a second of silent blocks
@@ -144,7 +170,7 @@ TEST(streamed_note_after_idle_starts_on_time) {
     Inst a;
     CHECK(a.load(stateWith(oneShot())));
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-    CHECK(pacedNote(a) == whole);
+    CHECK(same(pacedNote(a), whole));
     CHECK_EQ(a.streaming->sheds(a.p), 0u);
     CHECK(peak(whole) > 0.01f);
 }
@@ -184,6 +210,6 @@ TEST(two_instances_share_the_io_thread) {
         b.run(48000);
         CHECK(idlePassesInASecond(a) <= 2);
     }
-    CHECK(pacedNote(a) == first);
+    CHECK(same(pacedNote(a), first));
     CHECK_EQ(a.streaming->sheds(a.p), 0u);
 }
