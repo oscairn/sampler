@@ -16,42 +16,61 @@ std::string oneShot() { std::string s = kOneShot; s.replace(s.find("STEREO"), 6,
 // Blocks of 128 frames at about the rate they play, the I/O thread filling the rings on its own; `events` in the first.
 // It waits by yielding, not sleeping: as an audio device's clock, not a timer a throttled process may stretch by tens of
 // milliseconds (then the blocks come in bursts no host makes).
-double g_late = 0;  // the latest block's start past its time, ms
+double g_late = 0;      // the latest block's start past its time, ms
+long g_lateFrame = 0;   // and the frame it started at (from the first block of the paced calls since g_late was reset)
+long g_pacedFrames = 0;
 void paced(Inst& a, long frames, const std::vector<Bytes>& events = {}) {
     const auto t0 = std::chrono::steady_clock::now();
     for (long done = 0; done < frames; done += 128) {
         const auto due = [&](long f) { return t0 + std::chrono::microseconds(f * 1000000 / long(kRate)); };
-        g_late = std::max(g_late, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - due(done)).count());
+        const double late = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - due(done)).count();
+        if (late > g_late) { g_late = late; g_lateFrame = g_pacedFrames + done; }
         a.block(uint32_t(std::min<long>(128, frames - done)), done ? std::vector<Bytes>{} : events);
         while (std::chrono::steady_clock::now() < due(done + 128)) std::this_thread::yield();
     }
+    g_pacedFrames += frames;
 }
 
 // A streamed note an octave up (its head lasts about 1,500 output frames before it is shed for want of the stream),
 // played at about real time: the main port, left then right, from the note on
-std::vector<float> pacedNote(Inst& a) {
+std::vector<float> pacedNote(Inst& a, const char* what) {
     a.settle = false;
     a.clearAudio();
-    // printed: from the note on (the wake) to the I/O thread's first pass with nothing to do (the ring filled), and its
-    // passes with nothing to do over the note
+    // printed: from the note on (the wake) to the I/O thread's first pass with nothing to do (the ring filled), its passes
+    // with nothing to do over the note and the longest time between two of them after the first, and the latest block
     using Clock = std::chrono::steady_clock;
     const uint64_t p0 = a.streaming->idlePasses(a.p);
     std::atomic<bool> done{false};
     Clock::time_point filled{};
-    std::thread watch([&] {
-        while (!done && a.streaming->idlePasses(a.p) == p0) std::this_thread::sleep_for(std::chrono::microseconds(50));
-        filled = Clock::now();
-    });
+    double gap = 0, gapAt = 0;
     const auto t0 = Clock::now();
+    std::thread watch([&] {
+        uint64_t n = p0;
+        Clock::time_point last{};
+        while (!done) {
+            const uint64_t m = a.streaming->idlePasses(a.p);
+            if (m != n) {
+                const auto t = Clock::now();
+                if (n == p0) filled = t;
+                else if (std::chrono::duration<double, std::milli>(t - last).count() > gap)
+                    gap = std::chrono::duration<double, std::milli>(t - last).count(), gapAt = std::chrono::duration<double, std::milli>(t - t0).count();
+                n = m; last = t;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+        if (n == p0) filled = Clock::now();
+    });
+    g_late = 0; g_pacedFrames = 0;
     a.block(128, {on(3, 1, 0, 72)});
     const auto t1 = Clock::now();
+    g_pacedFrames = 128;
     paced(a, 24000 - 128);
     done = true;
     watch.join();
-    std::printf("  blocks up to %.1f ms late\n", g_late); g_late = 0;
-    std::printf("  note-on block %.2f ms, note on to ring filled %.2f ms (the head lasts about 30 ms), %llu idle passes in the note\n",
-                std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(filled - t0).count(),
-                (unsigned long long)(a.streaming->idlePasses(a.p) - p0));
+    std::printf("  %s: note-on block %.2f ms, ring filled after %.2f ms (the head lasts about 30 ms), %llu idle passes in the note, "
+                "at most %.1f ms between two (ending %.0f ms in), blocks up to %.1f ms late (frame %ld)\n",
+                what, std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(filled - t0).count(),
+                (unsigned long long)(a.streaming->idlePasses(a.p) - p0), gap, gapAt, g_late, g_lateFrame);
     paced(a, 12000, {off(7, 1, 0, 72)});
     std::vector<float> out = a.L;
     out.insert(out.end(), a.R.begin(), a.R.end());
@@ -171,12 +190,12 @@ TEST(streamed_note_after_idle_starts_on_time) {
         Inst w;
         unsetenv("OSCAIRN_SAMPLER_DECODE_WHOLE");
         CHECK(w.load(stateWith(oneShot())));
-        whole = pacedNote(w);
+        whole = pacedNote(w, "decoded whole (nothing streams)");
     }
     Inst a;
     CHECK(a.load(stateWith(oneShot())));
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-    CHECK(same(pacedNote(a), whole));
+    CHECK(same(pacedNote(a, "streamed after 1.5 s idle"), whole));
     CHECK_EQ(a.streaming->sheds(a.p), 0u);
     CHECK(peak(whole) > 0.01f);
 }
@@ -210,12 +229,12 @@ TEST(two_instances_share_the_io_thread) {
     {
         Inst b;
         CHECK(b.load(stateWith(oneShot())));
-        first = pacedNote(b);
+        first = pacedNote(b, "streamed, the other instance idle");
         CHECK_EQ(b.streaming->sheds(b.p), 0u);
         CHECK(peak(first) > 0.01f);
         b.run(48000);
         CHECK(idlePassesInASecond(a) <= 2);
     }
-    CHECK(same(pacedNote(a), first));
+    CHECK(same(pacedNote(a, "streamed, the other instance gone"), first));
     CHECK_EQ(a.streaming->sheds(a.p), 0u);
 }
