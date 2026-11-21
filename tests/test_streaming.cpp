@@ -14,11 +14,16 @@ const std::string kOneShot = "oscairn-sampler-sound/0\nsample STEREO\nelement am
 std::string oneShot() { std::string s = kOneShot; s.replace(s.find("STEREO"), 6, sampleRef("stereo")); return s; }
 
 // Blocks of 128 frames at about the rate they play, the I/O thread filling the rings on its own; `events` in the first.
+// It waits by yielding, not sleeping: as an audio device's clock, not a timer a throttled process may stretch by tens of
+// milliseconds (then the blocks come in bursts no host makes).
+double g_late = 0;  // the latest block's start past its time, ms
 void paced(Inst& a, long frames, const std::vector<Bytes>& events = {}) {
     const auto t0 = std::chrono::steady_clock::now();
     for (long done = 0; done < frames; done += 128) {
+        const auto due = [&](long f) { return t0 + std::chrono::microseconds(f * 1000000 / long(kRate)); };
+        g_late = std::max(g_late, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - due(done)).count());
         a.block(uint32_t(std::min<long>(128, frames - done)), done ? std::vector<Bytes>{} : events);
-        std::this_thread::sleep_until(t0 + std::chrono::microseconds((done + 128) * 1000000 / long(kRate)));
+        while (std::chrono::steady_clock::now() < due(done + 128)) std::this_thread::yield();
     }
 }
 
@@ -43,6 +48,7 @@ std::vector<float> pacedNote(Inst& a) {
     paced(a, 24000 - 128);
     done = true;
     watch.join();
+    std::printf("  blocks up to %.1f ms late\n", g_late); g_late = 0;
     std::printf("  note-on block %.2f ms, note on to ring filled %.2f ms (the head lasts about 30 ms), %llu idle passes in the note\n",
                 std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(filled - t0).count(),
                 (unsigned long long)(a.streaming->idlePasses(a.p) - p0));
