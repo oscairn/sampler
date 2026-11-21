@@ -265,6 +265,9 @@ public:
     // Element voices given up for want of streamed audio: shed because their stream was late, or not
     // started because every stream was taken. Any thread.
     uint32_t streamSheds() const { return streamSheds_.load(std::memory_order_relaxed); }
+    // Called on the audio thread right after a voice makes a stream Active (null: nothing is called): the caller's I/O
+    // thread may sleep while no stream is. It must not wait, lock or allocate.
+    void onStreamStart(void (*f)()) { streamStart_ = f; }
 
     uint32_t voiceCount() const;  // slots sounding
     // Nothing sounds or waits to start: render(frames) then does no more than advance(frames).
@@ -324,6 +327,7 @@ private:
     Stream streams_[kStreams];
     uint32_t nextStream_ = 0;
     std::atomic<uint32_t> streamSheds_{0};
+    void (*streamStart_)() = nullptr;
 };
 
 }  // namespace pcm

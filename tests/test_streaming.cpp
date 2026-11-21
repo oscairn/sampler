@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Streaming against time: a stream that comes too late sheds its voice with a short fade, counted, and the note ends
-// once; the I/O thread runs beside a rendering thread that never waits for it (meant for ThreadSanitizer too).
+// once; the I/O thread runs beside a rendering thread that never waits for it, and sleeps while nothing streams (meant
+// for ThreadSanitizer too).
 #include <atomic>
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 #include "host.h"
@@ -9,6 +12,39 @@
 namespace {
 const std::string kOneShot = "oscairn-sampler-sound/0\nsample STEREO\nelement ampeg_decay1=127 ampeg_decay2=127 ampeg_release=60\nregion key=0-127 root=60 element=0 sample=0\n";
 std::string oneShot() { std::string s = kOneShot; s.replace(s.find("STEREO"), 6, sampleRef("stereo")); return s; }
+
+// Blocks of 128 frames at about the rate they play, the I/O thread filling the rings on its own; `events` in the first.
+void paced(Inst& a, long frames, const std::vector<Bytes>& events = {}) {
+    const auto t0 = std::chrono::steady_clock::now();
+    for (long done = 0; done < frames; done += 128) {
+        a.block(uint32_t(std::min<long>(128, frames - done)), done ? std::vector<Bytes>{} : events);
+        std::this_thread::sleep_until(t0 + std::chrono::microseconds((done + 128) * 1000000 / long(kRate)));
+    }
+}
+
+// A streamed note an octave up (its head lasts about 1,500 output frames before it is shed for want of the stream),
+// played at about real time: the main port, left then right, from the note on
+std::vector<float> pacedNote(Inst& a) {
+    a.settle = false;
+    a.clearAudio();
+    paced(a, 24000, {on(3, 1, 0, 72)});
+    paced(a, 12000, {off(7, 1, 0, 72)});
+    std::vector<float> out = a.L;
+    out.insert(out.end(), a.R.begin(), a.R.end());
+    return out;
+}
+
+// The I/O thread's passes that found nothing to do over a second of silent blocks
+uint64_t idlePassesInASecond(Inst& a) {
+    a.settle = false;
+    a.run(1280);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const uint64_t n0 = a.streaming->idlePasses(a.p);
+    paced(a, long(kRate));
+    const uint64_t n = a.streaming->idlePasses(a.p) - n0;
+    std::printf("  %llu idle passes in a second\n", (unsigned long long)n);
+    return n;
+}
 }  // namespace
 
 // With the I/O thread stalled the voice plays its head, then is shed with a fade before the head runs out: no click,
@@ -85,4 +121,69 @@ TEST(streaming_beside_a_rendering_thread) {
     t.join();
     for (float x : a.L) if (!std::isfinite(x) || std::fabs(x) > 8) { ++g_failures; break; }
     std::printf("  %llu voices shed for late streams\n", (unsigned long long)a.streaming->sheds(a.p));
+}
+
+// With a sound prepared and nothing playing the I/O thread sleeps: it looks at most a couple of times in a second of
+// silent blocks (it used to look every millisecond).
+TEST(idle_io_thread_sleeps) {
+    Inst a;
+    CHECK(a.load(stateWith(oneShot())));
+    CHECK(idlePassesInASecond(a) <= 2);
+}
+
+// The first streamed note after a long idle wakes the thread in time: no shed, and the same samples as decoded whole.
+TEST(streamed_note_after_idle_starts_on_time) {
+    setenv("OSCAIRN_SAMPLER_DECODE_WHOLE", "1", 1);
+    std::vector<float> whole;
+    {
+        Inst w;
+        unsetenv("OSCAIRN_SAMPLER_DECODE_WHOLE");
+        CHECK(w.load(stateWith(oneShot())));
+        whole = pacedNote(w);
+    }
+    Inst a;
+    CHECK(a.load(stateWith(oneShot())));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    CHECK(pacedNote(a) == whole);
+    CHECK_EQ(a.streaming->sheds(a.p), 0u);
+    CHECK(peak(whole) > 0.01f);
+}
+
+// Streamed notes started at random points of the thread's way to sleep (after gaps of 0 to 3 ms with nothing
+// playing): each would be shed if its wake were lost, and none deadlocks.
+TEST(streamed_notes_after_idle_gaps) {
+    Inst a;
+    std::string snd = oneShot();
+    snd.replace(snd.find("ampeg_release=60"), 16, "ampeg_release=0");  // the voice and its stream end soon after the key
+    CHECK(a.load(stateWith(snd)));
+    a.settle = false;
+    uint32_t r = 1;
+    for (int32_t id = 1; id <= 60; ++id) {
+        paced(a, 2048, {on(0, id, 0, 72)});  // past the head: the stream plays
+        paced(a, 128, {off(0, id, 0, 72)});
+        for (int b = 0; b < 2000 && a.voices(); ++b) paced(a, 128);
+        r = r * 1664525u + 1013904223u;
+        std::this_thread::sleep_for(std::chrono::microseconds((r >> 8) % 3000));
+        CHECK_EQ(a.ends(id), 1);
+    }
+    CHECK_EQ(a.streaming->sheds(a.p), 0u);
+}
+
+// Two instances share the process's I/O thread: one plays while the other idles, then both idle and it sleeps, then
+// the idle one plays alone.
+TEST(two_instances_share_the_io_thread) {
+    Inst a;
+    CHECK(a.load(stateWith(oneShot())));
+    std::vector<float> first;
+    {
+        Inst b;
+        CHECK(b.load(stateWith(oneShot())));
+        first = pacedNote(b);
+        CHECK_EQ(b.streaming->sheds(b.p), 0u);
+        CHECK(peak(first) > 0.01f);
+        b.run(48000);
+        CHECK(idlePassesInASecond(a) <= 2);
+    }
+    CHECK(pacedNote(a) == first);
+    CHECK_EQ(a.streaming->sheds(a.p), 0u);
 }

@@ -25,7 +25,7 @@ constexpr double kNanosPerInstruction = 1.0;
 
 class CoreEngine final : public Engine {
 public:
-    CoreEngine() : core_(new pcm::Core) { attachStreams(core_->streams(), pcm::kStreams); }
+    CoreEngine() : core_(new pcm::Core) { core_->onStreamStart(wakeStreams); attachStreams(core_->streams(), pcm::kStreams); }
     ~CoreEngine() override { detachStreams(core_->streams()); }
     void prepare(double sr, uint32_t maxBlock) override {
         std::lock_guard<std::mutex> g(write_);

@@ -12,8 +12,14 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX  // windows.h would define min and max as macros
 #include <windows.h>
+#include <climits>
+#elif defined(__APPLE__)
+#include <dispatch/dispatch.h>  // macOS has no unnamed POSIX semaphores
+#include <pthread.h>
 #else
 #include <pthread.h>
+#include <semaphore.h>
+#include <cerrno>
 #endif
 
 namespace pcmshell {
@@ -28,6 +34,23 @@ struct Service {
     std::atomic<bool> stall{false};
     std::atomic<uint64_t> idle{0};  // passes that found nothing to do
     std::condition_variable wake;   // ends the thread's wait early: main threads only (settle, detach), never the audio thread
+    // While no stream is Active the thread sleeps on a semaphore, posted by whoever turns `sleeping` off: a post is
+    // counted, so one made before the thread waits is not lost, and posting never blocks (wakeStreams).
+    std::atomic<bool> sleeping{false};
+#if defined(_WIN32)
+    HANDLE sem = CreateSemaphoreW(nullptr, 0, LONG_MAX, nullptr);
+    void post() { ReleaseSemaphore(sem, 1, nullptr); }
+    void wait() { WaitForSingleObject(sem, INFINITE); }
+#elif defined(__APPLE__)
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    void post() { dispatch_semaphore_signal(sem); }
+    void wait() { dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER); }
+#else
+    sem_t sem;
+    Service() { sem_init(&sem, 0, 0); }
+    void post() { sem_post(&sem); }
+    void wait() { while (sem_wait(&sem) && errno == EINTR) {} }
+#endif
 };
 Service& service() { static Service* s = new Service; return *s; }  // never destroyed: no thread to join at exit
 
@@ -82,6 +105,7 @@ void run() {
             int64_t bestN = 0;
             float bestT = 0;
             const bool stall = sv.stall.load(std::memory_order_relaxed);
+            bool active = false;
             for (auto& [streams, count] : sv.sets)
                 for (uint32_t k = 0; k < count; ++k) {
                     pcm::Stream& st = streams[k];
@@ -94,6 +118,7 @@ void run() {
                         continue;
                     }
                     if (state != pcm::Stream::Active) continue;
+                    active = true;
                     const StreamSource& s = *static_cast<const StreamSource*>(st.source);
                     if (st.ioFresh) { st.ioFresh = false; st.ioDone = false; st.ioAt = s.head; st.ioZeros = s.tail ? pcm::kGuardPost : 0; }
                     if (stall || st.ioDone) continue;
@@ -105,8 +130,16 @@ void run() {
                 }
             if (best) { produce(*best, *static_cast<const StreamSource*>(best->source), bestN, *d); continue; }
             sv.idle.fetch_add(1, std::memory_order_release);
-            sv.wake.wait_for(g, std::chrono::milliseconds(1));  // nothing to do: look again in a millisecond
+            if (active) { sv.wake.wait_for(g, std::chrono::milliseconds(1)); continue; }  // nothing to do: look again in a millisecond
+            // nothing plays: sleep until a stream starts. The flag goes up before a last look, a stream goes Active before
+            // its waker reads the flag (both fenced): either the look sees the stream or the waker sees the flag and posts.
+            sv.sleeping.store(true, std::memory_order_relaxed);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
+            for (auto& [streams, count] : sv.sets)
+                for (uint32_t k = 0; k < count; ++k) active |= streams[k].state.load(std::memory_order_relaxed) == pcm::Stream::Active;
+            if (active) { sv.sleeping.store(false, std::memory_order_relaxed); continue; }  // a post already made is one extra pass
         }
+        sv.wait();
     }
 }
 
@@ -128,7 +161,14 @@ void detachStreams(pcm::Stream* streams) {
         if (sv.sets.empty()) { sv.running = false; t = std::move(sv.thread); }
     }
     sv.wake.notify_all();
+    wakeStreams();
     if (t.joinable()) t.join();
+}
+
+void wakeStreams() {
+    Service& sv = service();
+    std::atomic_thread_fence(std::memory_order_seq_cst);  // the stream's state before the flag (see run)
+    if (sv.sleeping.exchange(false, std::memory_order_relaxed)) sv.post();
 }
 
 std::unique_lock<std::mutex> holdStreams() { return std::unique_lock<std::mutex>(service().lock); }
@@ -138,7 +178,9 @@ void stallStreams(bool on) { service().stall.store(on); }
 void settleStreams() {
     Service& sv = service();
     const uint64_t i0 = sv.idle.load(std::memory_order_acquire);
-    while (sv.idle.load(std::memory_order_acquire) < i0 + 2) { sv.wake.notify_all(); std::this_thread::sleep_for(std::chrono::microseconds(20)); }
+    while (sv.idle.load(std::memory_order_acquire) < i0 + 2) { sv.wake.notify_all(); wakeStreams(); std::this_thread::sleep_for(std::chrono::microseconds(20)); }
 }
+
+uint64_t idleStreamPasses() { return service().idle.load(std::memory_order_relaxed); }
 
 }  // namespace pcmshell

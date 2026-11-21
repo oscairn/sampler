@@ -199,7 +199,10 @@ not decode plays silence). Of the rings with room for their next unit it serves 
 runs out first in output time: frames ahead divided by the voice's current step, which the voice
 publishes. It holds a mutex for one unit at a time (the audio thread never takes it; main threads
 take it to attach, detach and free what streams read) and waits a millisecond when nothing has
-room. A loop too long to keep streams too: after its end the thread continues at its start, so
+room. While no ring is Active it sleeps with no timeout: a voice that makes a ring Active wakes it
+(one fence and one atomic exchange on the audio thread, and a semaphore post, which never blocks,
+only when the thread sleeps: `sem_post` on Linux, a dispatch semaphore on macOS, `ReleaseSemaphore`
+on Windows). A loop too long to keep streams too: after its end the thread continues at its start, so
 the ring holds the frames in play order and the voice reads them without wrapping. A one-shot's
 stream ends in 1,024 zero frames.
 

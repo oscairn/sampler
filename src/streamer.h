@@ -24,11 +24,15 @@ struct StreamSource {
 // touches them. The thread starts with the first instance and stops with the last.
 void attachStreams(pcm::Stream* streams, uint32_t count);
 void detachStreams(pcm::Stream* streams);
+// A stream became Active (the audio thread, through Core::onStreamStart): wakes the thread if it sleeps. Never waits,
+// locks or allocates.
+void wakeStreams();
 // Held while freeing what streams read (their sources, records and packs): the thread is between units.
 std::unique_lock<std::mutex> holdStreams();
-// Tests: stall the thread (it decodes nothing; released rings still come back), and wait until it has
-// filled every active ring (main thread).
+// Tests: stall the thread (it decodes nothing; released rings still come back), wait until it has
+// filled every active ring (main thread), and its passes that found nothing to do.
 void stallStreams(bool on);
 void settleStreams();
+uint64_t idleStreamPasses();
 
 }  // namespace pcmshell

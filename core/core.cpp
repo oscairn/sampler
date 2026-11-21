@@ -972,6 +972,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
         v.stream = stream;
         stream->source = sv.stream; stream->channels = sv.channels;
         stream->state.store(Stream::Active, std::memory_order_release);
+        if (streamStart_) streamStart_();
     }
     // pitch: the fork's float arithmetic (keytrack 100 cents, the region's tune and transpose)
     // (pitch key follow: the centre note at its pitch, every key from it at the measured cents a key)

@@ -114,6 +114,7 @@ struct StreamingExt {
     void (*stall)(const clap_plugin_t*, bool);
     void (*settle)(const clap_plugin_t*);
     void (*failReads)(const clap_plugin_t*, bool);
+    uint64_t (*idlePasses)(const clap_plugin_t*);  // the process's I/O thread's passes that found nothing to do
 };
 
 struct Rec { uint16_t type; int32_t id; int16_t port, channel, key; uint32_t time; long frame; double value; };
