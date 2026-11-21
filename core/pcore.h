@@ -124,6 +124,9 @@ struct SampleView {
 //   consumed: stream frames the voice will not read again, stored by the audio thread with release; the
 //          I/O thread writes frame f only while f < consumed + kStreamFrames.
 //   speed: source frames per output frame now, for the I/O thread's order of urgency.
+//   wake: set by the caller before the audio thread uses the ring (null: none); the audio thread calls it after each
+//          change of state or consumed, so the I/O thread may sleep while it has nothing to do. It must not wait, lock
+//          or allocate.
 // io*: the I/O thread's own fields.
 constexpr uint32_t kStreams = 128;        // streaming element voices at once: two a voice slot
 constexpr uint32_t kStreamFrames = 4096;  // a ring: four 1,024-frame blocks
@@ -133,6 +136,7 @@ struct Stream {
     std::atomic<int64_t> written{0}, consumed{0};
     std::atomic<float> speed{1};
     const void* source = nullptr;
+    void (*wake)() = nullptr;
     uint8_t channels = 0;
     bool ioFresh = true, ioDone = false;
     int64_t ioAt = 0, ioZeros = 0;
@@ -265,9 +269,6 @@ public:
     // Element voices given up for want of streamed audio: shed because their stream was late, or not
     // started because every stream was taken. Any thread.
     uint32_t streamSheds() const { return streamSheds_.load(std::memory_order_relaxed); }
-    // Called on the audio thread right after a voice makes a stream Active (null: nothing is called): the caller's I/O
-    // thread may sleep while no stream is. It must not wait, lock or allocate.
-    void onStreamStart(void (*f)()) { streamStart_ = f; }
 
     uint32_t voiceCount() const;  // slots sounding
     // Nothing sounds or waits to start: render(frames) then does no more than advance(frames).
@@ -327,7 +328,6 @@ private:
     Stream streams_[kStreams];
     uint32_t nextStream_ = 0;
     std::atomic<uint32_t> streamSheds_{0};
-    void (*streamStart_)() = nullptr;
 };
 
 }  // namespace pcm

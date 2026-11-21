@@ -24,7 +24,7 @@ struct StreamSource {
 // touches them. The thread starts with the first instance and stops with the last.
 void attachStreams(pcm::Stream* streams, uint32_t count);
 void detachStreams(pcm::Stream* streams);
-// A stream became Active (the audio thread, through Core::onStreamStart): wakes the thread if it sleeps. Never waits,
+// A ring changed (the audio thread, through Stream::wake, set at attach): wakes the thread if it sleeps. Never waits,
 // locks or allocates.
 void wakeStreams();
 // Held while freeing what streams read (their sources, records and packs): the thread is between units.

@@ -583,7 +583,10 @@ void designHigh(Pool& p, uint32_t i, float hz, const FilterRate& fr) {
 
 // A voice no longer reads its stream: the I/O thread may take it back (the Stream rules)
 static void dropStream(VoiceScalar& v) {
-    if (v.stream) v.stream->state.store(Stream::Released, std::memory_order_release);
+    if (v.stream) {
+        v.stream->state.store(Stream::Released, std::memory_order_release);
+        if (v.stream->wake) v.stream->wake();
+    }
     v.stream = nullptr;
 }
 
@@ -781,6 +784,7 @@ struct Kernel {
             const int64_t streamEnd = body ? ls : s.looped ? INT64_MAX : int64_t(s.frames) + kGuardPost;
             const int64_t end = std::min(st->written.load(std::memory_order_acquire) + head - v.shift, streamEnd);
             st->consumed.store(std::max<int64_t>(0, lo + v.shift - head), std::memory_order_release);
+            if (st->wake) st->wake();
             st->speed.store(float(step) * (1.0f / 4294967296.0f), std::memory_order_relaxed);
             if (end < streamEnd && end - lo < kStreamMargin && !v.starve) { v.starve = 1; v.dirty = true; }  // late: shed at the next control step
             const int64_t o = f % kStreamFrames;
@@ -972,7 +976,7 @@ void Core::startLayer(uint32_t voice, const Compiled& s, uint32_t ri, int key, i
         v.stream = stream;
         stream->source = sv.stream; stream->channels = sv.channels;
         stream->state.store(Stream::Active, std::memory_order_release);
-        if (streamStart_) streamStart_();
+        if (stream->wake) stream->wake();
     }
     // pitch: the fork's float arithmetic (keytrack 100 cents, the region's tune and transpose)
     // (pitch key follow: the centre note at its pitch, every key from it at the measured cents a key)

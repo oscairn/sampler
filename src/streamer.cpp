@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <thread>
 #include <vector>
 
@@ -33,9 +32,8 @@ struct Service {
     bool running = false;
     std::atomic<bool> stall{false};
     std::atomic<uint64_t> idle{0};  // passes that found nothing to do
-    std::condition_variable wake;   // ends the thread's wait early: main threads only (settle, detach), never the audio thread
-    // While no stream is Active the thread sleeps on a semaphore, posted by whoever turns `sleeping` off: a post is
-    // counted, so one made before the thread waits is not lost, and posting never blocks (wakeStreams).
+    // With nothing to do the thread sleeps on a semaphore, posted by whoever turns `sleeping` off: a post is counted, so
+    // one made before the thread waits is not lost, and posting never blocks (wakeStreams).
     std::atomic<bool> sleeping{false};
 #if defined(_WIN32)
     HANDLE sem = CreateSemaphoreW(nullptr, 0, LONG_MAX, nullptr);
@@ -96,6 +94,7 @@ void run() {
 #endif
     Service& sv = service();
     auto d = std::make_unique<Decoder>();
+    bool armed = false;  // `sleeping` raised before this pass
     for (;;) {
         {
             std::unique_lock<std::mutex> g(sv.lock);
@@ -105,7 +104,6 @@ void run() {
             int64_t bestN = 0;
             float bestT = 0;
             const bool stall = sv.stall.load(std::memory_order_relaxed);
-            bool active = false;
             for (auto& [streams, count] : sv.sets)
                 for (uint32_t k = 0; k < count; ++k) {
                     pcm::Stream& st = streams[k];
@@ -118,7 +116,6 @@ void run() {
                         continue;
                     }
                     if (state != pcm::Stream::Active) continue;
-                    active = true;
                     const StreamSource& s = *static_cast<const StreamSource*>(st.source);
                     if (st.ioFresh) { st.ioFresh = false; st.ioDone = false; st.ioAt = s.head; st.ioZeros = s.tail ? pcm::kGuardPost : 0; }
                     if (stall || st.ioDone) continue;
@@ -128,18 +125,24 @@ void run() {
                     const float t = float(w - c) / std::max(st.speed.load(std::memory_order_relaxed), 1e-3f);  // output frames left
                     if (!best || t < bestT) { best = &st; bestN = n; bestT = t; }
                 }
-            if (best) { produce(*best, *static_cast<const StreamSource*>(best->source), bestN, *d); continue; }
+            if (best) {
+                if (armed) { sv.sleeping.store(false, std::memory_order_relaxed); armed = false; }  // a post already made is one extra pass
+                produce(*best, *static_cast<const StreamSource*>(best->source), bestN, *d);
+                continue;
+            }
             sv.idle.fetch_add(1, std::memory_order_release);
-            if (active) { sv.wake.wait_for(g, std::chrono::milliseconds(1)); continue; }  // nothing to do: look again in a millisecond
-            // nothing plays: sleep until a stream starts. The flag goes up before a last look, a stream goes Active before
-            // its waker reads the flag (both fenced): either the look sees the stream or the waker sees the flag and posts.
-            sv.sleeping.store(true, std::memory_order_relaxed);
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-            for (auto& [streams, count] : sv.sets)
-                for (uint32_t k = 0; k < count; ++k) active |= streams[k].state.load(std::memory_order_relaxed) == pcm::Stream::Active;
-            if (active) { sv.sleeping.store(false, std::memory_order_relaxed); continue; }  // a post already made is one extra pass
+            // nothing to do: sleep until a ring starts, is released or is read from. The flag goes up before one more pass,
+            // the audio thread changes a ring before its waker reads the flag (both fenced): either that pass sees the
+            // change or the waker sees the flag and posts.
+            if (!armed) {
+                sv.sleeping.store(true, std::memory_order_relaxed);
+                std::atomic_thread_fence(std::memory_order_seq_cst);
+                armed = true;
+                continue;
+            }
         }
         sv.wait();
+        armed = false;
     }
 }
 
@@ -148,6 +151,7 @@ void run() {
 void attachStreams(pcm::Stream* streams, uint32_t count) {
     Service& sv = service();
     std::lock_guard<std::mutex> g(sv.lock);
+    for (uint32_t k = 0; k < count; ++k) streams[k].wake = wakeStreams;
     sv.sets.emplace_back(streams, count);
     if (!sv.running) { sv.running = true; sv.thread = std::thread(run); }
 }
@@ -160,25 +164,24 @@ void detachStreams(pcm::Stream* streams) {
         sv.sets.erase(std::remove_if(sv.sets.begin(), sv.sets.end(), [&](const auto& x) { return x.first == streams; }), sv.sets.end());
         if (sv.sets.empty()) { sv.running = false; t = std::move(sv.thread); }
     }
-    sv.wake.notify_all();
     wakeStreams();
     if (t.joinable()) t.join();
 }
 
 void wakeStreams() {
     Service& sv = service();
-    std::atomic_thread_fence(std::memory_order_seq_cst);  // the stream's state before the flag (see run)
-    if (sv.sleeping.exchange(false, std::memory_order_relaxed)) sv.post();
+    std::atomic_thread_fence(std::memory_order_seq_cst);  // the ring's change before the flag (see run)
+    if (sv.sleeping.load(std::memory_order_relaxed) && sv.sleeping.exchange(false, std::memory_order_relaxed)) sv.post();
 }
 
 std::unique_lock<std::mutex> holdStreams() { return std::unique_lock<std::mutex>(service().lock); }
 
-void stallStreams(bool on) { service().stall.store(on); }
+void stallStreams(bool on) { service().stall.store(on); wakeStreams(); }
 
 void settleStreams() {
     Service& sv = service();
     const uint64_t i0 = sv.idle.load(std::memory_order_acquire);
-    while (sv.idle.load(std::memory_order_acquire) < i0 + 2) { sv.wake.notify_all(); wakeStreams(); std::this_thread::sleep_for(std::chrono::microseconds(20)); }
+    while (sv.idle.load(std::memory_order_acquire) < i0 + 2) { wakeStreams(); std::this_thread::sleep_for(std::chrono::microseconds(20)); }
 }
 
 uint64_t idleStreamPasses() { return service().idle.load(std::memory_order_relaxed); }

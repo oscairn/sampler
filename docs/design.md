@@ -198,11 +198,12 @@ or up to a loop's end), decoded with samplepack's decoder (no CRC at play time; 
 not decode plays silence). Of the rings with room for their next unit it serves first the one that
 runs out first in output time: frames ahead divided by the voice's current step, which the voice
 publishes. It holds a mutex for one unit at a time (the audio thread never takes it; main threads
-take it to attach, detach and free what streams read) and waits a millisecond when nothing has
-room. While no ring is Active it sleeps with no timeout: a voice that makes a ring Active wakes it
-(one fence and one atomic exchange on the audio thread, and a semaphore post, which never blocks,
-only when the thread sleeps: `sem_post` on Linux, a dispatch semaphore on macOS, `ReleaseSemaphore`
-on Windows). A loop too long to keep streams too: after its end the thread continues at its start, so
+take it to attach, detach and free what streams read) and, when no ring has room and none is
+released, sleeps with no timeout (no timer: an operating system may stretch a timed wait in a
+throttled process, as macOS does). The audio thread wakes it each time a voice takes, releases or
+hands back frames of a ring: one fence and one atomic load, and only when the thread sleeps an
+atomic exchange and a semaphore post, which never blocks (`sem_post` on Linux, a dispatch
+semaphore on macOS, `ReleaseSemaphore` on Windows). A loop too long to keep streams too: after its end the thread continues at its start, so
 the ring holds the frames in play order and the voice reads them without wrapping. A one-shot's
 stream ends in 1,024 zero frames.
 
