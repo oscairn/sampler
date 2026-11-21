@@ -2,6 +2,7 @@
 // Parameters and state: metadata, values set by events, and a versioned state blob that round
 // trips byte for byte and refuses anything malformed without changing the instance.
 #include "host.h"
+#include <clocale>
 
 TEST(parameter_metadata) {
     Inst a(false);
@@ -151,4 +152,41 @@ TEST(memory_is_declared) {
     oscairn_memory_t c{};
     CHECK(a.memory->current(a.p, &c) && c.shared_bytes > 0);
     a.p->deactivate(a.p);
+}
+
+// Decimal numbers are read and written with the C locale's dot whatever the host's setlocale: a
+// comma-decimal locale must not turn "0.5" into 0 or print "0,500". Skip if the locale is absent.
+TEST(parameters_read_and_write_decimals_in_any_locale) {
+    if (!std::setlocale(LC_ALL, "de_DE.UTF-8")) {
+        std::printf("  de_DE.UTF-8 is not installed; skipping the locale test\n");
+        return;
+    }
+    const clap_id kLevel = 0, kPan = 1;  // engine.h's Param ids, seen through the ABI
+    {
+        Inst a;
+        char msg[256] = {};
+        // The shell's fractions parse with the C decimal point even under de_DE.
+        const uint32_t b = a.contexts->prepare(a.p, "locale", nullptr, 0,
+            patchWith("level=0.5 pan=-0.25 polyphony=7").c_str(), testBase(), msg, sizeof msg);
+        CHECK(b != CLAP_INVALID_ID);
+        if (b != CLAP_INVALID_ID) {
+            a.contexts->select(a.p, b, -1);  // every channel: get_value shows the selected sound's values
+            a.block(128);
+            CHECK(std::fabs(a.value(kLevel) - 0.5) < 1e-9);
+            CHECK(std::fabs(a.value(kPan) + 0.25) < 1e-9);
+        }
+    }
+    // value<->text under de_DE must round trip exactly as under the C locale.
+    Inst a;
+    char cText[64] = {}, deText[64] = {};
+    double cBack = -9, deBack = -9;
+    std::setlocale(LC_ALL, "C");
+    CHECK(a.params->value_to_text(a.p, kLevel, 0.5, cText, sizeof cText));
+    CHECK(a.params->text_to_value(a.p, kLevel, "0.5", &cBack) && cBack == 0.5);
+    std::setlocale(LC_ALL, "de_DE.UTF-8");
+    CHECK(a.params->value_to_text(a.p, kLevel, 0.5, deText, sizeof deText));
+    CHECK(a.params->text_to_value(a.p, kLevel, "0.5", &deBack) && deBack == 0.5);
+    CHECK_EQ(std::string(deText) == std::string(cText), true);
+    CHECK_EQ(deBack == cBack, true);
+    std::setlocale(LC_ALL, "C");
 }

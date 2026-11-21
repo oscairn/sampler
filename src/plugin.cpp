@@ -57,6 +57,13 @@ float clampParam(Param p, double x) {
     return float(i.stepped ? std::round(x) : x);
 }
 bool validValue(Param p, double x) { return std::isfinite(x) && x >= kParams[p].min && x <= kParams[p].max; }
+// A decimal read with the C locale's dot and nothing after it, whatever the process locale (strtod/sscanf
+// depend on it): "0.5" stays 0.5 even under a comma-decimal host locale.
+bool cDec(const char* s, double& out) {
+    std::istringstream in(s); in.imbue(std::locale::classic());
+    in >> out;
+    return !in.fail() && in.eof();
+}
 
 std::string base64(const std::vector<uint8_t>& b) {
     static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -618,8 +625,8 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
                 uint32_t id = kParamCount;
                 for (uint32_t i = 0; i < kParamCount; ++i) if (tok.compare(0, eq, kParams[i].key) == 0 && eq == std::strlen(kParams[i].key)) id = i;
                 if (id == kParamCount || eq == std::string::npos) { error = "line " + std::to_string(n) + ": unknown or malformed '" + tok + "'"; return nullptr; }
-                char* end = nullptr; const double x = std::strtod(tok.c_str() + eq + 1, &end);
-                if (*end || end == tok.c_str() + eq + 1 || !validValue(Param(id), x)) { error = "line " + std::to_string(n) + ": bad value in '" + tok + "'"; return nullptr; }
+                double x;
+                if (!cDec(tok.c_str() + eq + 1, x) || !validValue(Param(id), x)) { error = "line " + std::to_string(n) + ": bad value in '" + tok + "'"; return nullptr; }
                 patch.p[id].set(clampParam(Param(id), x));
                 given[id] = true;
             }
@@ -780,13 +787,16 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     }
     static bool paramText(const clap_plugin_t*, clap_id id, double v, char* out, uint32_t n) {
         if (id > kShedsParam) return false;
-        std::snprintf(out, n, id == kShedsParam || kParams[id].stepped ? "%.0f" : "%.3f", v);
+        std::ostringstream o; o.imbue(std::locale::classic());
+        o << std::fixed << std::setprecision(id == kShedsParam || kParams[id].stepped ? 0 : 3) << v;
+        std::snprintf(out, n, "%s", o.str().c_str());
         return true;
     }
     static bool paramFromText(const clap_plugin_t*, clap_id id, const char* text, double* v) {
         if (id > kShedsParam) return false;
-        char* end = nullptr; *v = std::strtod(text, &end);
-        return end != text;
+        std::istringstream in(text); in.imbue(std::locale::classic());  // a number at the start, as before: text after it (a unit) is ignored
+        in >> *v;
+        return !in.fail();
     }
     static void paramFlush(const clap_plugin_t* p, const clap_input_events_t* in, const clap_output_events_t*) {
         auto& s = self(p);
