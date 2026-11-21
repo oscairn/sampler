@@ -11,6 +11,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # The DSP core: a plain C++ library with no plugin API, OS, threads, files or heap (core/pcore.h).
 add_library(pcmcore STATIC core/core.cpp core/kernels.cpp core/laws.cpp core/measured.cpp core/sound.cpp core/tables.cpp)
 target_include_directories(pcmcore PUBLIC core)
+set_target_properties(pcmcore PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 if(MSVC)
     target_compile_options(pcmcore PRIVATE /W4)
 else()
@@ -35,6 +36,14 @@ if(NOT MSVC)
 endif()
 set_target_properties(oscairn_sampler PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME ${PCM_NAME}
     CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+# The external plugin surface is a single symbol: clap_entry. The core and the Rust samplepack static
+# libraries contribute no entry-point requirements of their own, so restrict the dynamic export list;
+# samplepack's sp_* are compiled with default visibility and are hidden here rather than trading its CMake.
+if(APPLE)
+    target_link_options(oscairn_sampler PRIVATE "LINKER:-exported_symbol,_clap_entry")
+elseif(UNIX)
+    target_link_options(oscairn_sampler PRIVATE "LINKER:--exclude-libs,ALL")
+endif()
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND NOT APPLE AND NOT MSVC)
     target_compile_options(oscairn_sampler PRIVATE -march=x86-64-v2)  # the baseline of the device images, at most
 endif()
