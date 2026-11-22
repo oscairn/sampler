@@ -1,7 +1,7 @@
 # Oscairn Sampler
 
 A sample-playback instrument for [Oscairn](https://github.com/oscairn/oscairn), as a CLAP plugin
-for macOS, Linux and Windows (all built by CI). Version 0.9.9, a preview: the plugin is shown as
+for macOS, Linux and Windows (all built by CI). Version 0.9.10, a preview: the plugin is shown as
 "Oscairn Sampler" and its plugin id is `org.oscairn.sampler`.
 
 Licence: AGPL-3.0-or-later (`LICENSE`); third-party material keeps its own licence (`third_party/NOTICES.md`).
