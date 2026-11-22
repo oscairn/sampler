@@ -1078,6 +1078,49 @@ static void controllerBoxes() {
     }
 }
 
+// The box curves (core/curves.inc, measured at the wheel's 128 values): through the controllers' map each lands on its values
+// at the wheel's values, straight between; against the published numbers (each curve's sum over the 128 values, and points the
+// three engines' tests read alike); the linear curve as before; a curve not measured still reported, a measured one not.
+static void boxCurves() {
+    const struct { int type, p1, p2; long sum; } published[] = {
+        {0, 0, 0, 121352}, {0, 1, 0, 109136}, {0, 2, 0, 97497}, {0, 3, 0, 88232}, {0, 4, 0, 77913}, {0, 6, 0, 52733}, {0, 7, 0, 42455},
+        {0, 8, 0, 33265}, {0, 9, 0, 21722}, {0, 10, 0, 9633}, {1, 2, 0, 76181}, {2, 0, 2, 113591}, {2, 0, 3, 105362}, {2, 0, 4, 97134},
+        {2, 6, 1, 52665}, {2, 6, 2, 52593}, {2, 7, 3, 44619}, {2, 8, 1, 27065}, {2, 8, 2, 30082}, {2, 8, 3, 38238}, {2, 8, 4, 46392},
+        {2, 9, 3, 31864}, {2, 10, 1, 9180}, {2, 10, 2, 17335}, {2, 10, 4, 33646}, {3, 1, 0, -119685}, {3, 2, 0, -114253},
+        {3, 5, 0, -94336}, {3, 6, 0, -95326}, {3, 7, 0, -96053}, {9, 0, 0, 66393}, {10, 0, 0, 65116}, {17, 0, 0, 0}, {18, 4, 0, 83552},
+        {19, 2, 0, 65152}};
+    std::vector<int> ids;
+    for (const auto& c : published) {
+        const int id = laws::boxCurve(0, c.type, c.p1, c.p2);
+        long sum = 0;
+        for (int v = 0; v < 128 && id > 0; ++v) sum += long(laws::boxCurveAt(id, laws::boxSource(v)));
+        ids.push_back(id);
+        if (id <= 0 || sum != c.sum) { ++failures; std::printf("  curve (%d, %d, %d): id %d, sum %ld\n", c.type, c.p1, c.p2, id, sum); }
+    }
+    for (size_t k = 0; k < ids.size(); ++k) CHECK(ids[k] == int(k) + 1);  // every row once
+    CHECK(laws::boxCurve(0, 0, 11, 0) < 0);
+    auto at = [](int type, int p1, int p2, int v) { return laws::boxCurveAt(laws::boxCurve(0, type, p1, p2), laws::boxSource(v)); };
+    CHECK(at(0, 8, 0, 0) == 0 && at(0, 8, 0, 32) == 64 && at(0, 8, 0, 64) == 171 && at(0, 8, 0, 96) == 390);
+    CHECK(at(0, 1, 0, 8) == 433 && at(0, 1, 0, 64) == 939 && at(0, 1, 0, 120) == 1019);
+    CHECK(at(2, 6, 1, 56) == 0 && at(2, 6, 1, 64) == 128 && at(2, 6, 1, 72) == 384 && at(2, 6, 1, 127) == 1024);
+    CHECK(at(3, 1, 0, 8) == -367 && at(3, 1, 0, 32) == -1024 && at(3, 1, 0, 127) == -1024);
+    CHECK(at(10, 0, 0, 0) == 0 && at(10, 0, 0, 64) == 1024 && at(10, 0, 0, 120) == 103);
+    CHECK(at(18, 4, 0, 16) == 341 && at(18, 4, 0, 31) == 341 && at(18, 4, 0, 32) == 541 && at(17, 0, 0, 100) == 0);
+    CHECK(laws::boxCurve(0, 3, 1, 7) == laws::boxCurve(0, 3, 1, 0));  // parameter 2 counts for type 2 only
+    const int i = laws::boxCurve(0, 0, 8, 0);  // halfway between the wheel's 64 and 65 (c 512 and 520)
+    CHECK(laws::boxCurveAt(i, 516) == (laws::boxCurveAt(i, 512) + laws::boxCurveAt(i, 520)) / 2);
+    CHECK(laws::boxCurve(0, 0, 5, 0) == 0 && laws::boxCurveAt(0, 516.5f) == 516.5f && laws::boxCurveAt(0, 1024) == 1024);  // linear
+    CHECK(laws::boxCurve(0, 16, 9, 0) < 0 && laws::boxCurve(0, 2, 3, 1) < 0 && laws::boxCurve(1, 0, 8, 0) < 0);  // not measured
+    std::unique_ptr<SoundData> d(new SoundData);
+    char err[256];
+    CHECK(readText(kPad, *d, err, sizeof err));
+    Gap g[16];
+    d->part[PartBox1Dst] = 68; d->part[PartBox1Ratio] = 63; d->part[PartBox1Curve] = 3; d->part[PartBox1P1] = 1;
+    CHECK(notCovered(*d, g, 16) == 0);
+    d->part[PartBox1Curve] = 16; d->part[PartBox1P1] = 9;
+    CHECK(notCovered(*d, g, 16) == 1 && g[0].param == PartBox1Curve && g[0].part);
+}
+
 // A one-shot region (no loop) whose sample (2000 frames) ends before the note and before its release: the voice ends at
 // the sample's end, as a normal element and as a key-off element, in blocks of 128, 96, 64 and 32 frames.
 static void oneShotEnds() {
@@ -1364,7 +1407,7 @@ int main() {
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"filter_types", filterTypes}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
-        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
+        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"box_curves", boxCurves},{"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
         {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity}, {"pitch_velocity", pitchVelocity}, {"random_pitch", randomPitch},
         {"streaming", streaming},

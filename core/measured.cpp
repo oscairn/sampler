@@ -271,33 +271,23 @@ float controlSource(int src, float x) noexcept
 }
 
 namespace {
-struct Curve { uint8_t bank, type, p1, p2; float s[17], y[17]; };
-// c at the measured wheel values 0, 8, ..., 120, 127 (this engine's map) and at the analog engine's (VA) knots
-#define PCM_W17 { 0, 64, 128, 192, 256, 320, 384, 448, 512, 577.0f, 642.0f, 707.0f, 772.1f, 837.1f, 902.1f, 967.1f, 1024 }
-#define PCM_VA17 { 0, 64, 129, 193, 258, 322, 387, 451, 516, 580, 644, 709, 773, 838, 902, 966, 1023 }
-// Type 0 with parameter 0, 2 and 8: measured here through the fine tune (ratio +63, whole cents: +-5 of 1024);
-// 6, 9, 10 and two of type 2: the analog engine's measurements of the same boxes (its docs/coverage.md)
+struct Curve { uint8_t type, p1, p2; int16_t y[128]; };
+// Bank 0, measured at the wheel's 128 values (curves.inc), straight between them. They replace eight 17-point tables (type 0
+// with parameter 0, 2 and 8 measured here through the fine tune, +-5 of 1024; 6, 9, 10 and two of type 2 the analog engine's),
+// which the 128-point readings match at those points within 5 of 1024 (up to 11 for the analog engine's, whose points sat at its
+// old source map's values); between them the old straight lines were off by up to 225.
 const Curve kCurveTab[] = {
-    { 0, 0, 0, 0, PCM_W17, { 0, 754, 879, 931, 952, 973, 984, 993, 1004, 1004, 1004, 1015, 1015, 1015, 1024, 1024, 1024 } },
-    { 0, 0, 2, 0, PCM_W17, { 0, 255, 432, 545, 640, 713, 765, 816, 858, 889, 910, 942, 962, 984, 993, 1015, 1024 } },
-    { 0, 0, 8, 0, PCM_W17, { 0, 16, 26, 47, 68, 88, 109, 140, 172, 213, 255, 317, 390, 484, 609, 796, 1024 } },
-    { 0, 0, 6, 0, PCM_VA17, { 0, 33, 71, 118, 156, 204, 261, 308, 365, 431, 497, 573, 649, 734, 829, 924, 1024 } },
-    { 0, 0, 9, 0, PCM_VA17, { 0, 0, 14, 24, 33, 43, 52, 71, 81, 109, 137, 175, 223, 298, 412, 630, 1024 } },
-    { 0, 0, 10, 0, PCM_VA17, { 0, 0, 0, 0, 0, 14, 14, 14, 24, 33, 43, 52, 71, 99, 156, 298, 1024 } },
-    { 0, 2, 10, 4, PCM_VA17, { 0, 0, 0, 0, 0, 0, 0, 0, 33, 156, 280, 412, 526, 659, 791, 914, 1024 } },
-    { 0, 2, 0, 4, PCM_VA17, { 0, 128, 251, 374, 507, 621, 753, 877, 1009, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024 } },
+#include "curves.inc"
 };
-#undef PCM_W17
-#undef PCM_VA17
 }  // namespace
 
 int boxCurve(int bank, int type, int p1, int p2) noexcept
 {
     if (bank == 0 && type == 0 && p1 == 5)
         return 0;  // linear (measured)
-    for (int i = 0; i < int(sizeof kCurveTab / sizeof kCurveTab[0]); ++i) {
+    for (int i = 0; bank == 0 && i < int(sizeof kCurveTab / sizeof kCurveTab[0]); ++i) {
         const Curve& c = kCurveTab[i];
-        if (c.bank == bank && c.type == type && c.p1 == p1 && (type == 0 || c.p2 == p2))
+        if (c.type == type && c.p1 == p1 && (type != 2 || c.p2 == p2))
             return i + 1;
     }
     return -1;
@@ -307,12 +297,13 @@ float boxCurveAt(int curve, float c) noexcept
 {
     if (curve <= 0)
         return c;
-    const Curve& t = kCurveTab[curve - 1];
-    int i = 1;
-    while (i < 16 && c > t.s[i])
-        ++i;
-    const float u = std::max(0.0f, std::min(1.0f, (c - t.s[i - 1]) / (t.s[i] - t.s[i - 1])));
-    return t.y[i - 1] + (t.y[i] - t.y[i - 1]) * u;
+    const int16_t* y = kCurveTab[curve - 1].y;
+    // the wheel value at or below c (boxSource's inverse), then straight to the next
+    int v = std::max(0, std::min(126, int(c <= 512.0f ? c * 0.125f : 64.0f + (c - 512.0f) * (63.0f / 512.0f))));
+    if (v < 126 && c >= boxSource(v + 1))
+        ++v;
+    const float x0 = boxSource(v), u = std::max(0.0f, std::min(1.0f, (c - x0) / (boxSource(v + 1) - x0)));
+    return float(y[v]) + float(y[v + 1] - y[v]) * u;
 }
 
 // Spans, measured with the mod wheel against static settings (docs/acceptance.md (l), (m)): cutoff 1024 index steps (the

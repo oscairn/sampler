@@ -87,7 +87,8 @@ float boxSource(int v127) noexcept;
 // The part's own sources at x (0..1, the shell's parameters): the ribbon (6) as its controller, CC 16 at round(127 x);
 // knobs 1-8 (8-15) at the raw knob value round(1023 x); switches 1-2 (16, 17) off or on.
 float controlSource(int source, float x) noexcept;
-// The measured curves (bank 0, type 0, parameter p1): their value at c, 0..1024; -1 for one not measured.
+// The measured curves (bank 0; parameter 2 for type 2 only): their value at c (0..1024, negative for type 3), straight between
+// the wheel's 128 values (boxSource); -1 for one not measured.
 int boxCurve(int bank, int type, int p1, int p2) noexcept;
 float boxCurveAt(int curve, float c) noexcept;
 // The destinations the core moves: the reference's number, the span (raw steps of a full box) in the

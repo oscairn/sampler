@@ -77,11 +77,11 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box destination 53 (`boxN_dst=53`) | 111 | 133 | yes | open |
 | part LFO random speed (`plfo_random_speed`) | 106 | 124 | yes | open |
 | controller box destination 54 (`boxN_dst=54`) | 104 | 170 | yes | open |
-| controller box curve 0 (`boxN_curve=0`) | 100 | 145 | yes | open |
+| controller box curve 0 (`boxN_curve=0`) | 100 | 145 | yes | done (0.9.10): every member of type 0 (parameters 0-10) measured at the wheel's 128 values; counted again with the engine's report on the stock set read through the converter, 0 parts (fully covered sampled parts 1892 to 1933 with the other types below) |
 | Detune | 90 | 137 | yes | open |
 | controller box destination 66 (`boxN_dst=66`) | 89 | 108 | yes | open |
 | filter type 16 (`fil_type=16`) | 85 | 89 | yes | open |
-| controller box curve 2 (`boxN_curve=2`) | 75 | 106 | yes | open |
+| controller box curve 2 (`boxN_curve=2`) | 75 | 106 | yes | partly done (0.9.10): 14 members measured; counted again, 74 parts (56 Performances) on members not probed |
 | controller box destination 61 (`boxN_dst=61`) | 71 | 90 | yes | open |
 | controller box destination 84 (`boxN_dst=84`) | 69 | 97 | yes | open |
 | controller box destination 77 (`boxN_dst=77`) | 65 | 90 | yes | open |
@@ -91,7 +91,7 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box destination 62 (`boxN_dst=62`) | 58 | 67 | yes | open |
 | filter type 12 (`fil_type=12`) | 48 | 50 | yes | open |
 | filter type 19 (`fil_type=19`) | 45 | 46 | yes | open |
-| controller box curve 3 (`boxN_curve=3`) | 43 | 60 | yes | open |
+| controller box curve 3 (`boxN_curve=3`) | 43 | 60 | yes | partly done (0.9.10): parameters 1, 2, 5, 6, 7 measured; counted again, 33 parts (25 Performances) |
 | controller box source 19 (`boxN_src=19`) | 42 | 64 | yes | open |
 | part LFO phase offset (`plfo_phase_offset`) | 42 | 43 | yes | open |
 | filter type 11 (`fil_type=11`) | 39 | 43 | yes | open |
@@ -133,13 +133,13 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box source 24 (`boxN_src=24`) | 3 | 5 | yes | open |
 | Key Controller Set 3 | 3 | 3 | yes | open |
 | Micro Tuning Scale | 3 | 3 | yes | open |
-| controller box curve 9 (`boxN_curve=9`) | 3 | 3 | yes | open |
+| controller box curve 9 (`boxN_curve=9`) | 3 | 3 | yes | done (0.9.10): parameter 0 measured; counted again, 0 parts |
 | controller box destination 381 (`boxN_dst=381`) | 3 | 3 | yes | open |
 | controller box destination 385 (`boxN_dst=385`) | 3 | 3 | yes | open |
 | region (`region`) | 3 | 3 | yes | open |
 | controller box curve 10 (`boxN_curve=10`) | 2 | 2 | yes | open |
 | controller box curve 12 (`boxN_curve=12`) | 2 | 2 | yes | open |
-| controller box curve 18 (`boxN_curve=18`) | 2 | 2 | yes | open |
+| controller box curve 18 (`boxN_curve=18`) | 2 | 2 | yes | partly done (0.9.10): parameter 4 measured; counted again, 1 part |
 | element LFO amplitude ratio (`elfo_amp_ratio`) | 2 | 2 | yes | open |
 | part muted: no element can play | 2 | 2 | yes | open |
 | controller box source 29 (`boxN_src=29`) | 1 | 3 | yes | open |

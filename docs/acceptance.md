@@ -488,7 +488,10 @@ element level (sines at element levels 127, 100, 64, 32), the source stepped thr
   one step); element level 128 steps of the level law (16 boxes at four levels: rms 0.32 dB, the largest errors below
   -30 dB); high-pass cutoff 1023 (one take within 2 steps at 6080; inferred from the cutoff).
 - Curves of type 0: parameter 5 is linear; 0, 2 and 8 measured at 17 points (whole cents: +-5 of 1024); 6, 9, 10 and two
-  of type 2 are the analog engine's measurements of the same boxes, not repeated here.
+  of type 2 were the analog engine's measurements of the same boxes. Since 0.9.10 the engine plays 35 curves measured on the
+  reference at the wheel's 128 values (a box on a pitch at ratio +8: about 1 of 1024; `core/curves.inc`), straight between
+  them; they agree with those 17-point tables at their points within 5 of 1024 (11 for the analog engine's, whose points
+  sat at its earlier source map's values). The curves' shapes do not depend on the engine: the same table serves the three.
 - Not measured or not built: the boxes on the envelope times and depths (the filter envelope's depth did not move while
   a note held: read at note-on, not verified), the element LFO, pan, the part LFO; channel pressure's map. The knobs,
   ribbon and switches: (m).
