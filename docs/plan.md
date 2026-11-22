@@ -81,7 +81,7 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | Detune | 90 | 137 | yes | open |
 | controller box destination 66 (`boxN_dst=66`) | 89 | 108 | yes | open |
 | filter type 16 (`fil_type=16`) | 85 | 89 | yes | open |
-| controller box curve 2 (`boxN_curve=2`) | 75 | 106 | yes | partly done (0.9.10): 14 members measured; counted again, 74 parts (56 Performances) on members not probed |
+| controller box curve 2 (`boxN_curve=2`) | 75 | 106 | yes | partly done (0.9.10): 14 members measured; counted again, 74 parts (56 Performances) on members not probed; 0.9.11: 17 more members measured, not counted again |
 | controller box destination 61 (`boxN_dst=61`) | 71 | 90 | yes | open |
 | controller box destination 84 (`boxN_dst=84`) | 69 | 97 | yes | open |
 | controller box destination 77 (`boxN_dst=77`) | 65 | 90 | yes | open |
@@ -91,7 +91,7 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box destination 62 (`boxN_dst=62`) | 58 | 67 | yes | open |
 | filter type 12 (`fil_type=12`) | 48 | 50 | yes | open |
 | filter type 19 (`fil_type=19`) | 45 | 46 | yes | open |
-| controller box curve 3 (`boxN_curve=3`) | 43 | 60 | yes | partly done (0.9.10): parameters 1, 2, 5, 6, 7 measured; counted again, 33 parts (25 Performances) |
+| controller box curve 3 (`boxN_curve=3`) | 43 | 60 | yes | partly done (0.9.10): parameters 1, 2, 5, 6, 7 measured; counted again, 33 parts (25 Performances); 0.9.11: parameter 4 measured, not counted again |
 | controller box source 19 (`boxN_src=19`) | 42 | 64 | yes | open |
 | part LFO phase offset (`plfo_phase_offset`) | 42 | 43 | yes | open |
 | filter type 11 (`fil_type=11`) | 39 | 43 | yes | open |
@@ -108,12 +108,12 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box destination 83 (`boxN_dst=83`) | 22 | 31 | yes | open |
 | controller box destination 377 (`boxN_dst=377`) | 17 | 17 | yes | open |
 | controller box source 22 (`boxN_src=22`) | 17 | 17 | yes | open |
-| controller box curve 1 (`boxN_curve=1`) | 14 | 15 | yes | open |
+| controller box curve 1 (`boxN_curve=1`) | 14 | 15 | yes | partly done (0.9.11): parameters 0, 2, 3, 4, 6, 7 measured; not counted again |
 | controller box destination 379 (`boxN_dst=379`) | 14 | 14 | yes | open |
 | controller box source 20 (`boxN_src=20`) | 13 | 20 | yes | open |
 | Key Controller Set 2 | 13 | 17 | yes | open |
 | Regions or samples past 1024 | 10 | 10 | yes | open |
-| controller box curve 19 (`boxN_curve=19`) | 9 | 28 | yes | open |
+| controller box curve 19 (`boxN_curve=19`) | 9 | 28 | yes | partly done (0.9.11): parameters 0, 1, 2 measured; not counted again |
 | filter type 17 (`fil_type=17`) | 9 | 9 | yes | open |
 | controller box destination 70 (`boxN_dst=70`) | 8 | 9 | yes | open |
 | controller box source 23 (`boxN_src=23`) | 8 | 9 | yes | open |
@@ -121,15 +121,15 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box source 21 (`boxN_src=21`) | 7 | 12 | yes | open |
 | controller box destination 74 (`boxN_dst=74`) | 7 | 10 | yes | open |
 | Element Pan Switch | 6 | 10 | yes | open |
-| controller box curve 4 (`boxN_curve=4`) | 6 | 7 | yes | open |
+| controller box curve 4 (`boxN_curve=4`) | 6 | 7 | yes | partly done (0.9.11): parameters 0, 2, 6, 7, 8, 9 measured; not counted again |
 | pitch bend range down (`bend_down`) | 6 | 6 | yes | open |
 | controller box destination 378 (`boxN_dst=378`) | 6 | 6 | yes | open |
-| controller box curve 15 (`boxN_curve=15`) | 5 | 9 | yes | open |
+| controller box curve 15 (`boxN_curve=15`) | 5 | 9 | yes | partly done (0.9.11): parameter 0 measured; not counted again |
 | controller box source 25 (`boxN_src=25`) | 4 | 7 | yes | open |
 | Elements past 32 | 4 | 6 | yes | open |
 | controller box curve 13 (`boxN_curve=13`) | 4 | 4 | yes | open |
 | filter type 13 (`fil_type=13`) | 4 | 4 | yes | open |
-| controller box curve 11 (`boxN_curve=11`) | 3 | 5 | yes | open |
+| controller box curve 11 (`boxN_curve=11`) | 3 | 5 | yes | partly done (0.9.11): parameters 1 and 8 measured; not counted again |
 | controller box source 24 (`boxN_src=24`) | 3 | 5 | yes | open |
 | Key Controller Set 3 | 3 | 3 | yes | open |
 | Micro Tuning Scale | 3 | 3 | yes | open |
@@ -137,15 +137,15 @@ host controls), 57 dropped (destinations the engine does not move yet, or host t
 | controller box destination 381 (`boxN_dst=381`) | 3 | 3 | yes | open |
 | controller box destination 385 (`boxN_dst=385`) | 3 | 3 | yes | open |
 | region (`region`) | 3 | 3 | yes | open |
-| controller box curve 10 (`boxN_curve=10`) | 2 | 2 | yes | open |
+| controller box curve 10 (`boxN_curve=10`) | 2 | 2 | yes | partly done (0.9.11): parameters 0 and 12 measured; not counted again |
 | controller box curve 12 (`boxN_curve=12`) | 2 | 2 | yes | open |
-| controller box curve 18 (`boxN_curve=18`) | 2 | 2 | yes | partly done (0.9.10): parameter 4 measured; counted again, 1 part |
+| controller box curve 18 (`boxN_curve=18`) | 2 | 2 | yes | partly done (0.9.10): parameter 4 measured; counted again, 1 part; 0.9.11: parameters 7 and 8 measured, not counted again |
 | element LFO amplitude ratio (`elfo_amp_ratio`) | 2 | 2 | yes | open |
 | part muted: no element can play | 2 | 2 | yes | open |
 | controller box source 29 (`boxN_src=29`) | 1 | 3 | yes | open |
 | Key Controller Set 4 | 1 | 1 | yes | open |
-| controller box curve 14 (`boxN_curve=14`) | 1 | 1 | yes | open |
-| controller box curve 16 (`boxN_curve=16`) | 1 | 1 | yes | open |
+| controller box curve 14 (`boxN_curve=14`) | 1 | 1 | yes | partly done (0.9.11): parameter 0 measured; not counted again |
+| controller box curve 16 (`boxN_curve=16`) | 1 | 1 | yes | partly done (0.9.11): parameters 2, 3, 4, 6, 7, 8, 9, 10 measured; not counted again |
 | controller box curve 5 (`boxN_curve=5`) | 1 | 1 | yes | open |
 | controller box curve 6 (`boxN_curve=6`) | 1 | 1 | yes | open |
 | controller box curve 8 (`boxN_curve=8`) | 1 | 1 | yes | open |
