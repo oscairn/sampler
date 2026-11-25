@@ -59,8 +59,12 @@ element EQ's two bands' boosts added. The element LFO's amplitude only lowers it
 overshoot is not counted. When a release starts, and again when one of these terms changes (the sound's level, the
 note's volume, a moved level or resonance), the voice stores the envelope level at which the product reaches -96 dBFS;
 the existing end test (after each piece) compares the envelope with it, so it costs one comparison a voice a piece and
-nothing a frame. The voice ends through the usual path (NOTE_END once, its stream and slot freed). A resonant filter
-ringing after its input stops is ignored by this rule, as by the envelope's. A resonance raised after a voice ended
+nothing a frame. The voice ends through the usual path (NOTE_END once, its stream and slot freed). The filter and the
+element EQ come after the envelope and ring on after their input stops, so a voice with a filter is not freed at any of
+these ends while heard: its gains after the filter fall 6 dB a control step, its source standing still, until they are
+below -96 dBFS with the source at full scale (freed at once, a short release's tail still at -27 dBFS was a click at
+every release). A voice with the filter thru ends at once, and so does one shed or choked, at its own fade's end (the
+cost gate's shed voice must be gone within two blocks). A resonance raised after a voice ended
 does not bring it back (only the level boxes and the part LFO are taken at their top).
 
 Events act between pieces on their own frame: a note starts on its frame (its envelopes from the frame

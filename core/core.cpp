@@ -1316,7 +1316,7 @@ void Core::choke(uint32_t voice, uint32_t frames) {
             if (v.amp.stage == AmpEnv::Done) continue;
             v.releasing = true;
             v.steady = false;
-            v.amp.stage = AmpEnv::Fade; v.amp.ramp = true; v.amp.target = 0;
+            v.amp.stage = AmpEnv::Fade; v.amp.ramp = true; v.amp.target = 0; v.cut = true;
             v.amp.step = -v.amp.gain / double(std::max<uint32_t>(1, frames));
             if (v.amp.step == 0) v.amp.step = -1e-12;
             float* f[5] = {p.f[G], p.f[M], p.f[A], p.f[LO], p.f[HI]};
@@ -1426,7 +1426,7 @@ void Core::fadeFast(Pool& p, uint32_t i) {
     ampAdvance(v.amp, clock_ - 1, sr_);
     v.releasing = true;
     v.steady = false;
-    v.amp.stage = AmpEnv::Fade; v.amp.ramp = true; v.amp.target = 0;
+    v.amp.stage = AmpEnv::Fade; v.amp.ramp = true; v.amp.target = 0; v.cut = true;
     v.amp.step = -std::max(v.amp.gain, 1e-9) / kSub;
     float* f[5] = {p.f[G], p.f[M], p.f[A], p.f[LO], p.f[HI]};
     ampFields(v.amp, f, int(i));
@@ -1438,7 +1438,7 @@ void Core::shed(uint32_t n) {
         Pool* best = nullptr; uint32_t bi = 0; float bg = kBig;
         for (auto& p : pool_)
             for (uint32_t i = 0; i < p.n; ++i) {
-                if (p.v[i].amp.stage == AmpEnv::Fade) continue;
+                if (p.v[i].amp.stage == AmpEnv::Fade || p.v[i].amp.stage == AmpEnv::Done) continue;
                 const float g = p.f[G][i] * p.v[i].level * p.v[i].volume;
                 if (g < bg) { bg = g; best = &p; bi = i; }
             }
@@ -1686,6 +1686,19 @@ void Core::reap_() {
                 gone = v.amp.stage == AmpEnv::Done;
             }
             if (!gone) continue;
+            // the filter and the element EQ ring on past the envelope: a voice still heard fades out first, 6 dB a piece (the
+            // gains after the filter ramp to it at each control step), its source standing still
+            if (p.plan.filter != Filter::Thru && !v.cut && std::max(std::fabs(p.f[GL][i]), std::fabs(p.f[GR][i])) * 32768.0f > 1.5849e-5f) {  // -96 dBFS, the source at full scale
+                if (v.amp.stage != AmpEnv::Done) {
+                    ampEnter(v.amp, AmpEnv::Done, sr_);
+                    float* f[5] = {p.f[G], p.f[M], p.f[A], p.f[LO], p.f[HI]};
+                    ampFields(v.amp, f, int(i));
+                }
+                v.level *= 0.5f; v.levelRest *= 0.5f;
+                v.baseStep = 0; p.step[i] = p.dstep[i] = 0;  // no reads past the guard frames after a one-shot's end
+                v.dirty = true; v.steady = false;
+                continue;
+            }
             Slot& sl = slot_[v.slot];
             for (int q = 0; q < sl.layers; ++q)
                 if (sl.pool[q] == k && sl.id[q] == v.id) {

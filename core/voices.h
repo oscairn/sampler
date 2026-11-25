@@ -69,6 +69,7 @@ struct VoiceScalar {  // 512 bytes (static_assert below): the pools index it by 
     int64_t segLo = 0, segHi = 0, shift = 0;
     Stream* stream = nullptr;
     bool loop = false, ended = false;
+    bool cut = false;          // shed or choked: it ends at its own fade's end, its filter's ring not faded out (Core::reap_)
     uint8_t starve = 0;
     uint8_t plfo = 0, lfoSlots = 0;  // the part LFO: bit d, a slot on destination d (laws::LfoDest) reaches it; bit k, slot k does
     int16_t panRaw = 64;       // the pan before the part LFO (raw)

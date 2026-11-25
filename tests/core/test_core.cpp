@@ -1149,6 +1149,37 @@ static void oneShotEnds() {
         }
 }
 
+// A voice is never cut while it is heard: its filter and element EQ ring on past its envelope's end (here a short
+// release's ramp to zero), so it ends with its output below -96 dBFS or at the end of a fade.
+static void noCutAtTheEnd() {
+    for (int block : {128, 37}) {
+        Rig r("ampeg_attack=0 ampeg_decay1=127 ampeg_decay2=127 ampeg_release=29 fil_type=4 fil_resonance=16 fil_hpf_cutoff=321 eq_freq1=95 eq_gain1=78",
+              sine(44100, 261.63, 44100, 16384), 1, 44100.f, "0-44100");
+        r.core->noteOn(0, 0, 0, 60, 1.0f);
+        r.run(4800, block);
+        r.core->noteOff(0);
+        const auto rel = r.run(4800, block);
+        CHECK(!r.core->voice(0).sounding);
+        long last = -1;
+        for (long i = 0; i < 4800; ++i) if (rel[size_t(2 * i)] != 0) last = i;
+        if (last < 32) { CHECK(last >= 32); continue; }
+        double before = 0;  // the level a control step earlier
+        for (long i = last - 32; i < last - 16; ++i) before = std::max(before, double(std::fabs(rel[size_t(2 * i)])));
+        const double end = std::fabs(rel[size_t(2 * last)]);
+        if (!(end < std::pow(10.0, -96.0 / 20) || end <= before / 8)) { ++failures; std::printf("  blocks of %d: cut at %.1f dBFS (%.1f dBFS a step before)\n", block, 20 * std::log10(end), 20 * std::log10(before)); }
+    }
+    // a one-shot fading out past its sample's end reads nothing past its guard frames: in memory and streamed, transposed
+    // up to 43 semitones, it ends and is not shed
+    for (int key : {60, 84, 103})
+        for (bool streamed : {false, true}) {
+            Rig r("ampeg_decay1=127 ampeg_decay2=127 fil_type=0 fil_cutoff=600", sine(30000, 261.63, 44100, 16384), 1, 44100.f, nullptr);
+            if (streamed) r.stream(4096);
+            r.core->noteOn(0, 0, 0, key, 0.8f);
+            r.run(40000, 128, {37, 90});
+            CHECK(!r.core->voice(0).sounding && r.core->streamSheds() == 0);
+        }
+}
+
 // The part LFO (measured): a square on the pitch at depth 64 swings +-112 cents at speed 40's rate, starting at its note
 // after kPartLfoLag; on the level at depth 32 its low half plays 32 level steps down; on the pan at depth 16 the far side
 // as the balance law at 34 steps; an element's switch for the slot keeps it out; each-on notes run their own oscillators,
@@ -1421,7 +1452,7 @@ int main() {
         {"pan_laws", panLaws}, {"filter_types_4_5", filterTypes45}, {"filter_types", filterTypes}, {"element_eq", elementEq},
         {"kernel_by_transposition", kernelByTransposition}, {"key_off_elements", keyOffElements}, {"half_damper", halfDamper},
         {"element_lfo", elementLfo}, {"moving_pitch_envelope", movingPitchEnvelope}, {"level_scaling_and_velocity", levelScalingAndVelocity}, {"release_mid_block", releaseMidBlock},
-        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"box_curves", boxCurves},{"one_shot_ends", oneShotEnds}, {"pitch_key_follow", pitchKeyFollow},
+        {"equal_level_segments", equalLevelSegments}, {"controller_boxes", controllerBoxes}, {"box_curves", boxCurves},{"one_shot_ends", oneShotEnds}, {"no_cut_at_the_end", noCutAtTheEnd}, {"pitch_key_follow", pitchKeyFollow},
         {"part_lfo", partLfo},
         {"element_selection", elementSelection}, {"key_on_delay", keyOnDelay}, {"part_offsets", partOffsets}, {"resonance_velocity", resonanceVelocity}, {"pitch_velocity", pitchVelocity}, {"random_pitch", randomPitch},
         {"streaming", streaming},
