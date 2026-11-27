@@ -131,6 +131,7 @@ std::shared_ptr<const Pack> packAt(const std::string& path, uint64_t need, std::
 }
 
 std::atomic<bool> g_failReads{false};
+std::atomic<uint64_t> g_bytesRead{0};
 
 uint32_t u32(const uint8_t* b) { return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24; }
 
@@ -145,9 +146,11 @@ Pack::~Pack() {
 }
 
 void failReads(bool on) { g_failReads.store(on, std::memory_order_relaxed); }
+uint64_t packBytesRead() { return g_bytesRead.load(std::memory_order_relaxed); }
 
 bool Pack::read(uint64_t offset, void* out, size_t n) const {
     if (g_failReads.load(std::memory_order_relaxed)) return false;
+    g_bytesRead.fetch_add(n, std::memory_order_relaxed);
     auto* b = static_cast<uint8_t*>(out);
 #ifdef _WIN32
     while (n) {
@@ -206,26 +209,51 @@ bool onlyRecord(const std::string& path, Record& r, std::string& error) {
     return true;
 }
 
+namespace {
+// The records checked in this process, by pack path and offset: each one's entry, header and frame table, one copy a
+// record (the sounds that use the same record share it). An entry counts while a sound holds its table, for the same
+// open pack only (a pack opened again, after an append or with another file at its path, is read and checked again).
+struct Checked { std::weak_ptr<const Pack> pack; sp_index_entry entry; sp_record_info info; std::weak_ptr<const std::vector<uint32_t>> table; };
+std::mutex g_checkedLock;
+std::map<std::pair<std::string, uint64_t>, Checked> g_checked;
+}  // namespace
+
+bool knownRecord(Record& r) {
+    std::lock_guard<std::mutex> g(g_checkedLock);
+    auto it = g_checked.find({r.pack->path, r.entry.offset});
+    if (it == g_checked.end() || it->second.pack.lock() != r.pack || std::memcmp(&it->second.entry, &r.entry, sizeof r.entry)) return false;
+    auto held = it->second.table.lock();
+    if (!held) return false;
+    r.info = it->second.info;
+    r.table = std::move(held);
+    return true;
+}
+
 bool checkRecord(Record& r, std::string& error) {
     if (r.entry.preload < SP_PACK_PAGE || r.entry.preload > r.entry.length || r.entry.offset + r.entry.length > r.pack->len) {
         error = "bad sample record (its entry lies outside the pack) in " + r.pack->path; return false;
     }
-    std::vector<uint8_t> head(size_t(r.entry.preload));  // header, credit, frame table and window
-    if (!r.pack->read(r.entry.offset, head.data(), head.size())) { error = "cannot read a sample record in " + r.pack->path; return false; }
+    // the header, credit and frame table (head length H at byte 24, a whole number of pages); the window is read with
+    // the frames that need it
+    std::vector<uint8_t> head(SP_PACK_PAGE);
+    bool read = r.pack->read(r.entry.offset, head.data(), head.size());
+    if (const uint32_t h = read ? u32(head.data() + 24) : 0; h > head.size() && h <= r.entry.preload) {
+        head.resize(h);
+        read = r.pack->read(r.entry.offset + SP_PACK_PAGE, head.data() + SP_PACK_PAGE, h - SP_PACK_PAGE);
+    }
+    if (!read) { error = "cannot read a sample record in " + r.pack->path; return false; }
     const sp_status st = sp_record_head(head.data(), head.size(), &r.entry, &r.info);
     if (st != SP_OK) { error = "bad sample record (error " + std::to_string(int(st)) + ") in " + r.pack->path; return false; }
     if (std::memcmp(r.info.id, r.entry.id, SP_SAMPLE_ID_BYTES)) { error = "the record in " + r.pack->path + " holds another sample"; return false; }
     if (r.info.max_frame > kMaxFrameBytes) { error = "a sample record in " + r.pack->path + " has a frame larger than the reader takes"; return false; }
     std::vector<uint32_t> t(size_t(r.info.blocks) + 1);
     for (size_t i = 0; i < t.size(); ++i) t[i] = u32(head.data() + r.info.table_offset + 4 * i);
-    // one copy a record in the process, as the heads: the sounds that use the same record share it
-    static std::mutex lock;
-    static std::map<std::pair<std::string, uint64_t>, std::weak_ptr<const std::vector<uint32_t>>> tables;
-    std::lock_guard<std::mutex> g(lock);
-    for (auto it = tables.begin(); it != tables.end();) it = it->second.expired() ? tables.erase(it) : std::next(it);
-    auto& slot = tables[{r.pack->path, r.entry.offset}];
-    auto held = slot.lock();
-    if (!held || *held != t) { held = std::make_shared<const std::vector<uint32_t>>(std::move(t)); slot = held; }
+    std::lock_guard<std::mutex> g(g_checkedLock);
+    for (auto it = g_checked.begin(); it != g_checked.end();) it = it->second.table.expired() ? g_checked.erase(it) : std::next(it);
+    Checked& slot = g_checked[{r.pack->path, r.entry.offset}];
+    auto held = slot.table.lock();
+    if (!held || *held != t) held = std::make_shared<const std::vector<uint32_t>>(std::move(t));
+    slot = {r.pack, r.entry, r.info, held};
     r.table = std::move(held);
     return true;
 }

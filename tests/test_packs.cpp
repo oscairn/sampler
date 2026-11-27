@@ -3,6 +3,8 @@
 // what the plugin plays from them.
 #include <samplepack.h>
 
+#include <chrono>
+
 #include "host.h"
 
 // The samplepack library is linked and agrees with its specification's worked sample id (docs/format.md, 20 A).
@@ -126,4 +128,120 @@ TEST(packs_are_not_mapped) {
     if (f) std::fclose(f);
     CHECK_EQ(mapped, 0);
 #endif
+}
+
+namespace {
+// Tone k of a set: a short sine at its own pitch, mono 44.1 kHz, 3,000 frames (its record's window holds it whole).
+TestTone shortTone(int k) {
+    TestTone t; t.frames = 3000; t.pcm.resize(t.frames);
+    for (uint32_t i = 0; i < t.frames; ++i) t.pcm[i] = int16_t(std::lround(9000.0 * std::sin(2 * 3.14159265358979 * (100.0 + 3.0 * k) * i / t.rate)));
+    uint8_t id[SP_SAMPLE_ID_BYTES];
+    sp_sample_id_pcm(t.rate, 1, t.pcm.data(), t.frames, id);
+    for (int i = 0; i < 32; ++i) { char h[3]; std::snprintf(h, 3, "%02x", id[i]); t.id += h; }
+    return t;
+}
+// Packs `tones` in that order into `file` of the asset folder (a new file put in place of any there) and points the host's
+// store at its records; the records' headers, by sample id.
+std::map<std::string, sp_record_info> packInto(const std::string& file, const std::vector<TestTone>& tones) {
+    const std::string path = g_assetDir + "/" + file;
+    std::string cmd = std::string("\"") + SAMPLEPACK_CLI + "\" pack -o \"" + path + ".new\"";
+    for (size_t i = 0; i < tones.size(); ++i) {
+        const std::string wav = g_assetDir + "/t" + std::to_string(i) + ".wav";
+        writeWav(wav, tones[i]);
+        cmd += " \"" + wav + "\"";
+    }
+    std::map<std::string, sp_record_info> out;
+    if (std::system((cmd + " > /dev/null").c_str()) || std::rename((path + ".new").c_str(), path.c_str())) return out;
+    for (size_t i = 0; i < tones.size(); ++i) std::remove((g_assetDir + "/t" + std::to_string(i) + ".wav").c_str());
+    std::string bytes;
+    if (FILE* f = std::fopen(path.c_str(), "rb")) { char b[65536]; size_t n; while ((n = std::fread(b, 1, sizeof b, f)) > 0) bytes.append(b, n); std::fclose(f); }
+    std::vector<sp_index_entry> e(tones.size());
+    size_t n = 0;
+    const auto* data = reinterpret_cast<const uint8_t*>(bytes.data());
+    if (sp_pack_index(data, bytes.size(), e.data(), e.size(), &n)) return out;
+    for (size_t i = 0; i < n; ++i) {
+        std::string hex;
+        for (int k = 0; k < 32; ++k) { char h[3]; std::snprintf(h, 3, "%02x", e[i].id[k]); hex += h; }
+        g_store[hex] = {path, e[i].offset, e[i].length, e[i].preload};
+        sp_pack_record(data, bytes.size(), &e[i], &out[hex]);
+    }
+    return out;
+}
+// A sound playing each of `tones` on its own key and velocity band.
+std::string soundOfAll(const std::vector<TestTone>& tones) {
+    std::string s = "oscairn-sampler-sound/0\n";
+    for (const auto& t : tones) s += "sample sample:" + t.id + "\n";
+    s += "element ampeg_decay1=127 ampeg_decay2=127 ampeg_release=50\n";
+    for (size_t i = 0; i < tones.size(); ++i) {
+        const int key = 10 + int(i % 100), vel = int(i / 100) * 31 + 1;
+        s += "region key=" + std::to_string(key) + "-" + std::to_string(key) + " vel=" + std::to_string(vel) + "-" + std::to_string(vel + 30) +
+             " root=" + std::to_string(key) + " element=0 sample=" + std::to_string(i) + "\n";
+    }
+    return s;
+}
+struct Cost { uint64_t bytes; int resolves; double ms; };
+// What preparing `sound` in instance `a` reads from packs and asks of the host.
+Cost prepareCost(Inst& a, const std::string& sound) {
+    char msg[256] = {};
+    const uint64_t b = a.streaming->bytesRead(a.p);
+    const int r = g_sampleResolves;
+    const auto t0 = std::chrono::steady_clock::now();
+    const uint32_t id = a.contexts->prepare(a.p, "x", nullptr, 0, sound.c_str(), testBase(), msg, sizeof msg);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    if (id == CLAP_INVALID_ID) { std::printf("  prepare: %s\n", msg); ++g_failures; }
+    return {a.streaming->bytesRead(a.p) - b, g_sampleResolves - r, ms};
+}
+}  // namespace
+
+// A part of 400 samples: prepared the first time, each record's header and frame table are read once and its window's
+// frames once, with one resolve a sample; prepared again while a sound holds those records, nothing is read and the
+// host is not asked.
+TEST(prepare_reads_each_record_once) {
+    std::vector<TestTone> tones;
+    for (int k = 0; k < 400; ++k) tones.push_back(shortTone(k));
+    const auto records = packInto("many.osp", tones);
+    CHECK_EQ(records.size(), tones.size());
+    uint64_t heads = 0, windows = 0;
+    for (const auto& [id, r] : records) { heads += r.head_len; windows += uint64_t(r.frames) * r.channels * 2; CHECK(r.window_frames == r.frames); }
+    const std::string sound = soundOfAll(tones);
+    Inst a, b;
+    const Cost first = prepareCost(a, sound);
+    CHECK_EQ(first.resolves, 400);
+    CHECK(first.bytes >= heads + windows && first.bytes - (heads + windows) <= 3 * 4096 + 32 + 400 * 56);  // and the pack's opening: header, trailer, footer
+    Cost again = prepareCost(b, sound);
+    for (int k = 0; k < 4; ++k) { const Cost c = prepareCost(b, sound); again.ms = std::min(again.ms, c.ms); CHECK_EQ(c.bytes, 0u); }
+    CHECK_EQ(again.resolves, 0);
+    CHECK_EQ(again.bytes, 0u);
+    std::printf("  400 samples: first prepare %llu bytes, %d resolves, %.2f ms; again %llu bytes, %d resolves, %.2f ms\n",
+                (unsigned long long)first.bytes, first.resolves, first.ms, (unsigned long long)again.bytes, again.resolves, again.ms);
+    for (const auto& t : tones) g_store.erase(t.id);
+}
+
+// A pack put in place of another at the same path, with its records at other offsets: a sample found where the old
+// pack had it is resolved again, and plays its own audio.
+TEST(replaced_pack_is_resolved_again) {
+    const TestTone x = shortTone(500), y = shortTone(501), z = shortTone(502);
+    CHECK_EQ(packInto("moving.osp", {x, y}).size(), 2u);
+    const std::string sx = soundOfAll({x});
+    int asked = 0;
+    auto hear = [&] {  // x's note, from a sound loaded in a new instance; resolves into `asked`
+        Inst d;
+        const int r = g_sampleResolves;
+        CHECK(d.load(stateWith(sx)));
+        asked = g_sampleResolves - r;
+        d.block(128, {on(0, 1, 0, 10, 0.1)});
+        d.run(2560);
+        return d.L;
+    };
+    Inst a;  // holds x's record where the first pack has it
+    CHECK_EQ(prepareCost(a, sx).resolves, 1);
+    const std::vector<float> before = hear();
+    CHECK_EQ(asked, 0);
+    CHECK(peak(before) > 0.05f);
+    CHECK_EQ(packInto("moving.osp", {y, x, z}).size(), 3u);  // x moves; y is where x was
+    Inst b;
+    CHECK_EQ(prepareCost(b, soundOfAll({z})).resolves, 1);  // z lies past the first pack's end: the pack is opened again
+    CHECK(hear() == before);
+    CHECK_EQ(asked, 1);
+    for (const auto* t : {&x, &y, &z}) g_store.erase(t->id);
 }

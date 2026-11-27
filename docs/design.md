@@ -150,13 +150,18 @@ A sample reference is `sample:<id>` (the host's `resolve_sample` gives the pack 
 length and preload span) or a path naming a one-record pack, whose trailer gives them. Each pack file is
 opened once per process, read-only, and shared by every instance; it is never mapped (a process whose
 mappings are locked, as with `mlockall`, would hold a whole pack): its header page, trailer and index are
-read once (the index 56 bytes a record on the heap), a record's preload span (header, frame table,
-window) when a sound is loaded, keeping its frame table, and each streamed block's compressed bytes into
-the I/O thread's one fixed buffer before decoding (`pread`; `ReadFile` at an offset on Windows). Loading
-a sound resolves every reference first, hints every record's preload span in one read-ahead batch
-(`posix_fadvise` WILLNEED on Linux, `fcntl` F_RDADVISE on macOS, none on Windows), reads the headers in
-ascending offset order, then reads or decodes what stays in memory in ascending order (a second hint
-batch covers frames decoded past the windows). Nothing opens a file per sample. A read that fails at
+read once (the index 56 bytes a record on the heap), a record's header and frame table when a sound is
+loaded, keeping its frame table, its window's frames with what stays in memory, and each streamed block's
+compressed bytes into the I/O thread's one fixed buffer before decoding (`pread`; `ReadFile` at an offset
+on Windows). Loading a sound resolves every reference first, hints every record's preload span in one
+read-ahead batch (`posix_fadvise` WILLNEED on Linux, `fcntl` F_RDADVISE on macOS, none on Windows), reads
+the headers in ascending offset order, then reads or decodes what stays in memory in ascending order (a
+second hint batch covers frames decoded past the windows). Nothing opens a file per sample. While a sound
+of the process holds a record, the process keeps where its sample id was found and the record as checked
+(entry, header, frame table, by pack and offset): a sound prepared again asks the host only for the samples
+no sound holds and reads no record it holds, as it reads no buffer the process already has. A location gone
+stale (another pack put at that path, opened again since) fails the record's check, and that sample is
+resolved again. A read that fails at
 load fails the sound's prepare, naming the reference; a streamed block that cannot be read is a late
 stream (the voice is shed with its fade, counted). What this heap holds is reported through `oscairn.memory`: the I/O
 thread's decoder with its read buffer (98,304 bytes with the planar output and the decoder's scratch, one a process)

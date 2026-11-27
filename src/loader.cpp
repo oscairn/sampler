@@ -50,6 +50,35 @@ void remember(const std::vector<BufferKey>& keys, const std::vector<std::shared_
     for (size_t i = 0; i < keys.size(); ++i) cache[keys[i]] = buffers[i];
 }
 
+// Where this process found each sample id (as the host resolved it and checkRecord confirmed), so that a sound
+// prepared again asks the host only for samples no sound holds. An entry counts while a sound holds its record's frame
+// table; one gone stale (another pack put at that path since) fails findRecord or checkRecord's id check, and the sample
+// is resolved again.
+struct Where { std::string path; sp_index_entry entry; std::weak_ptr<const std::vector<uint32_t>> table; };
+std::mutex whereLock;
+std::map<std::string, Where> where;  // by reference "sample:<id>"
+
+bool located(const char* ref, Record& r) {
+    uint8_t id[SP_SAMPLE_ID_BYTES];
+    if (!sampleId(ref, id)) return false;
+    Where w;
+    {
+        std::lock_guard<std::mutex> l(whereLock);
+        auto it = where.find(ref);
+        if (it == where.end() || it->second.table.expired()) return false;
+        w = it->second;
+    }
+    std::string ignored;
+    return findRecord(w.path, w.entry.offset, id, w.entry.length, w.entry.preload, r, ignored);
+}
+void locate(const pcm::SoundData& d, const std::vector<Record>& records) {
+    uint8_t id[SP_SAMPLE_ID_BYTES];
+    std::lock_guard<std::mutex> l(whereLock);
+    for (auto it = where.begin(); it != where.end();) it = it->second.table.expired() ? where.erase(it) : std::next(it);
+    for (uint32_t i = 0; i < d.samples; ++i)
+        if (sampleId(d.ref[i], id)) where[d.ref[i]] = {records[i].pack->path, records[i].entry, records[i].table};
+}
+
 std::string hex(const uint8_t* id) {
     std::string h(64, '0');
     for (int i = 0; i < 32; ++i) std::snprintf(&h[2 * i], 3, "%02x", id[i]);
@@ -102,15 +131,20 @@ Samples::~Samples() {
 std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const SampleResolver& resolve, bool whole, std::string& error) {
     auto s = std::make_shared<Samples>();
     s->records.resize(d.samples);
+    std::vector<bool> known(d.samples);  // found where this process found it before, without asking the host
     for (uint32_t i = 0; i < d.samples; ++i)
-        if (!resolve(d.ref[i], s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
-    // one read-ahead batch over every record's preload span (header and window), then the headers in ascending order
-    std::vector<uint32_t> order(d.samples);
-    for (uint32_t i = 0; i < d.samples; ++i) order[i] = i;
+        if (!(known[i] = located(d.ref[i], s->records[i])) && !resolve(d.ref[i], s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
+    // the records not checked yet: one read-ahead batch over their preload spans (header and window), then their
+    // headers in ascending order; a record found where it was before and no longer there is resolved again
+    std::vector<uint32_t> order;
+    for (uint32_t i = 0; i < d.samples; ++i) if (!knownRecord(s->records[i])) order.push_back(i);
     std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) { return before(s->records[a], s->records[b]); });
     for (uint32_t i : order) willNeed(*s->records[i].pack, s->records[i].entry.offset, s->records[i].entry.preload);
     for (uint32_t i : order)
-        if (!checkRecord(s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
+        if (!checkRecord(s->records[i], error) &&
+            !(known[i] && resolve(d.ref[i], s->records[i], error) && (knownRecord(s->records[i]) || checkRecord(s->records[i], error)))) {
+            error = std::string(d.ref[i]) + ": " + error; return nullptr;
+        }
 
     // each region: what stays in memory (buffers shared between regions, and with other sounds of the process, that
     // need the same frames of the same record) and what streams
@@ -183,6 +217,7 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
         }
     }
     remember(keys, s->pcm);
+    locate(d, s->records);
     return s;
 }
 

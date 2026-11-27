@@ -50,9 +50,12 @@ bool findRecord(const std::string& path, uint64_t offset, const uint8_t* id, uin
 std::shared_ptr<const Pack> openPack(const std::string& path, std::string& error);
 // The one live record of a one-record pack (what a path reference names).
 bool onlyRecord(const std::string& path, Record& out, std::string& error);
-// Reads a found record's preload span and checks its header (samplepack: checksum, every field, frame table, agreement
-// with the entry); keeps its frame table.
+// Reads a found record's header and frame table (not its window) and checks them (samplepack: checksum, every field,
+// frame table, agreement with the entry); keeps its frame table, and the record as checked for the process.
 bool checkRecord(Record&, std::string& error);
+// A found record as checkRecord checked it earlier in this process (the same entry, in the same open pack, its frame
+// table still held by a sound): its header and frame table, nothing read. False when it must be checked.
+bool knownRecord(Record&);
 
 // The largest FLAC frame read. samplepack states no limit (a record states its own largest frame, checked against its
 // frame table), so this is derived from SP_FLAC_MAX_BLOCK: a 4,096-frame stereo block coded verbatim (17-bit side
@@ -74,6 +77,8 @@ bool decodeFrames(const Record&, uint32_t from, uint32_t count, int16_t* out, De
 
 // A test hook: every read of a pack fails while on (as an I/O error would).
 void failReads(bool on);
+// A test hook: bytes read from packs in this process so far.
+uint64_t packBytesRead();
 
 // Read-ahead (WILLNEED) for bytes [offset, offset + length) of a pack: issued at once for every span a sound needs, in
 // ascending order, before anything is read (docs/format.md, "Ordering and locality"): posix_fadvise WILLNEED on Linux,
