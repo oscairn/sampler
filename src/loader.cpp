@@ -59,8 +59,9 @@ std::mutex heldLock;
 std::vector<std::weak_ptr<const Samples>> held;
 
 std::string hex(const uint8_t* id) {
+    static const char digits[] = "0123456789abcdef";
     std::string h(64, '0');
-    for (int i = 0; i < 32; ++i) std::snprintf(&h[2 * i], 3, "%02x", id[i]);
+    for (int i = 0; i < 32; ++i) { h[2 * i] = digits[id[i] >> 4]; h[2 * i + 1] = digits[id[i] & 15]; }
     return h;
 }
 
@@ -80,11 +81,11 @@ bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver& resolve, 
     struct Read { std::vector<pcm::KeyBank> banks; std::vector<std::string> refs; std::vector<const char*> ptrs; };
     std::vector<Read> read(in.waveforms);
     std::vector<pcm::WaveformData> w(in.waveforms);
+    std::vector<uint8_t> file(SP_WAVEFORM_MAX_BYTES + 1);  // one buffer for every waveform file
     for (uint32_t i = 0; i < in.waveforms; ++i) {
         const std::string ref = "waveform:" + hex(in.waveform[i]);
         std::string path;
         if (!resolve(ref.c_str(), path, error)) { error = ref + ": " + error; return false; }
-        std::vector<uint8_t> file(SP_WAVEFORM_MAX_BYTES + 1);
         size_t len = 0;
         if (FILE* f = std::fopen(path.c_str(), "rb")) { len = std::fread(file.data(), 1, file.size(), f); std::fclose(f); }
         else { error = ref + ": cannot open " + path; return false; }
