@@ -27,6 +27,13 @@ rest 160, shedding 1,989 and 1,747 a voice for 16 and 32 voices). (0.6.0, 9fcec6
 mono 10,778, streamed stereo 15,261, rest 193, shedding 1,907 and 1,704.) (0.5.0: 10,595, 15,065, 193, 1,904 and 1,688; 0.4.0: 10,557, 15,027, 192,
 1,868 and 1,667.)
 
+The per-element level parameters (0.9.16) add 16 instructions a voice to the gate's mono case (9,288 against 9,272) and
+nothing to rest (174). The element voice pool stays at 128 a plan: at 256 the gate's instructions are unchanged (mono 9,214,
+stereo 12,176 a voice, rest 174), but `sizeof(pcm::Core)` grows from 3,936,448 to 5,724,352 bytes (776 bytes a voice in
+each of the 18 pools, all constructed at once) and the cache gate breaks: first-level data read misses per voice-block,
+mono at 1 / 8 / 32 / 64 voices 34.5 / 13.8 / 131.0 / 160.9 at 128 against 111.2 / 45.6 / 152.6 / 177.6 at 256, stereo 65.7 /
+19.1 / 128.3 / 154.4 against 253.8 / 83.2 / 164.7 / 191.0 (the fields' rows are twice as far apart).
+
 ## Instructions per block (aarch64, NEON)
 
 | voices | mono, 8-tap | mono, Hermite | stereo, 8-tap | stereo, Hermite |

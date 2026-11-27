@@ -1385,8 +1385,18 @@ void Core::setOffset(uint32_t s, int dest, float steps) {
     if (s >= kMaxSounds || dest < 0 || dest >= kOffsets || !(steps == steps)) return;
     const float span = float(laws::kBoxSpan[dest]);
     offset_[s][dest] = int32_t(std::max(-span, std::min(span, steps)));  // toward zero, as a box's steps
+    offsetsMoved(s);
+}
+void Core::setElementOffset(uint32_t s, uint32_t element, float steps) {
+    if (s >= kMaxSounds || element >= kMaxElements || !(steps == steps)) return;
+    const float span = float(laws::kBoxSpan[laws::BoxLevel]);
+    elementOffset_[s][element] = int16_t(std::max(-span, std::min(span, steps)));
+    offsetsMoved(s);
+}
+void Core::offsetsMoved(uint32_t s) {
     bool on = false;
     for (int k = 0; k < kOffsets; ++k) on |= offset_[s][k] != 0;
+    for (uint32_t k = 0; k < kMaxElements; ++k) on |= elementOffset_[s][k] != 0;
     offsetOn_[s] = on;
     for (auto& p : pool_) for (uint32_t i = 0; i < p.n; ++i) if (p.v[i].sound == s) { p.v[i].dirty = true; p.v[i].mods = true; }
 }
@@ -1545,6 +1555,7 @@ void Core::control(Pool& p, uint32_t i, bool grid) {
         if (snd) {
             int32_t step[laws::kLiveDests];
             for (int k = 0; k < laws::kLiveDests; ++k) step[k] = offset_[v.sound][k];
+            step[laws::BoxLevel] += elementOffset_[v.sound][reinterpret_cast<const Element*>(v.element) - snd->element];  // v.element is its Element's v
             const int16_t* e = v.element;
             for (uint32_t b = 0; b < snd->boxes; ++b) {
                 const Compiled::Box& x = snd->box[b];

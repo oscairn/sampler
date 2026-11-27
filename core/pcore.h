@@ -254,6 +254,9 @@ public:
     // A box destination moved from outside the boxes (the shell's parameter plus its modulation) in the destination's raw
     // steps (cents for the tunings): added to its boxes' steps toward zero, the sum within +-span (laws::BoxDest order)
     void setOffset(uint32_t sound, int dest, float steps);
+    // One element's level, in the element level destination's raw steps (toward zero, within +-128) added to the sound's offset and the boxes
+    // before the clamp; it moves sounding voices at every control step.
+    void setElementOffset(uint32_t sound, uint32_t element, float steps);
     void reset();                                     // every voice off, controllers to rest
     // Adds every voice into left/right for `frames` frames that start `from` frames into the host's
     // block. Control steps (envelopes, filter coefficients) fall every kSub frames from the block's
@@ -294,6 +297,7 @@ private:
     float quietLevel(const Pool&, uint32_t i) const;
     int32_t noteOnSteps(const Compiled&, const int16_t* element, uint32_t sound, int channel, int dest) const;
     uint32_t selectElements(const Compiled&, uint32_t sound, int key, int velocity);
+    void offsetsMoved(uint32_t sound);
     void startKeyOff(uint32_t slot);
     void dropPending(Slot&);
     int64_t startPending_();  // starts the held-back layers due now; the clock the next one is due at
@@ -309,7 +313,8 @@ private:
     static constexpr int kControls = 18, kOffsets = 12;
     float control_[kMaxSounds][kControls];   // the sounds' own box sources (setControl), 0..1
     int32_t offset_[kMaxSounds][kOffsets];   // the destinations' outside steps (setOffset), toward zero
-    bool offsetOn_[kMaxSounds] = {};
+    int16_t elementOffset_[kMaxSounds][kMaxElements] = {};  // each element's level steps (setElementOffset)
+    bool offsetOn_[kMaxSounds] = {};  // any offset or element offset is not zero
     int64_t lfoStart_[kMaxSounds] = {};      // the engine clock the sound's part LFO last started (reset) at
     uint8_t cycle_[kMaxSounds][8] = {};      // each element group's next cycle position (an element index)
     uint32_t draw_[kMaxSounds] = {};         // the random elements' generator

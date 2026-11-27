@@ -32,11 +32,12 @@
 namespace pcmshell {
 namespace {
 
-constexpr const char* kStateHeader = "oscairn-sampler-state 3";      // the CLAP state: the default sound (states 1 and 2,
-constexpr const char* kStateHeader2 = "oscairn-sampler-state 2";     // with the values before the knobs or before the bus
+constexpr const char* kStateHeader = "oscairn-sampler-state 4";      // the CLAP state: the default sound (states 1 to 3,
+constexpr const char* kStateHeader3 = "oscairn-sampler-state 3";     // with the values before the element levels, before the
+constexpr const char* kStateHeader2 = "oscairn-sampler-state 2";     // knobs or before the bus
 constexpr const char* kStateHeader1 = "oscairn-sampler-state 1";     // only, still read)
-constexpr const char* kSnapshotHeader = "oscairn-sampler-contexts/3"; // the sound-contexts snapshot (one token)
-constexpr clap_id kShedsParam = kParamCount;  // read-only: voices shed for late streams (the streaming extension's count)
+constexpr const char* kSnapshotHeader = "oscairn-sampler-contexts/4"; // the sound-contexts snapshot (one token)
+constexpr clap_id kShedsParam = kShedsId;  // read-only: voices shed for late streams (the streaming extension's count)
 constexpr const char* kBlobHeader = "oscairn-sampler-blob/0";         // patch text: a blob in base64
 constexpr size_t kMaxStateBytes = 1 << 22;  // eight sounds' blobs in base64
 constexpr uint32_t kMaxDeviceVoices = kVoices, kMaxDeviceVoicesPerSound = kVoices;
@@ -488,8 +489,8 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
         if (h->type != CLAP_EVENT_PARAM_VALUE) return;
         const auto* e = reinterpret_cast<const clap_event_param_value_t*>(h);
-        if (e->param_id >= kParamCount || !std::isfinite(e->value)) return;
-        const auto id = Param(e->param_id); const float x = clampParam(id, e->value);
+        if (e->param_id == kShedsId || e->param_id > kParamCount || !std::isfinite(e->value)) return;
+        const auto id = Param(paramIndex(e->param_id)); const float x = clampParam(id, e->value);
         forTargets(e->channel, [&](uint32_t slot) {
             contexts[slot].patch.p[id].set(x);
             core->setParam(slot, id, x);
@@ -514,7 +515,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     // oscairn.sound-snapshots draft 4: a sound saved on its own plays on the main port; its values, every writable one
     void alone(Patch& p) { p.p[kBus].set(0); }
     uint32_t patchValues(const Patch& p, oscairn_sound_parameter_t* out, uint32_t capacity) {
-        for (uint32_t i = 0; i < kParamCount && i < capacity; ++i) out[i] = {i, p.p[i].get()};
+        for (uint32_t i = 0; i < kParamCount && i < capacity; ++i) out[i] = {paramId(i), p.p[i].get()};
         return kParamCount;
     }
 
@@ -596,9 +597,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         }
         std::istringstream in(data); in.imbue(std::locale::classic());
         std::string line;
-        if (!std::getline(in, line) || (line != kStateHeader && line != kStateHeader2 && line != kStateHeader1)) return false;
+        if (!std::getline(in, line) || (line != kStateHeader && line != kStateHeader3 && line != kStateHeader2 && line != kStateHeader1)) return false;
         Patch patch;
-        if (!s.readPatch(in, patch, line == kStateHeader ? kParamCount : line == kStateHeader2 ? kBus : kKnob1)) return false;
+        if (!s.readPatch(in, patch, line == kStateHeader ? kParamCount : line == kStateHeader3 ? kElement1 : line == kStateHeader2 ? kBus : kKnob1)) return false;
         in >> std::ws;
         if (!in.eof()) return false;
         for (uint32_t i = 0; i < kParamCount; ++i) {
@@ -675,9 +676,10 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             std::copy(s.givenShell, s.givenShell + kParamCount, given);
         }
         for (uint32_t i = 0; i < count; ++i) {
-            if (!values || values[i].id >= kParamCount || !validValue(Param(values[i].id), values[i].value)) return fail("invalid parameter");
-            patch.p[values[i].id].set(clampParam(Param(values[i].id), values[i].value));
-            given[values[i].id] = true;
+            if (!values || values[i].id == kShedsId || values[i].id > kParamCount || !validValue(Param(paramIndex(values[i].id)), values[i].value)) return fail("invalid parameter");
+            const uint32_t k = paramIndex(values[i].id);
+            patch.p[k].set(clampParam(Param(k), values[i].value));
+            given[k] = true;
         }
         knobsFromSound(patch, given);
         auto* c = s.freeSlot();
@@ -786,29 +788,30 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             info->max_value = 4294967295.0;
             return true;
         }
-        if (i >= kParamCount) return false;
+        if (i > kParamCount) return false;
+        const uint32_t k = paramIndex(i);
         *info = {};
         info->id = i;
-        info->flags = CLAP_PARAM_IS_AUTOMATABLE | (kParams[i].stepped ? CLAP_PARAM_IS_STEPPED : 0) | (i >= kDest0 && i <= kDestLast ? CLAP_PARAM_IS_MODULATABLE : 0);
-        std::snprintf(info->name, sizeof info->name, "%s", kParams[i].name);
-        info->min_value = kParams[i].min; info->max_value = kParams[i].max; info->default_value = kParams[i].def;
+        info->flags = CLAP_PARAM_IS_AUTOMATABLE | (kParams[k].stepped ? CLAP_PARAM_IS_STEPPED : 0) | (k >= kDest0 && k <= kDestLast ? CLAP_PARAM_IS_MODULATABLE : 0);
+        std::snprintf(info->name, sizeof info->name, "%s", kParams[k].name);
+        info->min_value = kParams[k].min; info->max_value = kParams[k].max; info->default_value = kParams[k].def;
         return true;
     }
     static bool paramValue(const clap_plugin_t* p, clap_id id, double* v) {
         if (id == kShedsParam) { *v = double(self(p).core->streamSheds()); return true; }
-        if (id >= kParamCount) return false;
-        *v = self(p).values[id].load(std::memory_order_relaxed);
+        if (id > kParamCount) return false;
+        *v = self(p).values[paramIndex(id)].load(std::memory_order_relaxed);
         return true;
     }
     static bool paramText(const clap_plugin_t*, clap_id id, double v, char* out, uint32_t n) {
-        if (id > kShedsParam) return false;
+        if (id > kParamCount) return false;
         std::ostringstream o; o.imbue(std::locale::classic());
-        o << std::fixed << std::setprecision(id == kShedsParam || kParams[id].stepped ? 0 : 3) << v;
+        o << std::fixed << std::setprecision(id == kShedsParam || kParams[paramIndex(id)].stepped ? 0 : 3) << v;
         std::snprintf(out, n, "%s", o.str().c_str());
         return true;
     }
     static bool paramFromText(const clap_plugin_t*, clap_id id, const char* text, double* v) {
-        if (id > kShedsParam) return false;
+        if (id > kParamCount) return false;
         std::istringstream in(text); in.imbue(std::locale::classic());  // a number at the start, as before: text after it (a unit) is ignored
         in >> *v;
         return !in.fail();
@@ -822,7 +825,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     // the knobs are one group, the ribbon and the switches another (the switches as switches), the tunings and the
     // high-pass cutoff a third.
     static bool paramHint(const clap_plugin_t*, clap_id id, oscairn_param_hint_t* h) {
-        if (id > kShedsParam || !h) return false;
+        if (id > kParamCount || !h) return false;
         *h = {};
         h->range_high = CLAP_INVALID_ID;
         switch (id) {
@@ -839,7 +842,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         case kDestAttack: h->role = OSCAIRN_ROLE_ATTACK; h->priority = 5; break;
         case kDestRelease: h->role = OSCAIRN_ROLE_RELEASE; h->priority = 6; break;
         case kBus: h->role = OSCAIRN_ROLE_OUTPUT_BUS; break;
-        default: if (id >= kKnob1 && id <= kKnob8) h->group = 1; break;
+        default: if (id >= kKnob1 && id <= kKnob8) h->group = 1; else if (id > kShedsId) h->group = 5; break;
         }
         return true;
     }

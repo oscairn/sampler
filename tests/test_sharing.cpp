@@ -8,7 +8,7 @@
 
 namespace {
 constexpr clap_id kBus = 25, kSheds = 26;
-constexpr uint32_t kParamsWritable = 26;
+constexpr uint32_t kParamsWritable = 58;
 
 // Part k's sound: its own root, envelope and element level; its own level and pan
 std::string soundOf(int k) {

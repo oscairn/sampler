@@ -7,7 +7,7 @@
 TEST(parameter_metadata) {
     Inst a(false);
     const uint32_t n = a.params->count(a.p);
-    CHECK_EQ(n, 27u);  // the shell's 26 and the read-only shed count
+    CHECK_EQ(n, 59u);  // the shell's 58 (the element levels last) and the read-only shed count
     std::vector<clap_id> seen;
     for (uint32_t i = 0; i < n; ++i) {
         clap_param_info_t info{};
@@ -46,7 +46,7 @@ TEST(state_round_trip_is_byte_identical) {
     Inst a;
     a.block(128, {param(0, 0, 0.3), param(0, 1, -0.5), param(0, 2, 10)});
     const std::string s = a.save();
-    CHECK(s.rfind("oscairn-sampler-state 3\n", 0) == 0);
+    CHECK(s.rfind("oscairn-sampler-state 4\n", 0) == 0);
     Inst b;
     CHECK(b.load(s));
     CHECK_EQ(b.save() == s, true);
@@ -91,7 +91,7 @@ TEST(sound_context_snapshot_round_trip) {
     a.block(128);
     Stream s;
     CHECK(a.contexts->state->save(a.p, &s.out));
-    CHECK(s.data.rfind("oscairn-sampler-contexts/3\n", 0) == 0);
+    CHECK(s.data.rfind("oscairn-sampler-contexts/4\n", 0) == 0);
     Inst c;
     Stream in; in.data = s.data;
     CHECK(c.contexts->state->load(c.p, &in.in));
@@ -121,8 +121,8 @@ TEST(state_from_the_plugin_previously_under_this_id_is_refused) {
     a.block(128, {param(0, 0, 0.3)});
     const std::string before = a.save();
     // this plugin's own state under the header of the id it used before (no reader for that header)
-    const std::string oldHeader = "oscairn-pcm-state 3" + before.substr(std::strlen("oscairn-sampler-state 3"));
-    CHECK(before.rfind("oscairn-sampler-state 3\n", 0) == 0);
+    const std::string oldHeader = "oscairn-pcm-state 3" + before.substr(std::strlen("oscairn-sampler-state 4"));
+    CHECK(before.rfind("oscairn-sampler-state 4\n", 0) == 0);
     CHECK(!a.load(oldHeader) && a.save() == before);
     for (const std::string* s : {&foreign, &withNul, &snapshot}) { CHECK(!a.load(*s)); CHECK(a.save() == before); }
     Stream ctxBefore; CHECK(a.contexts->state->save(a.p, &ctxBefore.out));

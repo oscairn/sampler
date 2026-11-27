@@ -33,10 +33,15 @@ constexpr uint32_t kPorts = kContexts + 1;     // stereo output ports: main and 
 // this sound may keep (1..kVoices); the knobs, ribbon and switches: the part's own controller box sources, 0..1 (a
 // knob starts at the sound's stored value); from kDest0: the box destinations the core moves, an offset in the
 // destination's raw steps (cents for the tunings) added to its boxes, modulatable; bus: the output port the sound plays
-// on (0 main, n sound bus n). Ids are stable: new ones go last.
+// on (0 main, n sound bus n); from kElement1: element n's level (an offset, in the element level destination's raw steps, added
+// to kDestLevel and the boxes). Ids are stable: new ones go last (the instance's read-only parameter has id kBus + 1, so the
+// element levels' ids are their indices + 1: paramId).
 enum Param : uint32_t { kLevel, kPan, kPolyphony, kKnob1, kKnob8 = kKnob1 + 7, kRibbon, kSwitch1, kSwitch2,
                         kDest0, kDestCutoff = kDest0, kDestResonance, kDestLevel, kDestCoarse, kDestFine, kDestHpf, kDestFegDepth, kDestElfoPitch, kDestElfoAmp, kDestAttack, kDestRelease, kDestLast = kDestRelease,
-                        kBus, kParamCount };
+                        kBus, kElement1, kElementLast = kElement1 + pcm::kMaxElements - 1, kParamCount };
+inline constexpr uint32_t kShedsId = kBus + 1;  // the instance's read-only parameter: late stream sheds (not a sound's value)
+inline constexpr uint32_t paramId(uint32_t index) { return index > kBus ? index + 1 : index; }
+inline constexpr uint32_t paramIndex(uint32_t id) { return id > kShedsId ? id - 1 : id; }  // id != kShedsId
 struct ParamInfo { const char* name; const char* key; double min, max, def; bool stepped; };
 inline constexpr double kKnobDefault = 512.0 / 1023;  // the reference's default knob value
 inline constexpr ParamInfo kParams[kParamCount] = {
@@ -52,7 +57,13 @@ inline constexpr ParamInfo kParams[kParamCount] = {
     {"Filter EG Depth", "feg_depth", -64, 64, 0, false},
     {"Element LFO Pitch Depth", "elfo_pitch_mod", -8192, 8192, 0, false}, {"Element LFO Amp Depth", "elfo_amp_mod", -8192, 8192, 0, false},
     {"AEG Attack", "attack", -128, 128, 0, false}, {"AEG Release", "release", -128, 128, 0, false},
-    {"Output Bus", "bus", 0, kContexts, 0, true}};
+    {"Output Bus", "bus", 0, kContexts, 0, true},
+#define ELEMENT_LEVEL(n) {"Element " #n " Level", "element" #n "_level", -128, 128, 0, false}
+    ELEMENT_LEVEL(1), ELEMENT_LEVEL(2), ELEMENT_LEVEL(3), ELEMENT_LEVEL(4), ELEMENT_LEVEL(5), ELEMENT_LEVEL(6), ELEMENT_LEVEL(7), ELEMENT_LEVEL(8),
+    ELEMENT_LEVEL(9), ELEMENT_LEVEL(10), ELEMENT_LEVEL(11), ELEMENT_LEVEL(12), ELEMENT_LEVEL(13), ELEMENT_LEVEL(14), ELEMENT_LEVEL(15), ELEMENT_LEVEL(16),
+    ELEMENT_LEVEL(17), ELEMENT_LEVEL(18), ELEMENT_LEVEL(19), ELEMENT_LEVEL(20), ELEMENT_LEVEL(21), ELEMENT_LEVEL(22), ELEMENT_LEVEL(23), ELEMENT_LEVEL(24),
+    ELEMENT_LEVEL(25), ELEMENT_LEVEL(26), ELEMENT_LEVEL(27), ELEMENT_LEVEL(28), ELEMENT_LEVEL(29), ELEMENT_LEVEL(30), ELEMENT_LEVEL(31), ELEMENT_LEVEL(32)};
+#undef ELEMENT_LEVEL
 
 // A float that can be copied (a Patch is copied) and read by one thread while another writes it.
 struct Cell {

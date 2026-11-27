@@ -140,6 +140,7 @@ private:
         else if (p == kRibbon) core_->setControl(c, 6, value_[c][p]);
         else if (p == kSwitch1 || p == kSwitch2) core_->setControl(c, 16 + int(p - kSwitch1), value_[c][p]);
         else if (p >= kDest0 && p <= kDestLast) core_->setOffset(c, int(p - kDest0), value_[c][p] + mod_[c][p - kDest0]);
+        else if (p >= kElement1 && p <= kElementLast) core_->setElementOffset(c, p - kElement1, value_[c][p]);
     }
     struct Staged {  // triple buffer: the writer owns `back`, the reader `front`, `middle` is exchanged
         Entry buf[3];

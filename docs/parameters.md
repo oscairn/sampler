@@ -24,6 +24,7 @@ the instance's, read-only (`CLAP_PARAM_IS_READONLY`), not the sound's.
 | 23, 24 | AEG Attack, AEG Release | `attack`, `release` | -128..128 | 0 | the box destinations amplitude envelope attack (read at note-on) and release (read at the note-off), index steps |
 | 25 | Output Bus | `bus` | 0..8, stepped | 0 | the output port the sound plays on: 0 main, n sound bus n (see [Output ports](#output-ports)) |
 | 26 | Late Stream Sheds | (none) | 0..2^32-1, read-only | 0 | element voices the instance shed for want of streamed audio since it was made: a late stream, or no free stream (the count the plugin's `org.oscairn.sampler.streaming/draft-1` extension returns) |
+| 27-58 | Element 1-32 Level | `element1_level`..`element32_level` | -128..128 | 0 | one element's level (the sound's element n, in the order its elements are written): raw steps of the element level destination, see [Element levels](#element-levels-ids-27-58) |
 
 A host passes no MIDI controller for the ribbon, the knobs or the switches (only CC 1, 2, 4, 11, 64-67, 120, 123 and
 pitch bend reach a plugin), so they are parameters. The maps were measured on the reference through a box on the fine
@@ -49,6 +50,21 @@ express: the reference's curve shapes, several boxes summed and clamped, the bip
 Coverage (`pcm::notCovered`) judges the sound with its boxes; a value or modulation set from outside can take a
 destination beyond what was measured, as a knob can.
 
+## Element levels (ids 27-58)
+
+Each element has a level parameter of its own, so that a host can move the elements of a sound separately without a
+controller box: element n of the sound (n from 1, in the order the sound lists its elements; 32 at most) is id 26 + n.
+The value is an offset in the element level destination's raw steps, the unit of id 16: it adds to id 16 and to the
+element's boxes before their sum is clamped to +-128, and the element's level index is its `amp_level` plus that sum,
+within 0..127. So the level law underneath is the element level's own, (index / 127)^2 on a 0.375 dB grid, with
+index 0 true silence; a host that wants steps of a given size in dB gives the parameter a table curve. The default 0
+leaves the sound as it was, bit for bit. A value is cut toward zero to a whole step.
+
+It reaches sounding voices as well as new notes: every sounding voice of the element re-reads it at its control step
+(every 16 frames) and ramps its gain linearly over the step, the same path as a box on the element level. Values are
+saved with the sound (state 4), and `sound_values` and `prepare` take them by id. Ids 27-58 follow the shed count's
+id 26 because that id was already in use when the element levels were added.
+
 ## Output ports
 
 Nine stereo output ports with stable ids: 0 Main and 1-8 sound bus 1-8 (port n has id n). A sound whose Output Bus is
@@ -63,7 +79,7 @@ and its sound plays on Main.
 
 Parts sharing one instance (`oscairn.sound-snapshots/draft-4`): each part's sound has its own channel and Output Bus.
 `save_sound` writes one sound alone, as the Default of a whole snapshot, on every channel and on Main (Output Bus 0);
-`sound_values` gives ids 0-25 of a sound no channel selects. A loaded state or snapshot selects its sound on every
+`sound_values` gives ids 0-25 and 27-58 of a sound no channel selects. A loaded state or snapshot selects its sound on every
 channel (a CLAP state: from the next block). While a sound retires (no channel selects it) and the host gives a
 ring-out buffer, what it plays on Main goes into the buffer's channels 0 and 1, or 2 and 3 once `choke_retiring` fades
 it out over the choke time; what it plays on other ports stays there.
@@ -83,6 +99,6 @@ tunings with the high-pass cutoff a third; Output Bus has the output bus role (`
 
 ## State
 
-The CLAP state `oscairn-sampler-state 3` and the sound-contexts snapshot `oscairn-sampler-contexts/3` save ids 0-25 (not the
-modulation), then the sound. A state 2 (ids 0-24) and a state 1 (ids 0-2 only) still load, on Main and with their
-knobs at the sound's values; an older snapshot does not.
+The CLAP state `oscairn-sampler-state 4` and the sound-contexts snapshot `oscairn-sampler-contexts/4` save ids 0-25 and 27-58 (not the
+modulation), then the sound. A state 3 (ids 0-25) still loads, with the element levels at 0; so do a state 2 (ids 0-24)
+and a state 1 (ids 0-2 only), on Main and with their knobs at the sound's values; an older snapshot does not.
