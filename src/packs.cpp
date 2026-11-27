@@ -231,8 +231,12 @@ bool checkRecord(Record& r, std::string& error) {
     // one copy a record in the process, as the heads: the sounds that use the same record share it
     static std::mutex lock;
     static std::map<std::pair<std::string, uint64_t>, std::weak_ptr<const std::vector<uint32_t>>> tables;
+    static size_t sweepAt = 64;
     std::lock_guard<std::mutex> g(lock);
-    for (auto it = tables.begin(); it != tables.end();) it = it->second.expired() ? tables.erase(it) : std::next(it);
+    if (tables.size() >= sweepAt) {  // not on every record: that walked every table in the process once for each record of a prepare
+        for (auto it = tables.begin(); it != tables.end();) it = it->second.expired() ? tables.erase(it) : std::next(it);
+        sweepAt = std::max<size_t>(64, 2 * tables.size());
+    }
     auto& slot = tables[{r.pack->path, r.entry.offset}];
     auto held = slot.lock();
     if (!held || *held != t) { held = std::make_shared<const std::vector<uint32_t>>(std::move(t)); slot = held; }
