@@ -431,6 +431,18 @@ size_t writeText(const SoundData& d, char* out, size_t cap) {
 
 bool expand(const SoundData& in, const WaveformData* w, SoundData& d, char* e, size_t cap) {
     d = in;
+    // the sound's references by hash (slot + 1; 0 empty): a bank finds its sample without walking the list
+    static_assert(2 * kMaxSamples <= 2048, "the table holds twice the references");
+    uint16_t slots[2048] = {};
+    auto home = [](const char* r, size_t n) { uint32_t h = 2166136261u; for (size_t i = 0; i < n; ++i) h = (h ^ uint8_t(r[i])) * 16777619u; return h & 2047; };
+    auto find = [&](const char* r, size_t n, uint32_t& at) {
+        for (at = home(r, n); slots[at]; at = (at + 1) & 2047) {
+            const uint32_t s = slots[at] - 1;
+            if (d.refLength[s] == n && !std::memcmp(d.ref[s], r, n)) return true;
+        }
+        return false;
+    };
+    for (uint32_t s = 0; s < d.samples; ++s) { uint32_t at; if (!find(d.ref[s], d.refLength[s], at)) slots[at] = uint16_t(s + 1); }
     for (uint32_t el = 0; el < d.elements; ++el) {
         const int16_t* v = d.element[el].v;
         if (!v[Waveform]) continue;
@@ -450,11 +462,13 @@ bool expand(const SoundData& in, const WaveformData* w, SoundData& d, char* e, s
             // its sample among the sound's references
             const char* ref = f.samples[k.sample];
             const size_t n = std::strlen(ref);
-            uint32_t s = 0;
-            while (s < d.samples && !(d.refLength[s] == n && !std::memcmp(d.ref[s], ref, n))) ++s;
-            if (s == d.samples) {
+            uint32_t at = 0;
+            const bool known = find(ref, n, at);
+            const uint32_t s = known ? slots[at] - 1 : d.samples;
+            if (!known) {
                 if (d.samples == kMaxSamples || !goodRef(ref, n)) return err(e, cap, "the waveforms use more than %ld samples", long(kMaxSamples)), false;
                 std::memcpy(d.ref[s], ref, n + 1); d.refLength[s] = uint8_t(n); ++d.samples;
+                slots[at] = uint16_t(s + 1);
             }
             Region g;
             g.loKey = uint8_t(lo); g.hiKey = uint8_t(hi); g.loVel = uint8_t(vlo); g.hiVel = uint8_t(vhi);
