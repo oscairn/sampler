@@ -58,9 +58,6 @@ void remember(const std::vector<BufferKey>& keys, const std::vector<std::shared_
 std::mutex heldLock;
 std::vector<std::weak_ptr<const Samples>> held;
 
-// OSCAIRN_SAMPLER_TRACE=1: a line on stderr for each sound loaded (its samples, the resolves and their time).
-const bool trace = [] { const char* e = std::getenv("OSCAIRN_SAMPLER_TRACE"); return e && !std::strcmp(e, "1"); }();
-
 std::string hex(const uint8_t* id) {
     std::string h(64, '0');
     for (int i = 0; i < 32; ++i) std::snprintf(&h[2 * i], 3, "%02x", id[i]);
@@ -68,6 +65,16 @@ std::string hex(const uint8_t* id) {
 }
 
 }  // namespace
+
+void printTrace(const PrepareTimes& p) {
+    const LoadTimes& l = p.load;
+    std::string hand;
+    if (p.hand >= 0) { char b[32]; std::snprintf(b, sizeof b, " hand=%.2f", p.hand); hand = b; }
+    std::fprintf(stderr, "oscairn-sampler: loaded %u samples: %u resolved in %.2f ms, %u from sounds held"
+                         " parse=%.2f expand=%.2f held=%.2f checks=%.2f regions=%.2f alloc=%.2f reads=%.2f keep=%.2f load=%.2f compile=%.2f%s total=%.2f\n",
+                 l.samples, l.resolves, l.resolve, l.samples - l.resolves, p.parse, p.expand, l.held, l.checks, l.regions, l.alloc, l.reads,
+                 l.keep, l.total, p.compile, hand.c_str(), p.total);
+}
 
 bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver& resolve, pcm::SoundData& out, std::string& error) {
     struct Read { std::vector<pcm::KeyBank> banks; std::vector<std::string> refs; std::vector<const char*> ptrs; };
@@ -110,7 +117,9 @@ Samples::~Samples() {
     records.clear();
 }
 
-std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const SampleResolver& resolve, bool whole, std::string& error) {
+std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const SampleResolver& resolve, bool whole, std::string& error, LoadTimes* times) {
+    LoadTimes lt;
+    Lap lap, all;
     auto s = std::make_shared<Samples>();
     s->records.resize(d.samples);
     // the records the process's sounds hold, by sample id
@@ -125,7 +134,6 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
     std::sort(byId.begin(), byId.end(), [](const Record* a, const Record* b) { return std::memcmp(a->entry.id, b->entry.id, SP_SAMPLE_ID_BYTES) < 0; });
     std::vector<uint32_t> order;  // the records resolved now, to check
     uint32_t resolves = 0;
-    double resolveMs = 0;
     for (uint32_t i = 0; i < d.samples; ++i) {
         uint8_t id[SP_SAMPLE_ID_BYTES];
         if (sampleId(d.ref[i], id)) {
@@ -136,18 +144,20 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
                 continue;
             }
         }
-        const auto t0 = std::chrono::steady_clock::now();
+        lt.held += lap();
         const bool ok = resolve(d.ref[i], s->records[i], error);
-        resolveMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        lt.resolve += lap();
         ++resolves;
         if (!ok) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
         order.push_back(i);
     }
+    lt.held += lap();
     // one read-ahead batch over their preload spans (header and window), then their headers in ascending order
     std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) { return before(s->records[a], s->records[b]); });
     for (uint32_t i : order) willNeed(*s->records[i].pack, s->records[i].entry.offset, s->records[i].entry.preload);
     for (uint32_t i : order)
         if (!checkRecord(s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
+    lt.checks += lap();
 
     // each region: what stays in memory (buffers shared between regions, and with other sounds of the process, that
     // need the same frames of the same record) and what streams
@@ -162,7 +172,9 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
         auto it = made.find(key);
         if (it == made.end()) {
             auto old = cached(key);
+            Lap a;
             s->pcm.push_back(old ? old : std::make_shared<std::vector<int16_t>>((size_t(pre) + count + post) * c, int16_t(0)));
+            lt.alloc += a();
             keys.push_back(key);
             it = made.emplace(key, s->pcm.size() - 1).first;
             if (!old) jobs.push_back({sample, from, count, pre, it->second});
@@ -204,6 +216,7 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
         }
         v.stream = &src;
     }
+    lt.regions += lap() - lt.alloc;
     // a second read-ahead batch for what is decoded now past the windows, then everything in ascending order
     std::sort(jobs.begin(), jobs.end(), [&](const Job& a, const Job& b) {
         const Record &x = s->records[a.sample], &y = s->records[b.sample];
@@ -219,13 +232,15 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
             return nullptr;
         }
     }
+    lt.reads += lap();
     remember(keys, s->pcm);
     {
         std::lock_guard<std::mutex> l(heldLock);
         held.erase(std::remove_if(held.begin(), held.end(), [](const auto& w) { return w.expired(); }), held.end());
         held.push_back(s);
     }
-    if (trace) std::fprintf(stderr, "oscairn-sampler: loaded %u samples: %u resolved in %.2f ms, %u from sounds held\n", d.samples, resolves, resolveMs, d.samples - resolves);
+    lt.keep += lap();
+    if (times) { lt.samples = d.samples; lt.resolves = resolves; lt.total = all(); *times = lt; }
     return s;
 }
 

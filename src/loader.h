@@ -4,6 +4,9 @@
 // ascending offset order, and for each region what the core keeps in memory and what streams (docs/design.md,
 // "Streaming"). Main thread.
 #pragma once
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <string>
@@ -21,6 +24,31 @@ using SampleResolver = std::function<bool(const char* ref, Record&, std::string&
 // A region keeps this many frames from its start in memory before it streams (the record's window when it has at
 // least that many), and a forward loop's body whole up to kMaxLoopBody frames.
 constexpr uint32_t kHeadFrames = 4096, kMaxLoopBody = 16384;
+
+// OSCAIRN_SAMPLER_TRACE=1: a line on stderr for each sound prepared (printTrace); nothing is timed without it.
+inline bool tracing() { static const bool on = [] { const char* e = std::getenv("OSCAIRN_SAMPLER_TRACE"); return e && !std::strcmp(e, "1"); }(); return on; }
+// Wall time since the last call (or construction), in ms; 0 and no clock read when not tracing.
+struct Lap {
+    std::chrono::steady_clock::time_point t = tracing() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    double operator()() {
+        if (!tracing()) return 0;
+        const auto n = std::chrono::steady_clock::now();
+        const double d = std::chrono::duration<double, std::milli>(n - t).count();
+        t = n;
+        return d;
+    }
+};
+// What loadSamples did, in ms (see printTrace).
+struct LoadTimes {
+    uint32_t samples = 0, resolves = 0;
+    double resolve = 0, held = 0, checks = 0, regions = 0, alloc = 0, reads = 0, keep = 0, total = 0;
+};
+// A prepare's parts, in ms: `hand` is giving the sound to the audio side (negative: not part of this one).
+struct PrepareTimes {
+    double parse = 0, expand = 0, compile = 0, hand = -1, total = 0;
+    LoadTimes load;
+};
+void printTrace(const PrepareTimes&);
 
 // What a sound's regions play; the core's views point into it, so it lives while the sound does. Freed under
 // holdStreams(): the I/O thread may still be finishing a unit of a voice that just ended.
@@ -41,6 +69,6 @@ using WaveformResolver = std::function<bool(const char* ref, std::string& path, 
 // the reference) and expanded into regions (pcm::expand). False with a reason.
 bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver&, pcm::SoundData& out, std::string& error);
 // whole: every region decoded whole into memory, nothing streams (for comparisons: OSCAIRN_SAMPLER_DECODE_WHOLE).
-std::shared_ptr<const Samples> loadSamples(const pcm::SoundData&, const SampleResolver&, bool whole, std::string& error);
+std::shared_ptr<const Samples> loadSamples(const pcm::SoundData&, const SampleResolver&, bool whole, std::string& error, LoadTimes* times = nullptr);
 
 }  // namespace pcmshell

@@ -161,8 +161,13 @@ another sound of the process holds is taken from that sound, record and all, whi
 one open at its path: a sound prepared again asks the host only for the samples no sound holds and reads
 no record they hold, as it reads no buffer the process already has. Nothing is kept for that beside the
 sounds themselves, so a record no sound holds any more is resolved and read again. With
-`OSCAIRN_SAMPLER_TRACE=1` each sound loaded writes a line to stderr: its samples, how many were resolved and
-the time those resolves took, and how many came from sounds held. A read that fails at
+`OSCAIRN_SAMPLER_TRACE=1` each sound prepared writes a line to stderr: its samples, how many were resolved and
+the time those resolves took, and how many came from sounds held, then the parts of the prepare as `name=ms` (wall
+time; nothing is timed without the variable): `parse` (text, base64, blob), `expand` (waveforms), `held` (looking
+for held records), `checks` (read-ahead, record headers and frame tables), `regions` (the views and what stays in
+memory, without `alloc`, the buffers' allocation), `reads` (decoding into them), `keep` (the process's tables),
+`load` (all of loading the samples), `compile`, `hand` (the sound to the audio side; absent when a state is
+restored) and `total`. A read that fails at
 load fails the sound's prepare, naming the reference; a streamed block that cannot be read is a late
 stream (the voice is shed with its fade, counted). What this heap holds is reported through `oscairn.memory`: the I/O
 thread's decoder with its read buffer (98,304 bytes with the planar output and the decoder's scratch, one a process)

@@ -163,22 +163,28 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         return true;
     }
     // A sound from its blob and base: parse and validate, expand its waveforms, resolve every sample and load what the core needs, compile.
+    pcmshell::PrepareTimes times;  // the last prepare's, for OSCAIRN_SAMPLER_TRACE (main thread)
     std::shared_ptr<const Sound> buildSound(std::vector<uint8_t> blob, const std::string& library, const std::string& path, std::string& error) {
+        Lap lap;
         auto s = std::make_shared<Sound>();
         s->data.reset(new pcm::SoundData);
         char why[256] = {};
         if (!pcm::readBlob(blob.data(), blob.size(), *s->data, why, sizeof why)) { error = why; return nullptr; }
+        times.parse += lap();
         s->blob = std::move(blob); s->library = library; s->path = path;
         if (!assets || !assets->resolve) { error = "the host offers no oscairn.assets to resolve samples"; return nullptr; }
         if (s->data->waveforms) {
             s->expanded.reset(new pcm::SoundData);
             if (!expandWaveforms(*s->data, [&](const char* ref, std::string& local, std::string& e) { return resolveWaveform(ref, local, e); }, *s->expanded, error)) return nullptr;
+            times.expand = lap();
         }
         const pcm::SoundData& play = s->expanded ? *s->expanded : *s->data;
-        s->samples = loadSamples(play, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, decodeWhole, error);
+        s->samples = loadSamples(play, [&](const char* ref, Record& r, std::string& e) { return resolveSample(ref, library, path, r, e); }, decodeWhole, error, &times.load);
         if (!s->samples) return nullptr;
+        lap();
         s->compiled.reset(new pcm::Compiled);
         if (!pcm::compile(play, s->samples->views.data(), *s->compiled, why, sizeof why)) { error = why; return nullptr; }
+        times.compile = lap();
         return s;
     }
     // What the prepared sounds hold, each once (another instance sharing it counts it too): decoded audio (heads, loop
@@ -541,7 +547,9 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
                 blob.resize(pcm::writeBlob(d, nullptr, 0));
                 pcm::writeBlob(d, blob.data(), blob.size());
             }
+            times = {};
             if (!(sound = buildSound(std::move(blob), library, path, error))) return false;
+            if (tracing()) { times.total = times.parse + times.expand + times.load.total + times.compile; printTrace(times); }
         }
         for (uint32_t i = 0; i < kParamCount; ++i) p.p[i].set(clampParam(Param(i), x[i]));
         p.sound = sound;
@@ -610,6 +618,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
     // Sample references resolve from `base` through the host's oscairn.assets.
     bool givenShell[kParamCount] = {};  // parsePatchText's: the values its shell line named
     std::shared_ptr<const Sound> parsePatchText(const char* text, const oscairn_asset_ref_t* base, Patch& patch, std::string& error) {
+        Lap pre;
         std::istringstream in(text); in.imbue(std::locale::classic());
         std::string line, sound;
         int n = 0, shellLine = 0;
@@ -646,6 +655,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
             blob.resize(pcm::writeBlob(d, nullptr, 0));
             pcm::writeBlob(d, blob.data(), blob.size());
         }
+        times.parse += pre();
         auto s = buildSound(std::move(blob), base ? base->library : "", base ? base->path : "", error);
         if (!s && error.rfind("line", 0) != 0) error = "line 1: " + error;
         return s;
@@ -657,6 +667,8 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         auto& s = self(p);
         Patch patch; std::string error;
         bool given[kParamCount] = {};
+        Lap whole;
+        s.times = {};
         if (text) {
             patch.sound = s.parsePatchText(text, base, patch, error);
             if (!error.empty()) return fail(error);
@@ -671,8 +683,11 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         auto* c = s.freeSlot();
         if (!c) return fail("no free sound context");
         c->patch = patch;
+        Lap hand;
         s.core->loadPatch(uint32_t(c - s.contexts.data()), patch);
-        return s.publish(*c, name);
+        const uint32_t id = s.publish(*c, name);
+        if (tracing()) { s.times.hand = hand(); s.times.total = whole(); printTrace(s.times); }
+        return id;
     }
 
     // ---- oscairn.asset-dependencies: every waveform and direct sample of every prepared sound ----------
