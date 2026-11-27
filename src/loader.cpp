@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -50,34 +52,14 @@ void remember(const std::vector<BufferKey>& keys, const std::vector<std::shared_
     for (size_t i = 0; i < keys.size(); ++i) cache[keys[i]] = buffers[i];
 }
 
-// Where this process found each sample id (as the host resolved it and checkRecord confirmed), so that a sound
-// prepared again asks the host only for samples no sound holds. An entry counts while a sound holds its record's frame
-// table; one gone stale (another pack put at that path since) fails findRecord or checkRecord's id check, and the sample
-// is resolved again.
-struct Where { std::string path; sp_index_entry entry; std::weak_ptr<const std::vector<uint32_t>> table; };
-std::mutex whereLock;
-std::map<std::string, Where> where;  // by reference "sample:<id>"
+// The process's sounds, whose records are checked: a sample one of them holds is taken from it, record and all, while
+// its pack is the one open at its path (no resolve, nothing read). Nothing else is kept: a record no sound holds is
+// resolved and read again.
+std::mutex heldLock;
+std::vector<std::weak_ptr<const Samples>> held;
 
-bool located(const char* ref, Record& r) {
-    uint8_t id[SP_SAMPLE_ID_BYTES];
-    if (!sampleId(ref, id)) return false;
-    Where w;
-    {
-        std::lock_guard<std::mutex> l(whereLock);
-        auto it = where.find(ref);
-        if (it == where.end() || it->second.table.expired()) return false;
-        w = it->second;
-    }
-    std::string ignored;
-    return findRecord(w.path, w.entry.offset, id, w.entry.length, w.entry.preload, r, ignored);
-}
-void locate(const pcm::SoundData& d, const std::vector<Record>& records) {
-    uint8_t id[SP_SAMPLE_ID_BYTES];
-    std::lock_guard<std::mutex> l(whereLock);
-    for (auto it = where.begin(); it != where.end();) it = it->second.table.expired() ? where.erase(it) : std::next(it);
-    for (uint32_t i = 0; i < d.samples; ++i)
-        if (sampleId(d.ref[i], id)) where[d.ref[i]] = {records[i].pack->path, records[i].entry, records[i].table};
-}
+// OSCAIRN_SAMPLER_TRACE=1: a line on stderr for each sound loaded (its samples, the resolves and their time).
+const bool trace = [] { const char* e = std::getenv("OSCAIRN_SAMPLER_TRACE"); return e && !std::strcmp(e, "1"); }();
 
 std::string hex(const uint8_t* id) {
     std::string h(64, '0');
@@ -131,20 +113,41 @@ Samples::~Samples() {
 std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const SampleResolver& resolve, bool whole, std::string& error) {
     auto s = std::make_shared<Samples>();
     s->records.resize(d.samples);
-    std::vector<bool> known(d.samples);  // found where this process found it before, without asking the host
-    for (uint32_t i = 0; i < d.samples; ++i)
-        if (!(known[i] = located(d.ref[i], s->records[i])) && !resolve(d.ref[i], s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
-    // the records not checked yet: one read-ahead batch over their preload spans (header and window), then their
-    // headers in ascending order; a record found where it was before and no longer there is resolved again
-    std::vector<uint32_t> order;
-    for (uint32_t i = 0; i < d.samples; ++i) if (!knownRecord(s->records[i])) order.push_back(i);
+    // the records the process's sounds hold, by sample id
+    std::vector<std::shared_ptr<const Samples>> others;
+    {
+        std::lock_guard<std::mutex> l(heldLock);
+        for (const auto& w : held) if (auto o = w.lock()) others.push_back(std::move(o));
+    }
+    std::vector<const Record*> byId;
+    for (const auto& o : others) for (const Record& r : o->records) byId.push_back(&r);
+    auto idLess = [](const Record* r, const uint8_t* id) { return std::memcmp(r->entry.id, id, SP_SAMPLE_ID_BYTES) < 0; };
+    std::sort(byId.begin(), byId.end(), [](const Record* a, const Record* b) { return std::memcmp(a->entry.id, b->entry.id, SP_SAMPLE_ID_BYTES) < 0; });
+    std::vector<uint32_t> order;  // the records resolved now, to check
+    uint32_t resolves = 0;
+    double resolveMs = 0;
+    for (uint32_t i = 0; i < d.samples; ++i) {
+        uint8_t id[SP_SAMPLE_ID_BYTES];
+        if (sampleId(d.ref[i], id)) {
+            auto it = std::lower_bound(byId.begin(), byId.end(), id, idLess);
+            std::string ignored;
+            if (it != byId.end() && !std::memcmp((*it)->entry.id, id, SP_SAMPLE_ID_BYTES) && openPack((*it)->pack->path, ignored) == (*it)->pack) {
+                s->records[i] = **it;
+                continue;
+            }
+        }
+        const auto t0 = std::chrono::steady_clock::now();
+        const bool ok = resolve(d.ref[i], s->records[i], error);
+        resolveMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        ++resolves;
+        if (!ok) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
+        order.push_back(i);
+    }
+    // one read-ahead batch over their preload spans (header and window), then their headers in ascending order
     std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) { return before(s->records[a], s->records[b]); });
     for (uint32_t i : order) willNeed(*s->records[i].pack, s->records[i].entry.offset, s->records[i].entry.preload);
     for (uint32_t i : order)
-        if (!checkRecord(s->records[i], error) &&
-            !(known[i] && resolve(d.ref[i], s->records[i], error) && (knownRecord(s->records[i]) || checkRecord(s->records[i], error)))) {
-            error = std::string(d.ref[i]) + ": " + error; return nullptr;
-        }
+        if (!checkRecord(s->records[i], error)) { error = std::string(d.ref[i]) + ": " + error; return nullptr; }
 
     // each region: what stays in memory (buffers shared between regions, and with other sounds of the process, that
     // need the same frames of the same record) and what streams
@@ -217,7 +220,12 @@ std::shared_ptr<const Samples> loadSamples(const pcm::SoundData& d, const Sample
         }
     }
     remember(keys, s->pcm);
-    locate(d, s->records);
+    {
+        std::lock_guard<std::mutex> l(heldLock);
+        held.erase(std::remove_if(held.begin(), held.end(), [](const auto& w) { return w.expired(); }), held.end());
+        held.push_back(s);
+    }
+    if (trace) std::fprintf(stderr, "oscairn-sampler: loaded %u samples: %u resolved in %.2f ms, %u from sounds held\n", d.samples, resolves, resolveMs, d.samples - resolves);
     return s;
 }
 

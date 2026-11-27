@@ -6,30 +6,10 @@
 #include <samplepack.h>
 
 #include <cstdlib>
-#if defined(__APPLE__)
-#include <malloc/malloc.h>
-#elif defined(__GLIBC__)
-#include <malloc.h>
-#endif
 
 #include "host.h"
 
 namespace {
-// Bytes the process's heap holds in use now (large blocks included); -1 where the allocator gives no count
-// (sanitizer builds bring their own).
-long heapInUse() {
-    if (!allocGuardAvailable()) return -1;
-#if defined(__APPLE__)
-    malloc_statistics_t s{};
-    malloc_zone_statistics(nullptr, &s);
-    return long(s.size_in_use);
-#elif defined(__GLIBC__)
-    const struct mallinfo2 m = mallinfo2();
-    return long(m.uordblks + m.hblkhd);
-#else
-    return -1;
-#endif
-}
 // Instances made while this lives decode every sample whole into memory (so a sample's size dominates the heap counts).
 struct DecodeWhole {
     DecodeWhole() { setenv("OSCAIRN_SAMPLER_DECODE_WHOLE", "1", 1); }

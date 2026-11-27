@@ -245,3 +245,29 @@ TEST(replaced_pack_is_resolved_again) {
     CHECK_EQ(asked, 1);
     for (const auto* t : {&x, &y, &z}) g_store.erase(t->id);
 }
+
+// What the process keeps for a sound's records is what the sound holds: a part's first prepare adds to the heap its
+// decoded audio, frame tables and pack index (the asset bytes it reports) and the process's buffer and table entries
+// (about 520 bytes a record), and nothing more for the records than a second instance preparing the same sound.
+TEST(records_cost_no_heap_past_the_sounds) {
+    if (heapInUse() < 0) return;  // no count in sanitizer builds
+    std::vector<TestTone> tones;
+    for (int k = 0; k < 400; ++k) tones.push_back(shortTone(4000 + k));
+    CHECK_EQ(packInto("held.osp", tones).size(), tones.size());
+    const std::string sound = soundOfAll(tones);
+    Inst a, b;
+    char msg[256] = {};
+    auto grows = [&](Inst& i) {
+        const long h = heapInUse();
+        CHECK(i.contexts->prepare(i.p, "x", nullptr, 0, sound.c_str(), testBase(), msg, sizeof msg) != CLAP_INVALID_ID);
+        return heapInUse() - h;
+    };
+    const oscairn_memory_t m0 = [&] { oscairn_memory_t m{}; a.memory->current(a.p, &m); return m; }();
+    const long first = grows(a), second = grows(b);
+    oscairn_memory_t m1{};
+    a.memory->current(a.p, &m1);
+    const long assets = long(m1.asset_bytes - m0.asset_bytes);
+    std::printf("  first prepare +%ld heap, a second +%ld, assets %ld: %ld bytes a record past them\n", first, second, assets, (first - second - assets) / 400);
+    CHECK(first - second - assets <= 768 * 400);
+    for (const auto& t : tones) g_store.erase(t.id);
+}

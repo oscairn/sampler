@@ -51,11 +51,8 @@ std::shared_ptr<const Pack> openPack(const std::string& path, std::string& error
 // The one live record of a one-record pack (what a path reference names).
 bool onlyRecord(const std::string& path, Record& out, std::string& error);
 // Reads a found record's header and frame table (not its window) and checks them (samplepack: checksum, every field,
-// frame table, agreement with the entry); keeps its frame table, and the record as checked for the process.
+// frame table, agreement with the entry); keeps its frame table.
 bool checkRecord(Record&, std::string& error);
-// A found record as checkRecord checked it earlier in this process (the same entry, in the same open pack, its frame
-// table still held by a sound): its header and frame table, nothing read. False when it must be checked.
-bool knownRecord(Record&);
 
 // The largest FLAC frame read. samplepack states no limit (a record states its own largest frame, checked against its
 // frame table), so this is derived from SP_FLAC_MAX_BLOCK: a 4,096-frame stereo block coded verbatim (17-bit side

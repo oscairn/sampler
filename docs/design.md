@@ -156,12 +156,13 @@ compressed bytes into the I/O thread's one fixed buffer before decoding (`pread`
 on Windows). Loading a sound resolves every reference first, hints every record's preload span in one
 read-ahead batch (`posix_fadvise` WILLNEED on Linux, `fcntl` F_RDADVISE on macOS, none on Windows), reads
 the headers in ascending offset order, then reads or decodes what stays in memory in ascending order (a
-second hint batch covers frames decoded past the windows). Nothing opens a file per sample. While a sound
-of the process holds a record, the process keeps where its sample id was found and the record as checked
-(entry, header, frame table, by pack and offset): a sound prepared again asks the host only for the samples
-no sound holds and reads no record it holds, as it reads no buffer the process already has. A location gone
-stale (another pack put at that path, opened again since) fails the record's check, and that sample is
-resolved again. A read that fails at
+second hint batch covers frames decoded past the windows). Nothing opens a file per sample. A sample
+another sound of the process holds is taken from that sound, record and all, while its pack is still the
+one open at its path: a sound prepared again asks the host only for the samples no sound holds and reads
+no record they hold, as it reads no buffer the process already has. Nothing is kept for that beside the
+sounds themselves, so a record no sound holds any more is resolved and read again. With
+`OSCAIRN_SAMPLER_TRACE=1` each sound loaded writes a line to stderr: its samples, how many were resolved and
+the time those resolves took, and how many came from sounds held. A read that fails at
 load fails the sound's prepare, naming the reference; a streamed block that cannot be read is a late
 stream (the voice is shed with its fade, counted). What this heap holds is reported through `oscairn.memory`: the I/O
 thread's decoder with its read buffer (98,304 bytes with the planar output and the decoder's scratch, one a process)

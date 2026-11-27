@@ -22,6 +22,11 @@
 #include <vector>
 
 #include <clap/ext/audio-ports-activation.h>
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 #include "check.h"
 
@@ -43,6 +48,21 @@ bool allocGuardAvailable();
 const char* allocGuardName();
 void allocGuardEnable(bool on);
 long allocGuardCount();
+// Bytes the process's heap holds in use now (large blocks included); -1 where the allocator gives no count
+// (sanitizer builds bring their own).
+inline long heapInUse() {
+    if (!allocGuardAvailable()) return -1;
+#if defined(__APPLE__)
+    malloc_statistics_t s{};
+    malloc_zone_statistics(nullptr, &s);
+    return long(s.size_in_use);
+#elif defined(__GLIBC__)
+    const struct mallinfo2 m = mallinfo2();
+    return long(m.uordblks + m.hblkhd);
+#else
+    return -1;
+#endif
+}
 
 constexpr double kRate = 48000;
 constexpr const char* kId = "org.oscairn.sampler";
