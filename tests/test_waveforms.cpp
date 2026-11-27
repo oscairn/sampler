@@ -273,4 +273,23 @@ TEST(init_library_snapshot_is_read) {
     CHECK(a.contexts->state->load(a.p, &in.in));
     oscairn_sound_context_info_t info{};
     CHECK(a.contexts->get(a.p, 0, &info) && !std::strcmp(info.name, "Init"));
+
+    // The same snapshot as 0.9.15 wrote it, and as the converter still writes it for converted Performances: header
+    // contexts/3 and 26 values a sound (no element levels). It loads, by the state and by prepare, as the current one does.
+    std::string old = in.data;
+    const size_t head = old.find('\n'), end = old.find(" \"\" \"\"");
+    CHECK(head != std::string::npos && end != std::string::npos && end > 64);
+    old = "oscairn-sampler-contexts/3" + old.substr(head, end - 64 - head) + old.substr(end);
+    auto play = [&](Inst& x) { x.block(128, {on(3, 1, 0, 60, 0.8)}); x.run(4096); return x.L; };
+    Inst b, c, d;
+    Stream o; o.data = old;
+    CHECK(b.contexts->state->load(b.p, &o.in));
+    Stream sa, sb; CHECK(a.contexts->state->save(a.p, &sa.out) && b.contexts->state->save(b.p, &sb.out));
+    CHECK(sa.data == sb.data && sb.data.rfind("oscairn-sampler-contexts/4\n", 0) == 0);
+    const auto ra = play(a), rb = play(b);
+    CHECK(ra == rb && *std::max_element(ra.begin(), ra.end()) > 0.01f);
+    Stream o2; o2.data = old; uint32_t sel[16]; char msg[128];
+    CHECK(c.snapshots->prepare(c.p, &o2.in, sel, msg, sizeof msg));
+    Stream bad; bad.data = "oscairn-sampler-contexts/3\n1 \"x\" 1 0\n";
+    CHECK(!d.contexts->state->load(d.p, &bad.in));
 }

@@ -891,9 +891,61 @@ const clap_plugin_note_ports_t kNotePorts = {
     }};
 const clap_plugin_params_t kParamsExt = {Plugin::paramCount, Plugin::paramInfo, Plugin::paramValue, Plugin::paramText, Plugin::paramFromText, Plugin::paramFlush};
 const clap_plugin_state_t kState = {Plugin::saveState, Plugin::loadState};
-const clap_plugin_state_t kSnapshot = {Plugin::saveSnapshot, Plugin::loadSnapshot};
+// Snapshots saved before the element levels (contexts/3: 26 shell values a sound, as the converter still writes them) are
+// read by rewriting them to the current format, the element levels at their default 0; the helper itself reads only the
+// current header. A text it cannot rewrite goes on unchanged, for the helper to refuse.
+bool upgradeSnapshot(const clap_istream_t* in, std::string& data) {
+    char buf[1024];
+    for (;;) {
+        const auto n = in->read(in, buf, sizeof buf);
+        if (n < 0 || n > int64_t(sizeof buf) || data.size() + size_t(n) > kMaxStateBytes) return false;
+        if (!n) break;
+        data.append(buf, size_t(n));
+    }
+    const std::string old = "oscairn-sampler-contexts/3\n";
+    if (data.compare(0, old.size(), old)) return true;
+    std::istringstream lines(data.substr(old.size())); lines.imbue(std::locale::classic());
+    std::string out = std::string(kSnapshotHeader) + "\n", line;
+    for (uint32_t slot = 0; slot < kContexts; ++slot) {
+        if (!std::getline(lines, line)) return true;
+        std::istringstream l(line); l.imbue(std::locale::classic());
+        unsigned used; std::string name, v;
+        if (!(l >> used)) return true;
+        out += std::to_string(used);
+        if (used == 1) {
+            if (!(l >> std::quoted(name))) return true;
+            std::ostringstream q; q << ' ' << std::quoted(name); out += q.str();
+            for (uint32_t i = 0; i < kElement1; ++i) { if (!(l >> v)) return true; out += ' ' + v; }
+            for (uint32_t i = kElement1; i < kParamCount; ++i) out += " 0";
+            std::string rest; std::getline(l, rest); out += rest;
+        } else { std::string rest; std::getline(l, rest); out += rest; }
+        out += '\n';
+    }
+    out.append(std::istreambuf_iterator<char>(lines), {});
+    data = std::move(out);
+    return true;
+}
+struct SnapshotText { std::string data; size_t at = 0; };
+clap_istream_t upgradedStream(SnapshotText& t) {
+    return {&t, [](const clap_istream* s, void* b, uint64_t n) -> int64_t {
+        auto& t = *static_cast<SnapshotText*>(s->ctx);
+        const size_t k = std::min<size_t>(n, t.data.size() - t.at);
+        std::memcpy(b, t.data.data() + t.at, k); t.at += k;
+        return int64_t(k);
+    }};
+}
+bool loadSnapshotCompat(const clap_plugin_t* p, const clap_istream_t* in) {
+    SnapshotText t; if (!upgradeSnapshot(in, t.data)) return false;
+    const auto s = upgradedStream(t); return Plugin::loadSnapshot(p, &s);
+}
+bool prepareSnapshotCompat(const clap_plugin_t* p, const clap_istream_t* in, uint32_t* selected, char* message, uint32_t capacity) {
+    SnapshotText t;
+    if (!in || !upgradeSnapshot(in, t.data)) { if (message && capacity) std::snprintf(message, capacity, "invalid snapshot"); return false; }
+    const auto s = upgradedStream(t); return Plugin::prepareSnapshot(p, &s, selected, message, capacity);
+}
+const clap_plugin_state_t kSnapshot = {Plugin::saveSnapshot, loadSnapshotCompat};
 const oscairn_plugin_sound_contexts_t kSoundContexts = {Plugin::capacity, Plugin::get, Plugin::prepare, Plugin::select, Plugin::discard, &kSnapshot, nullptr};
-const oscairn_plugin_sound_snapshots_t kSoundSnapshots = {Plugin::prepareSnapshot, Plugin::setRingOut, Plugin::chokeRetiring, Plugin::saveSound, Plugin::soundValues};
+const oscairn_plugin_sound_snapshots_t kSoundSnapshots = {prepareSnapshotCompat, Plugin::setRingOut, Plugin::chokeRetiring, Plugin::saveSound, Plugin::soundValues};
 const oscairn_plugin_voice_budget_t kVoiceBudget = {Plugin::honorsVolume, Plugin::setLimits, Plugin::activeVoices, Plugin::voiceNotes, Plugin::importance};
 const oscairn_plugin_memory_t kMemory = {Plugin::memoryEstimate, Plugin::memoryCurrent};
 const oscairn_plugin_asset_dependencies_t kDependencies = {Plugin::dependencyCount, Plugin::dependencyGet, nullptr};
