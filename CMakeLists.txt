@@ -81,6 +81,7 @@ add_custom_target(samplepack_cli ${SAMPLEPACK_CARGO} build --release --locked --
 add_dependencies(samplepack_cli samplepack_build)  # one cargo at a time: a first run installs the pinned toolchain
 add_dependencies(pcm_tests samplepack_cli)
 target_compile_definitions(pcm_tests PRIVATE "SAMPLEPACK_CLI=\"${SAMPLEPACK_CLI}\"")
+target_compile_definitions(pcm_tests PRIVATE "PCM_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")  # runs tools/release/init_library.py
 add_dependencies(pcm_tests pcbench)
 target_compile_definitions(pcm_tests PRIVATE "PCBENCH=\"$<TARGET_FILE:pcbench>\"")  # the tests run its render and coverage
 add_test(NAME abi COMMAND pcm_tests $<TARGET_FILE:oscairn_sampler>)

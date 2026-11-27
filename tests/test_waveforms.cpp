@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <fstream>
 
 #include "host.h"
 
@@ -253,4 +254,23 @@ TEST(pcbench_renders_waveform_sounds) {
     CHECK(run("coverage \"" + dir + "/v1.txt\"") != 0);  // its waveform needs the store
     for (const char* f : {"v1.txt", "v0.txt", "v1.f32", "v0.f32"}) std::remove((dir + "/" + f).c_str());
     std::remove((dir + "/" + wf + ".owf").c_str());
+}
+
+// The init library's saved state is written by the release tooling (tools/release/init_library.py), not by the plugin;
+// the plugin must read what that writes: the snapshot the host restores when a user, or the release's plugin check,
+// opens the Init sound. Only the tool's snapshot function runs (not the built plugin), so this holds under the sanitizers.
+TEST(init_library_snapshot_is_read) {
+    const std::string wf = writeWaveform({bank(0, 127, 1, 127, 60, 0)}, {"sine"});
+    CHECK(!wf.empty());
+    const std::string out = g_assetDir + "/init-snapshot";
+    const std::string cmd = std::string("python3 -I -c \"import sys; sys.path.insert(0, sys.argv[1]); import init_library; "
+        "sys.stdout.buffer.write(init_library.snapshot(sys.argv[2]))\" \"") + PCM_SOURCE_DIR + "/tools/release\" " + wf + " > \"" + out + "\"";
+    CHECK_EQ(std::system(cmd.c_str()), 0);
+    Stream in;
+    { std::ifstream f(out, std::ios::binary); in.data.assign(std::istreambuf_iterator<char>(f), {}); }
+    CHECK(!in.data.empty());
+    Inst a;
+    CHECK(a.contexts->state->load(a.p, &in.in));
+    oscairn_sound_context_info_t info{};
+    CHECK(a.contexts->get(a.p, 0, &info) && !std::strcmp(info.name, "Init"));
 }

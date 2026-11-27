@@ -160,10 +160,11 @@ def snapshot(waveform_id):
     body += struct.pack('<H', len(values)) + b''.join(struct.pack('<Hh', i, x) for i, x in values)
     body += struct.pack('<H', 1) + bytes.fromhex(waveform_id)
     blob = b'OSMP' + struct.pack('<HHII', 1, 0, 16 + len(body), zlib.crc32(body)) + body
-    # the shell's values: level, pan, polyphony, the 8 knobs at the sound's value, ribbon, 2 switches, 11 destinations, output bus
-    shell = (1, 0, POLYPHONY, *[dict(part)['knob1'] / 1023] * 8, 0, 0, 0, *[0] * 11, 0)
+    # the shell's values: level, pan, polyphony, the 8 knobs at the sound's value, ribbon, 2 switches, 11 destinations, output bus,
+    # the 32 element levels
+    shell = (1, 0, POLYPHONY, *[dict(part)['knob1'] / 1023] * 8, 0, 0, 0, *[0] * 11, 0, *[0] * 32)
     text = ' '.join(f"{struct.unpack('f', struct.pack('f', x))[0]:.17g}" for x in shell)
-    return (f'oscairn-sampler-contexts/3\n1 "{SOUND_NAME}" {text} "" "" {base64.b64encode(blob).decode()}\n'
+    return (f'oscairn-sampler-contexts/4\n1 "{SOUND_NAME}" {text} "" "" {base64.b64encode(blob).decode()}\n'
             + '0\n' * (CONTEXTS - 1) + '0 ' * 16 + '\n').encode()
 
 
