@@ -881,16 +881,18 @@ const oscairn_plugin_memory_t kMemory = {Plugin::memoryEstimate, Plugin::memoryC
 const oscairn_plugin_asset_dependencies_t kDependencies = {Plugin::dependencyCount, Plugin::dependencyGet, nullptr};
 const oscairn_plugin_ui_t kUi = {Plugin::paramHint, nullptr, nullptr};
 // This plugin's own extension: streaming's counter and the tests' hooks (stall the I/O thread, wait for it, fail every
-// read of a pack, count its passes that found nothing to do).
+// read of a pack, count its passes that found nothing to do, count the bytes read from packs).
 const struct {
     uint64_t (*sheds)(const clap_plugin_t*);
     void (*stall)(const clap_plugin_t*, bool);
     void (*settle)(const clap_plugin_t*);
     void (*failReads)(const clap_plugin_t*, bool);
     uint64_t (*idlePasses)(const clap_plugin_t*);
+    uint64_t (*bytesRead)(const clap_plugin_t*);
 } kStreaming = {[](const clap_plugin_t* p) -> uint64_t { return Plugin::self(p).core->streamSheds(); },
                 [](const clap_plugin_t*, bool on) { stallStreams(on); }, [](const clap_plugin_t*) { settleStreams(); },
-                [](const clap_plugin_t*, bool on) { failReads(on); }, [](const clap_plugin_t*) { return idleStreamPasses(); }};
+                [](const clap_plugin_t*, bool on) { failReads(on); }, [](const clap_plugin_t*) { return idleStreamPasses(); },
+                [](const clap_plugin_t*) { return packBytesRead(); }};
 
 const void* Plugin::getExtension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &kAudioPorts;

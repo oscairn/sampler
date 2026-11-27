@@ -18,7 +18,7 @@ std::string g_assetDir;
 std::map<std::string, StoreEntry> g_store;
 std::map<std::string, TestTone> g_tones;
 
-static void writeWav(const std::string& path, const TestTone& t) {
+void writeWav(const std::string& path, const TestTone& t) {
     FILE* f = std::fopen(path.c_str(), "wb");
     const uint32_t bytes = uint32_t(t.pcm.size() * 2), ch = t.channels;
     auto u32 = [&](uint32_t v) { std::fwrite(&v, 4, 1, f); };

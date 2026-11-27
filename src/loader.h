@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// A sound's audio from packs: each sample reference resolved to a record (through the caller's resolver), the
-// records' preload spans hinted in one read-ahead batch and then read in ascending offset order, and for each region
-// what the core keeps in memory and what streams (docs/design.md, "Streaming"). Main thread.
+// A sound's audio from packs: each sample reference resolved to a record (through the caller's resolver, or where the
+// process found it while a sound holds it), the records not checked yet hinted in one read-ahead batch and their headers
+// read in ascending offset order, and for each region what the core keeps in memory and what streams (docs/design.md,
+// "Streaming"). Main thread.
 #pragma once
 #include <functional>
 #include <memory>

@@ -32,6 +32,7 @@ struct TestTone { std::vector<int16_t> pcm; uint32_t frames = 0, channels = 1, r
 struct StoreEntry { std::string pack; uint64_t offset = 0, length = 0, preload = 0; };
 extern std::map<std::string, TestTone> g_tones;
 extern std::map<std::string, StoreEntry> g_store;
+void writeWav(const std::string& path, const TestTone& t);  // test_main.cpp: a 16-bit WAV of the tone
 // The reference "sample:<id>" of a tone.
 inline std::string sampleRef(const char* tone) { return "sample:" + g_tones.at(tone).id; }
 
@@ -115,6 +116,7 @@ struct StreamingExt {
     void (*settle)(const clap_plugin_t*);
     void (*failReads)(const clap_plugin_t*, bool);
     uint64_t (*idlePasses)(const clap_plugin_t*);  // the process's I/O thread's passes that found nothing to do
+    uint64_t (*bytesRead)(const clap_plugin_t*);   // bytes the process has read from packs
 };
 
 struct Rec { uint16_t type; int32_t id; int16_t port, channel, key; uint32_t time; long frame; double value; };
@@ -175,6 +177,7 @@ struct Library {
 };
 inline Library& library() { static Library l; return l; }
 
+inline std::atomic<int> g_sampleResolves{0};  // resolve_sample calls
 // The host's oscairn.assets (draft 4): library "test" is g_assetDir, where a reference "waveform:<id>" is the file
 // <id>.owf; anything else is unknown; resolve_sample answers from the store pack (g_store).
 inline const oscairn_host_assets_t* testAssets() {
@@ -190,6 +193,7 @@ inline const oscairn_host_assets_t* testAssets() {
         },
         nullptr, nullptr,
         [](const clap_host_t*, const oscairn_asset_ref_t* ref, char* path, uint32_t cap, oscairn_sample_location_t* at, char* msg, uint32_t mcap) {
+            ++g_sampleResolves;
             auto it = ref->library[0] || std::strncmp(ref->path, "sample:", 7) ? g_store.end() : g_store.find(ref->path + 7);
             if (it == g_store.end()) { std::snprintf(msg, mcap, "no sample '%s'", ref->path); return false; }
             std::snprintf(path, cap, "%s", it->second.pack.c_str());
