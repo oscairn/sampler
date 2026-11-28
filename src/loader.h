@@ -43,10 +43,17 @@ struct LoadTimes {
     uint32_t samples = 0, resolves = 0;
     double resolve = 0, held = 0, checks = 0, regions = 0, alloc = 0, reads = 0, keep = 0, total = 0;
 };
+// What expandWaveforms did: per waveform one host resolve, one file open and read; counts, bytes and ms.
+struct ExpandTimes {
+    uint32_t resolves = 0, opens = 0;
+    uint64_t bytes = 0;
+    double resolve = 0, read = 0, parse = 0, match = 0, alloc = 0;
+};
 // A prepare's parts, in ms: `hand` is giving the sound to the audio side (negative: not part of this one).
 struct PrepareTimes {
     double parse = 0, expand = 0, compile = 0, hand = -1, total = 0;
     LoadTimes load;
+    ExpandTimes ex;
 };
 void printTrace(const PrepareTimes&);
 
@@ -67,7 +74,7 @@ struct Samples {
 using WaveformResolver = std::function<bool(const char* ref, std::string& path, std::string& error)>;
 // The region table `in` plays: each element's waveform read from its file (checked by samplepack, its id compared with
 // the reference) and expanded into regions (pcm::expand). False with a reason.
-bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver&, pcm::SoundData& out, std::string& error);
+bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver&, pcm::SoundData& out, std::string& error, ExpandTimes* times = nullptr);
 // whole: every region decoded whole into memory, nothing streams (for comparisons: OSCAIRN_SAMPLER_DECODE_WHOLE).
 std::shared_ptr<const Samples> loadSamples(const pcm::SoundData&, const SampleResolver&, bool whole, std::string& error, LoadTimes* times = nullptr);
 

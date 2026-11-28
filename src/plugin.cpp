@@ -176,7 +176,7 @@ struct Plugin : oscairn::contexts::Engine<Plugin, Voice, Patch, kContexts, kVoic
         if (!assets || !assets->resolve) { error = "the host offers no oscairn.assets to resolve samples"; return nullptr; }
         if (s->data->waveforms) {
             s->expanded.reset(new pcm::SoundData);
-            if (!expandWaveforms(*s->data, [&](const char* ref, std::string& local, std::string& e) { return resolveWaveform(ref, local, e); }, *s->expanded, error)) return nullptr;
+            if (!expandWaveforms(*s->data, [&](const char* ref, std::string& local, std::string& e) { return resolveWaveform(ref, local, e); }, *s->expanded, error, &times.ex)) return nullptr;
             times.expand = lap();
         }
         const pcm::SoundData& play = s->expanded ? *s->expanded : *s->data;

@@ -72,23 +72,32 @@ void printTrace(const PrepareTimes& p) {
     std::string hand;
     if (p.hand >= 0) { char b[32]; std::snprintf(b, sizeof b, " hand=%.2f", p.hand); hand = b; }
     std::fprintf(stderr, "oscairn-sampler: loaded %u samples: %u resolved in %.2f ms, %u from sounds held"
-                         " parse=%.2f expand=%.2f held=%.2f checks=%.2f regions=%.2f alloc=%.2f reads=%.2f keep=%.2f load=%.2f compile=%.2f%s total=%.2f\n",
+                         " parse=%.2f expand=%.2f held=%.2f checks=%.2f regions=%.2f alloc=%.2f reads=%.2f keep=%.2f load=%.2f compile=%.2f%s total=%.2f"
+                         " wf_resolves=%u wf_resolve=%.2f wf_opens=%u wf_bytes=%llu wf_read=%.2f wf_parse=%.2f wf_match=%.2f wf_alloc=%.2f\n",
                  l.samples, l.resolves, l.resolve, l.samples - l.resolves, p.parse, p.expand, l.held, l.checks, l.regions, l.alloc, l.reads,
-                 l.keep, l.total, p.compile, hand.c_str(), p.total);
+                 l.keep, l.total, p.compile, hand.c_str(), p.total,
+                 p.ex.resolves, p.ex.resolve, p.ex.opens, (unsigned long long)p.ex.bytes, p.ex.read, p.ex.parse, p.ex.match, p.ex.alloc);
 }
 
-bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver& resolve, pcm::SoundData& out, std::string& error) {
+bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver& resolve, pcm::SoundData& out, std::string& error, ExpandTimes* times) {
+    ExpandTimes et;
+    Lap lap;
     struct Read { std::vector<pcm::KeyBank> banks; std::vector<std::string> refs; std::vector<const char*> ptrs; };
     std::vector<Read> read(in.waveforms);
     std::vector<pcm::WaveformData> w(in.waveforms);
     std::vector<uint8_t> file(SP_WAVEFORM_MAX_BYTES + 1);  // one buffer for every waveform file
+    et.alloc = lap();
     for (uint32_t i = 0; i < in.waveforms; ++i) {
         const std::string ref = "waveform:" + hex(in.waveform[i]);
         std::string path;
-        if (!resolve(ref.c_str(), path, error)) { error = ref + ": " + error; return false; }
+        lap();
+        const bool resolved = resolve(ref.c_str(), path, error);
+        et.resolve += lap(); ++et.resolves;
+        if (!resolved) { error = ref + ": " + error; return false; }
         size_t len = 0;
         if (FILE* f = std::fopen(path.c_str(), "rb")) { len = std::fread(file.data(), 1, file.size(), f); std::fclose(f); }
         else { error = ref + ": cannot open " + path; return false; }
+        et.read += lap(); ++et.opens; et.bytes += len;
         size_t samples = 0, banks = 0;
         uint8_t id[SP_SAMPLE_ID_BYTES];
         if (sp_status st = sp_waveform_check(file.data(), len, &samples, &banks)) { error = ref + ": not a valid waveform (samplepack status " + std::to_string(int(st)) + ")"; return false; }
@@ -106,9 +115,13 @@ bool expandWaveforms(const pcm::SoundData& in, const WaveformResolver& resolve, 
                                b.tune, b.level, b.pan, b.start, b.end, b.loop_start, b.loop_end});
         }
         w[i] = {r.banks.data(), uint32_t(banks), r.ptrs.data(), uint32_t(samples)};
+        et.parse += lap();
     }
     char why[256] = {};
-    if (!pcm::expand(in, w.data(), out, why, sizeof why)) { error = why; return false; }
+    const bool expanded = pcm::expand(in, w.data(), out, why, sizeof why);
+    et.match = lap();
+    if (times) *times = et;
+    if (!expanded) { error = why; return false; }
     return true;
 }
 
